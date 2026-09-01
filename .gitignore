@@ -1,0 +1,13 @@
+bin/
+obj/
+release/
+Checks/bin/
+Checks/obj/
+config.json
+*.user
+*.suo
+*.pdb
+catalog-latest.json
+diagnostics/
+backups/
+

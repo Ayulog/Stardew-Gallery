@@ -1,0 +1,15 @@
+{
+  "Name": "Stardew Gallery",
+  "Author": "sjt38",
+  "Version": "1.0.0",
+  "Description": "Browse and replay the currently active NPC heart events in a gallery.",
+  "UniqueID": "sjt38.StardewGallery",
+  "EntryDll": "StardewGallery.dll",
+  "MinimumApiVersion": "4.5.2",
+  "Dependencies": [
+    {
+      "UniqueID": "spacechase0.GenericModConfigMenu",
+      "IsRequired": false
+    }
+  ]
+}

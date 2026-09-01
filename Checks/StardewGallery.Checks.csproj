@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\EventKey.cs" Link="EventKey.cs" />
+    <Compile Include="..\EventOwnership.cs" Link="EventOwnership.cs" />
+    <Compile Include="..\EventFragments.cs" Link="EventFragments.cs" />
+    <Compile Include="..\GalleryLayout.cs" Link="GalleryLayout.cs" />
+    <Compile Include="..\GalleryUiRules.cs" Link="GalleryUiRules.cs" />
+    <Compile Include="..\ReplayLifecycleRules.cs" Link="ReplayLifecycleRules.cs" />
+  </ItemGroup>
+</Project>
