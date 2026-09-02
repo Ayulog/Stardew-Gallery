@@ -159,7 +159,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
 
     private EventScanResult ScanEvents()
     {
-        Dictionary<string, List<(GalleryEvent Entry, GameLocation Location)>> candidates = new(StringComparer.Ordinal);
+        Dictionary<EventIdentity, List<(GalleryEvent Entry, GameLocation Location)>> candidates = [];
 
         Utility.ForEachLocation(location =>
         {
@@ -174,7 +174,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     continue;
 
                 string locationName = location.NameOrUniqueName;
-                string identity = EventKey.GetIdentity(locationName, id);
+                EventIdentity identity = new(assetName, id);
                 EventFragments fragments = EventFragmentCollector.Collect(
                     script,
                     location.Name,
@@ -184,8 +184,16 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     translationKey => Game1.content.LoadStringReturnNullIfNotFound(translationKey)
                 );
 
-                GalleryEvent entry = new(identity, locationName, assetName, id, key, script, fragments,
-                    new EventOwnership(OwnershipKind.Excluded, [], "not-analyzed"));
+                ResolvedEvent resolved = new(
+                    Identity: identity,
+                    LocationName: locationName,
+                    RawEventKey: key,
+                    ResolvedScript: script,
+                    Fragments: fragments,
+                    RootDefinitionHash: EventHashes.RootDefinition(key, script),
+                    RootScriptHash: EventHashes.RootScript(script)
+                );
+                GalleryEvent entry = new(resolved, new EventOwnership(OwnershipKind.Excluded, [], "not-analyzed"));
                 if (!candidates.TryGetValue(identity, out List<(GalleryEvent, GameLocation)>? matches))
                     candidates[identity] = matches = [];
                 if (!matches.Any(match => match.Item1.EventKey == key && match.Item1.Script == script))

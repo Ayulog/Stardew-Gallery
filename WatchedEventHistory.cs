@@ -7,24 +7,10 @@ using StardewValley;
 
 namespace StardewGallery;
 
-internal sealed record WatchedEventSnapshot(
-    string LocationName,
-    string AssetName,
-    string EventId,
-    string EventKey,
-    string RootScript,
-    Dictionary<string, Dictionary<string, string>> EventAssets,
-    Dictionary<string, string> Translations,
-    string Locale,
-    string Fingerprint,
-    DateTimeOffset FirstWatchedAt,
-    DateTimeOffset LastWatchedAt
-);
-
 internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, Func<bool> debugDiagnostics)
 {
     private const string SaveKey = "watched-event-versions";
-    private readonly Dictionary<string, List<WatchedEventSnapshot>> entries = new(StringComparer.Ordinal);
+    private readonly Dictionary<EventIdentity, List<WatchedEventSnapshot>> entries = [];
     private Event? observedEvent;
     private WatchedEventSnapshot? pendingSnapshot;
     private bool canSave = true;
@@ -60,10 +46,13 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
         pendingSnapshot = null;
     }
 
-    internal IReadOnlyList<WatchedEventSnapshot> Get(string identity)
+    internal IReadOnlyList<WatchedEventSnapshot> Get(EventIdentity identity)
         => entries.TryGetValue(identity, out List<WatchedEventSnapshot>? versions)
             ? versions.OrderByDescending(version => version.LastWatchedAt).ToList()
             : [];
+
+    internal IReadOnlyList<WatchedEventSnapshot> Get(GalleryEvent entry)
+        => Get(entry.Resolved.Identity);
 
     internal void Update(bool replayActive)
     {
@@ -205,7 +194,7 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
 
     private bool Add(WatchedEventSnapshot snapshot, bool save)
     {
-        string identity = EventKey.GetIdentity(snapshot.LocationName, snapshot.EventId);
+        EventIdentity identity = snapshot.Identity;
         if (!entries.TryGetValue(identity, out List<WatchedEventSnapshot>? versions))
             entries[identity] = versions = [];
         int existing = versions.FindIndex(version => version.Fingerprint == snapshot.Fingerprint);

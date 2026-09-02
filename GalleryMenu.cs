@@ -26,7 +26,7 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Texture2D scene;
     private readonly Func<bool> isUnlocked;
     private readonly Action toggleUnlock;
-    private readonly Func<string, IReadOnlyList<WatchedEventSnapshot>> watchedVersions;
+    private readonly Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions;
     private readonly Action<GalleryCharacter, GalleryEvent, WatchedEventSnapshot?, int> replay;
     private readonly TextBox search;
     private List<GalleryCharacter> filtered = [];
@@ -60,7 +60,7 @@ internal sealed class GalleryMenu : IClickableMenu
         Texture2D scene,
         Func<bool> isUnlocked,
         Action toggleUnlock,
-        Func<string, IReadOnlyList<WatchedEventSnapshot>> watchedVersions,
+        Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions,
         Action<GalleryCharacter, GalleryEvent, WatchedEventSnapshot?, int> replay)
         : base(0, 0, MenuWidth, MenuHeight, true)
     {

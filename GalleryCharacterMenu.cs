@@ -19,7 +19,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D scene;
     private readonly Action back;
     private readonly Action<GalleryEvent, WatchedEventSnapshot?, int> replay;
-    private readonly Func<string, IReadOnlyList<WatchedEventSnapshot>> watchedVersions;
+    private readonly Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions;
     private readonly Func<bool> isUnlocked;
     private readonly List<GalleryEvent> events;
     private readonly Dictionary<string, int> selectedVersions = new(StringComparer.Ordinal);
@@ -40,7 +40,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     internal GalleryCharacterMenu(GalleryCharacter character, GalleryCatalog catalog, ITranslationHelper i18n,
         Texture2D background, Texture2D scene, Func<bool> isUnlocked, Action back,
-        Func<string, IReadOnlyList<WatchedEventSnapshot>> watchedVersions,
+        Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions,
         Action<GalleryEvent, WatchedEventSnapshot?, int> replay,
         int initialScroll = 0, string? initialFocusIdentity = null)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
@@ -114,7 +114,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
                 Rectangle bounds = R(775, 140 + row * 170, 705, 155);
                 Rectangle button = new(bounds.Right - 185, bounds.Bottom - 62, 155, 48);
                 GalleryEvent entry = events[scroll + row];
-                IReadOnlyList<WatchedEventSnapshot> versions = watchedVersions(entry.Identity);
+                IReadOnlyList<WatchedEventSnapshot> versions = watchedVersions(entry);
                 if (new Rectangle(bounds.Right - 310, bounds.Bottom - 62, 115, 48).Contains(x, y) && versions.Count > 0)
                 {
                     selectedVersions[entry.Identity] = (selectedVersions.GetValueOrDefault(entry.Identity) + 1) % (versions.Count + 1);
@@ -252,7 +252,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         details = string.Join('\n', details.Split('\n').Take(2));
         b.DrawString(Game1.smallFont, details, new Vector2(row.X + 25, row.Y + 58), Game1.textColor);
         bool seen = Game1.player.eventsSeen.Contains(entry.EventId);
-        IReadOnlyList<WatchedEventSnapshot> versions = watchedVersions(entry.Identity);
+        IReadOnlyList<WatchedEventSnapshot> versions = watchedVersions(entry);
         string status = seen ? "event.seen" : isUnlocked() ? "event.unlocked" : "event.locked";
         b.DrawString(Game1.smallFont, i18n.Get(status), new Vector2(row.Right - 190, row.Y + 22), seen || isUnlocked() ? Color.Green : Color.DarkRed);
         if (versions.Count > 0)
@@ -378,7 +378,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         {
             Rectangle bounds = R(775, 140 + row * 170, 705, 155);
             GalleryEvent entry = events[scroll + row];
-            bool hasVersions = watchedVersions(entry.Identity).Count > 0;
+            bool hasVersions = watchedVersions(entry).Count > 0;
             ClickableComponent replayComponent = new(ToScreen(new Rectangle(bounds.Right - 185, bounds.Bottom - 62, 155, 48)), $"replay-{row}")
             {
                 myID = row,
