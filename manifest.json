@@ -6,6 +6,10 @@
   "UniqueID": "sjt38.StardewGallery",
   "EntryDll": "StardewGallery.dll",
   "MinimumApiVersion": "4.5.2",
+  "MinimumGameVersion": "1.6.15",
+  "UpdateKeys": [
+    "GitHub:Ayulog/Stardew-Gallery"
+  ],
   "Dependencies": [
     {
       "UniqueID": "spacechase0.GenericModConfigMenu",
