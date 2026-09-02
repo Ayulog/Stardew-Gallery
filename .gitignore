@@ -1,13 +1,16 @@
 bin/
 obj/
+.vs/
+.idea/
 release/
 Checks/bin/
 Checks/obj/
 config.json
+.env
+.env.*
 *.user
 *.suo
 *.pdb
 catalog-latest.json
 diagnostics/
 backups/
-
