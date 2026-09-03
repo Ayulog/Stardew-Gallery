@@ -51,7 +51,7 @@ RawEventKey
     → ConditionDescriber → ReadableCondition (key + args + raw fallback + Negated)
 ```
 
-生产组合点：`ConditionProduction.CreateParser(splitPreconditions)`、`CreateEvaluator(checkNativeQuery)`。两个委托均为薄注入，无 `IConditionContextProvider`；`ConditionEvaluationContext` 由未来 UI / factory 构造（当前不接入 UI）。
+生产组合点：`ConditionProduction.CreateParser(splitPreconditions, splitArguments)`、`CreateEvaluator(checkNativeQuery)`。委托均为薄注入，无 `IConditionContextProvider`；`ConditionEvaluationContext` 由未来 UI / factory 构造（当前不接入 UI）。
 
 ## 4. 领域模型实况
 
@@ -78,23 +78,26 @@ RawEventKey
 - `DatingCondition`（`D`）
 - `SpouseCondition`（`O` 正向、`o` 负向）
 - `RoommateCondition`（`R`）
-- `DaysPlayedCondition`（Host；`j`）
+- `DaysPlayedCondition`（Host；`j`；单整数，无 Max）
 - `WorldStateCondition`（typed parse；无可靠 read path 时 Unknown+MissingData）
-- `NativeQueryCondition`（GSQ；`G`）
+- `NativeQueryCondition`（GSQ；`G`；无 PlayerScope，player/world target 委托原生）
 - `OpaqueCondition`（未知/畸形，保留完整 RawSegment）
 - `ConditionSet`（ordered implicit-AND 容器）
 
 ### 4.3 解析规则实况
 
+- `ParseRawKey(rawKey)` 先经 `splitPreconditions(rawKey)` 得到 segments，再 `Skip(1)` 跳过 EventId，交由 `Parse`。`Parse` 假定输入已是纯 condition segments，不再 skip。
+- Constructor 注入两个 delegate：`splitPreconditions`（对应 `Event.SplitPreconditions`）与 `splitArguments`（对应 `ArgUtility.SplitBySpaceQuoteAware`）。Parser 自身不实现 quote parser；`Conditions/` 保持 BCL-only。
 - `!` 前缀 toggle（`!!Season` → 非 negated）。
-- alias 取反语义与 `!` 前缀按 XOR 合并（`!k 123` → SawEvent 正向；`!!k 123` → negated true：`!` 翻转两次 + `k` XOR true）。
+- alias 取反语义与 `!` 前缀按 XOR 合并（`!k 123` → SawEvent 正向；`!!k 123` → negated true）。
 - 短码为官方 deprecated 别名表（大小写敏感）；长名经 `ToUpperInvariant()` 大小写不敏感匹配；参数原样保留大小写。
-- `f`/`e` 超过精确参数数（`Friendship <npc> <points>` 一对、`SawEvent <id>` 一个）→ `Opaque` 保真，不静默截断。
+- Strict arity：已知 condition 只有在参数形状符合本阶段支持语义时才生成 typed leaf，否则保留完整 `RawSegment` 生成 `OpaqueCondition`（宁可 Unsupported，不允许错误 Known）。具体：Season 1+；DayOfMonth 1+ 合法整数；Time 恰好 2 整数；Year 恰好 1 整数；Weather 恰好 1；Mail 恰好 1；Dating 恰好 1；Spouse 恰好 1；Roommate 0；WorldState 恰好 1；DaysPlayed 恰好 1 整数（无 Max）；Friendship 单 pair；SawEvent 单 EventId；GameStateQuery query 非空。
 - 所有 unknown/malformed 路径均保留完整 `RawSegment`，Parser 始终返回 leaf。
 
 ### 4.4 Evaluator 边界
 
 - Typed 确定性条件从只读 snapshot 求值；缺数据 → `Unknown + MissingData`。
+- Year 原生语义：`Year 1` 仅当 currentYear==1；`Year N (N>1)` 为 `currentYear >= N`。
 - Native GSQ：注入 `Func<string, bool>`；成功 → `Known + True/False`；异常 → `Error + Unknown`（**不套用** Index 的 exception→false）。
 - Opaque → `Unknown + Unsupported`；`ConditionSet` 整体求值 → `Invalid`（set 由 UI/查询侧逐节点聚合，不在本层求值）。
 - Negated：仅当 `Knowledge == Known` 时翻转 Truth；翻转后 True → `NoGap`；翻转后 False（原条件满足）→ `OverState`。
@@ -113,8 +116,8 @@ RawEventKey
 - `ReadableCondition(LocalizationKey, Arguments, RawFallback, Negated)`。
 - Friendship 同时暴露 `points` 与 `hearts`（`ceil(points/250)`），由 UI 决定显示（决议 21）。
 - 未知 / GSQ → `LocalizationKey=null` + `RawFallback=RawSegment`。
-- DaysPlayed → key `condition.daysplayed`（避免误映射到 `condition.year`）。
-- Netflix：Dating/Spouse 临时映射到现有 key `condition.present`（仅 describer 输出，无 UI 改动；后续 UI 接入时可新增专用 key）。
+- DaysPlayed → key `condition.daysplayed`，仅 `min`（无 Max）。
+- Dating / Spouse / Roommate → `RawFallback`（不再复用语义错误的 `condition.present` / `condition.other`；未来 UI integration 阶段再新增专用 i18n key）。
 
 ## 5. 验证结果
 
@@ -166,11 +169,35 @@ git diff --check
 
 ## 8. 非阻塞说明（记录，不扩范围）
 
-- parser/describer 是 BCL-only；Codes 的 `Check()` helper 增加了 message + CallerLineNumber 可选参数（`Program.cs` 尾部），属允许的极小 adapter 改动（任务书 §5「极小 adapter 说明」）。
-- `Time` 接受 >2 参数时与 `f`/`e` 不对称（`Time min max extra` 仍 typed —— 沿用原语义，未来若需严格可收紧为 Opaque；本次不扩范围）。
-- negated `Spouse`/`Dating`/`Roommate`/`DaysPlayed` 未满足时 OverState 的 payload 为 null（`leafOverReason` 仅覆盖 Seen/Mail/Friendship/Time）；仅显示信息缺省，不影响 Truth 正确性。
+- parser/describer 是 BCL-only；Checks 的 `Check()` helper 增加了 message + CallerLineNumber 可选参数（`Program.cs` 尾部），属允许的极小 adapter 改动（任务书 §5「极小 adapter 说明」）。
+- Friendship 多 pair 是合法 Stardew native syntax，但本 MVP 继续 Opaque。
+- SawEvent 多 ID 是合法 Stardew native syntax，但本 MVP 继续 Opaque。
+- negated 非核心类型（Spouse/Dating/Roommate/DaysPlayed）未满足时 OverState 的 detail 可为空（`leafOverReason` 仅覆盖 Seen/Mail/Friendship/Time）；仅显示信息缺省，不影响 Truth 正确性。
 - `Season Spring, Summer` 逗号参数被空格切分（`"Spring,"`），属 parser 不重写 Stardew grammar 的边界；该类逗号形式由 GSQ/native 处理，不在本阶段承诺。
 
 ## 9. 结论
 
 Phase 3 BCL-only ConditionIR + Evaluator 已按 Codex 23 条决议实施并通过全部自动验证。它作为并行只读分析层，不影响 Phase 2 Index selection、ownership、Replay、History、UI 与持久化。生产 UI 接入与实机语义验证留待后续阶段。
+
+## 10. Semantic-correctness correction（第二轮）
+
+本轮为语义正确性修正，不引入新能力，也未触达 UI / i18n / Replay / History / ResolvedEvent / ResolvedEventIndex / Phase 2 selection。
+
+修正内容：
+
+1. **ParseRawKey EventId**：`ParseRawKey` 现先 `splitPreconditions(rawKey)` 后 `Skip(1)` 跳过 EventId；`Parse` 保持「输入已是纯 condition segments」不变。调用方不再需要预先 Skip。
+2. **quote-aware argument boundary**：`ConditionParser` 增加 `splitArguments` 委托注入，Parser 自身不再用 `segment.Split(' ')`，也不实现 quote parser；生产语义对应 `ArgUtility.SplitBySpaceQuoteAware`。`ConditionProduction.CreateParser` 改为接收两个 delegate。
+3. **Year==1 语义**：`Year 1` 仅在当前年为 1 时满足；`Year N (N>1)` 为 `currentYear >= N`。
+4. **strict arity**：Time/Year/Weather/Mail/Dating/Spouse/Roommate/WorldState/DaysPlayed 参数形状不符时一律 Opaque，禁止静默丢弃参数。
+5. **DaysPlayed 无 Max**：删除 `DaysPlayedCondition.Max`；`DaysPlayed <number>` 语义为 host days played >= number；Gap 继续 NumericGap（Target=required minimum，Current=current days）。
+6. **NativeQuery 无 Scope**：删除 `NativeQueryCondition.Scope`，不再伪装为 World scope；player/world target 语义完全保留在 raw Query 中并委托 Stardew 原生。
+7. **Describer 语义修正**：Dating/Spouse/Roommate 不再错误复用 `condition.present`/`condition.other`，改为 `RawFallback`；未来 UI 阶段再新增专用 i18n key。
+8. **回归 Checks**：新增 ParseRawKey 不含 EventId、injected splitArguments 被调用、quoted GSQ 保真、各 arity Opaque、Year 1 语义、Dating/Spouse describer 不再返回 condition.present 等测试；NativeQuery 无 Scope 由类型删除在编译期保证（record 不再含 Scope 字段）。
+
+保留的非阻塞限制（不扩范围）：
+
+- Friendship 多 pair、SawEvent 多 ID 仍是合法 Stardew native syntax，但 MVP 继续 Opaque。
+- negated 非核心类型 OverState detail 可为空。
+- ConditionEvaluation 不强制构造器 Truth/Knowledge 不变式，Evaluator 保证即可。
+- 不接生产 UI；不创建真实 ConditionEvaluationContext factory；不真实绑定 `GameStateQuery.CheckConditions` 到 UI。
+- 不实现 Preview、Planner、SQLite、variant discovery 或 Phase 4。

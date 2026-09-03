@@ -92,7 +92,6 @@ internal sealed record RoommateCondition(
 
 internal sealed record DaysPlayedCondition(
     int Min,
-    int? Max,
     ConditionPlayerScope Scope,
     ConditionSource Source,
     string RawSegment,
@@ -108,7 +107,6 @@ internal sealed record WorldStateCondition(
 
 internal sealed record NativeQueryCondition(
     string Query,
-    ConditionPlayerScope Scope,
     ConditionSource Source,
     string RawSegment,
     bool Negated

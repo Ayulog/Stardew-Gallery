@@ -81,7 +81,9 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     {
         if (context.Year is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = context.Year.Value >= leaf.Min;
+        bool matches = leaf.Min == 1
+            ? context.Year.Value == 1
+            : context.Year.Value >= leaf.Min;
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
@@ -187,13 +189,12 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     {
         if (context.DaysPlayed is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = context.DaysPlayed.Value >= leaf.Min
-            && (leaf.Max is null || context.DaysPlayed.Value <= leaf.Max);
+        bool matches = context.DaysPlayed.Value >= leaf.Min;
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
                 new ConditionGap(ConditionGapKind.NumericGap,
-                    Target: $"{leaf.Min}..{leaf.Max ?? int.MaxValue}", Current: context.DaysPlayed.Value.ToString()));
+                    Target: leaf.Min.ToString(), Current: context.DaysPlayed.Value.ToString()));
     }
 
     private ConditionEvaluation EvaluateWorldState(WorldStateCondition leaf, ConditionEvaluationContext context)

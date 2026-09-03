@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using StardewGallery;
 
@@ -508,14 +509,25 @@ Check(!ReplayLifecycleRules.IsSecondaryEvent(false, originalEvent, new object())
 Check(!ReplayLifecycleRules.IsSecondaryEvent(true, originalEvent, originalEvent));
 Check(ReplayLifecycleRules.IsSecondaryEvent(true, originalEvent, new object()));
 
-ConditionParser parser = new(key => key.Split('/').Skip(1).ToArray());
-ConditionSet allParsed = parser.ParseRawKey("event/Season Spring, Summer/!Season Winter/Time 1800 2200/Friendship Haley 2500");
-Check(allParsed.Conditions.Count == 4);
+int splitArgsCalls = 0;
+ConditionParser parser = new(
+    _ => ["event.id", "Season Spring", "Time 1800 2200"],
+    segment =>
+    {
+        splitArgsCalls++;
+        return FakeSplitArgs(segment);
+    });
+ConditionSet allParsed = parser.ParseRawKey("ignored");
+Check(allParsed.Conditions.Count == 2, "ParseRawKey must skip EventId");
 Check(allParsed.Conditions[0] is SeasonCondition);
-Check(allParsed.Conditions[0].RawSegment == "Season Spring, Summer");
+Check(allParsed.Conditions[1] is TimeCondition { Min: 1800, Max: 2200 });
+Check(allParsed.Conditions.All(condition => condition is not OpaqueCondition), "no event.id Opaque");
+Check(splitArgsCalls == 2, "injected splitArguments must be called");
 
-ConditionParser parser2 = new(key => key.Split('/', StringSplitOptions.RemoveEmptyEntries));
-ConditionParser parserSeg = new(_ => Array.Empty<string>());
+ConditionParser parser2 = new(
+    key => key.Split('/', StringSplitOptions.RemoveEmptyEntries),
+    FakeSplitArgs);
+ConditionParser parserSeg = new(_ => [], FakeSplitArgs);
 ConditionSet set = parserSeg.Parse([]);
 Check(set.Conditions.Count == 0);
 
@@ -543,7 +555,7 @@ Check(parserParsed.Conditions[10] is MailCondition { MailId: "mail3", Scope: Con
 Check(parserParsed.Conditions[11] is DatingCondition { Npc: "Emily" });
 Check(parserParsed.Conditions[12] is SpouseCondition { Npc: "Alex" });
 Check(parserParsed.Conditions[13] is RoommateCondition);
-Check(parserParsed.Conditions[14] is DaysPlayedCondition { Min: 15, Max: null, Scope: ConditionPlayerScope.HostPlayer });
+Check(parserParsed.Conditions[14] is DaysPlayedCondition { Min: 15, Scope: ConditionPlayerScope.HostPlayer });
 Check(parserParsed.Conditions[15] is WorldStateCondition { Id: "flag" });
 Check(parserParsed.Conditions[16] is NativeQueryCondition { Query: "WEATHER Here Sun" });
 Check(parserParsed.Conditions[16].Source == ConditionSource.GameStateQuery);
@@ -718,7 +730,7 @@ Check(seasonReadable.LocalizationKey == "condition.season" && seasonReadable.Arg
 ReadableCondition conditionReadable = ConditionDescriber.Describe(parser2.Parse(["SawEvent 123"]).Conditions[0]);
 Check(conditionReadable.LocalizationKey == "condition.seen" && conditionReadable.Arguments["id"] == "123");
 
-ConditionParser aliasParser = new(_ => Array.Empty<string>());
+ConditionParser aliasParser = new(_ => [], FakeSplitArgs);
 Check(aliasParser.ParseSegment("f Haley 1000") is FriendshipCondition { Npc: "Haley", Points: 1000, Negated: false });
 Check(aliasParser.ParseSegment("e 123") is SawEventCondition { EventId: "123", Negated: false });
 Check(aliasParser.ParseSegment("k 123") is SawEventCondition { EventId: "123", Negated: true });
@@ -749,6 +761,27 @@ Check(aliasParser.ParseSegment("F 123 1000") is OpaqueCondition);
 Check(aliasParser.ParseSegment("e 123 456") is OpaqueCondition);
 Check(aliasParser.ParseSegment("f Haley 2500 Abigail 1000") is OpaqueCondition);
 
+int quoteSplitCalls = 0;
+ConditionParser quoteParser = new(_ => [], segment => { quoteSplitCalls++; return FakeSplitArgs(segment); });
+ConditionExpression quotedGsq = quoteParser.ParseSegment("GameStateQuery \"SEASON Spring\"");
+Check(quoteSplitCalls == 1, "quote parser must invoke injected splitArguments");
+Check(quotedGsq is NativeQueryCondition { Query: "SEASON Spring" }, "quoted query unquoted");
+Check(quotedGsq.RawSegment == "GameStateQuery \"SEASON Spring\"", "raw segment preserved verbatim");
+
+Check(aliasParser.ParseSegment("Time 1800") is OpaqueCondition, "Time missing max");
+Check(aliasParser.ParseSegment("Time 1800 2200 2300") is OpaqueCondition, "Time extra arg");
+Check(aliasParser.ParseSegment("Time 1800 x") is OpaqueCondition, "Time invalid max");
+Check(aliasParser.ParseSegment("DaysPlayed 15 20") is OpaqueCondition, "DaysPlayed extra arg");
+Check(aliasParser.ParseSegment("LocalMail a b") is OpaqueCondition, "Mail extra arg");
+Check(aliasParser.ParseSegment("HostMail a b") is OpaqueCondition, "HostMail extra arg");
+Check(aliasParser.ParseSegment("HostOrLocalMail a b") is OpaqueCondition, "HostOrLocalMail extra arg");
+Check(aliasParser.ParseSegment("Weather Sun Rain") is OpaqueCondition, "Weather extra arg");
+Check(aliasParser.ParseSegment("Year 2 3") is OpaqueCondition, "Year extra arg");
+Check(aliasParser.ParseSegment("Dating Emily Sam") is OpaqueCondition, "Dating extra arg");
+Check(aliasParser.ParseSegment("Spouse Alex Emily") is OpaqueCondition, "Spouse extra arg");
+Check(aliasParser.ParseSegment("Roommate extra") is OpaqueCondition, "Roommate extra arg");
+Check(aliasParser.ParseSegment("WorldState a b") is OpaqueCondition, "WorldState extra arg");
+
 ConditionSet aliasSet = parser2.Parse(["f Haley 2500", "e 123", "k 456"]);
 Check(aliasSet.Conditions[0] is FriendshipCondition { Npc: "Haley", Points: 2500 });
 Check(aliasSet.Conditions[1] is SawEventCondition { EventId: "123", Negated: false });
@@ -769,6 +802,23 @@ ReadableCondition negatedReadable = ConditionDescriber.Describe(negatedSeenSet.C
 Check(negatedReadable.Negated == true);
 ReadableCondition daysReadable = ConditionDescriber.Describe(parser2.Parse(["DaysPlayed 15"]).Conditions[0]);
 Check(daysReadable.LocalizationKey == "condition.daysplayed" && daysReadable.Arguments["min"] == "15");
+
+ConditionSet year1Set = parser2.Parse(["Year 1"]);
+Check(eval.Evaluate(year1Set.Conditions[0], fullContext with { Year = 1 }).Truth == ConditionTruth.True, "Year 1 + current 1");
+Check(eval.Evaluate(year1Set.Conditions[0], fullContext with { Year = 2 }).Truth == ConditionTruth.False, "Year 1 + current 2");
+ConditionSet year2Set = parser2.Parse(["Year 2"]);
+Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 1 }).Truth == ConditionTruth.False, "Year 2 + current 1");
+Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 2 }).Truth == ConditionTruth.True, "Year 2 + current 2");
+Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 3 }).Truth == ConditionTruth.True, "Year 2 + current 3");
+
+ReadableCondition datingReadable = ConditionDescriber.Describe(parser2.Parse(["Dating Emily"]).Conditions[0]);
+Check(datingReadable.LocalizationKey is null, "Dating must not map to condition.present");
+Check(datingReadable.RawFallback == "Dating Emily");
+ReadableCondition spouseReadable = ConditionDescriber.Describe(parser2.Parse(["Spouse Alex"]).Conditions[0]);
+Check(spouseReadable.LocalizationKey is null, "Spouse must not map to condition.present");
+Check(spouseReadable.RawFallback == "Spouse Alex");
+ReadableCondition roommateReadable = ConditionDescriber.Describe(parser2.Parse(["Roommate"]).Conditions[0]);
+Check(roommateReadable.LocalizationKey is null, "Roommate must be raw fallback");
 
 Console.WriteLine("Stardew Gallery checks passed.");
 
@@ -812,6 +862,34 @@ static ResolvedEventCandidate Candidate(
 }
 
 static HashSet<string> Set(params string[] names) => new(names, StringComparer.Ordinal);
+
+static string[] FakeSplitArgs(string segment)
+{
+    List<string> result = [];
+    StringBuilder current = new();
+    bool inQuotes = false;
+    foreach (char c in segment)
+    {
+        if (c == '"')
+        {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (c == ' ' && !inQuotes)
+        {
+            if (current.Length > 0)
+            {
+                result.Add(current.ToString());
+                current.Clear();
+            }
+            continue;
+        }
+        current.Append(c);
+    }
+    if (current.Length > 0)
+        result.Add(current.ToString());
+    return result.ToArray();
+}
 
 internal sealed class FakeEventAssetSourceCatalog(
     IReadOnlyList<EventAssetSource> sources,
