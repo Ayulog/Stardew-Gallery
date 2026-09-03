@@ -597,6 +597,22 @@ Check(GalleryUiRules.DisplayName("Lenny", false, false) == "???");
 Check(GalleryUiRules.DisplayName("Lenny", false, true) == "Lenny");
 Check(GalleryUiRules.PreferredReplayRow(7, 4, 4) == 3);
 Check(GalleryUiRules.PreferredReplayRow(8, 4, 4) == 0);
+
+(int scroll, int slot) returnPos0 = GalleryUiRules.ResolveReturnPosition(0, 0, 6, 3, 21);
+Check(returnPos0.scroll == 0 && returnPos0.slot == 0, "idx0 old0 -> scroll0 slot0");
+(int scroll, int slot) returnPos20a = GalleryUiRules.ResolveReturnPosition(20, 0, 6, 3, 21);
+Check(returnPos20a.scroll == 1 && returnPos20a.slot == 14, "idx20 old0 -> auto scroll to row showing 20");
+(int scroll, int slot) returnPos20b = GalleryUiRules.ResolveReturnPosition(20, 1, 6, 3, 21);
+Check(returnPos20b.scroll == 1 && returnPos20b.slot == 14, "idx20 old already visible -> keep old scroll");
+(int scroll, int slot) returnPosNone = GalleryUiRules.ResolveReturnPosition(-1, 5, 6, 3, 21);
+Check(returnPosNone.scroll == 1 && returnPosNone.slot == -1, "missing character -> clamp old scroll, no target slot");
+(int scroll, int slot) returnPosShort = GalleryUiRules.ResolveReturnPosition(5, 9, 6, 3, 6);
+Check(returnPosShort.scroll == 0 && returnPosShort.slot == 5, "filtered shrunk -> scroll clamped to 0");
+(int scroll, int slot) returnPos18 = GalleryUiRules.ResolveReturnPosition(18, 0, 6, 3, 36);
+Check(returnPos18.scroll == 1 && returnPos18.slot == 12, "idx18 old0 -> scroll to make row 3 visible, slot 12");
+(int scroll, int slot) returnPosKeep = GalleryUiRules.ResolveReturnPosition(7, 1, 6, 3, 21);
+Check(returnPosKeep.scroll == 1 && returnPosKeep.slot == 1, "idx7 old1 already visible -> keep old scroll, slot 1");
+
 Check(!ReplayLifecycleRules.ShouldRestore(false, 999, 899, 900));
 Check(ReplayLifecycleRules.ShouldRestore(false, 0, 900, 900));
 Check(!ReplayLifecycleRules.ShouldRestore(true, 14, 5000, 900));

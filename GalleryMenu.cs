@@ -61,7 +61,10 @@ internal sealed class GalleryMenu : IClickableMenu
         Func<bool> isUnlocked,
         Action toggleUnlock,
         Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions,
-        Action<GalleryCharacter, GalleryEvent, WatchedEventSnapshot?, int> replay)
+        Action<GalleryCharacter, GalleryEvent, WatchedEventSnapshot?, int> replay,
+        string initialSearchText = "",
+        int initialScrollRow = 0,
+        string? initialFocusCharacterName = null)
         : base(0, 0, MenuWidth, MenuHeight, true)
     {
         this.catalog = catalog;
@@ -75,9 +78,42 @@ internal sealed class GalleryMenu : IClickableMenu
         this.replay = replay;
         search = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor);
         search.OnEnterPressed += _ => OpenFirstMatch();
+        search.Text = initialSearchText;
         RecalculateLayout();
         RefreshFilter();
-        SnapForGamepad();
+        RestoreReturnPosition(initialScrollRow, initialFocusCharacterName);
+    }
+
+    private void RestoreReturnPosition(int oldScrollRow, string? focusCharacterName)
+    {
+        scrollRow = Math.Clamp(oldScrollRow, 0, MaxScroll);
+        if (focusCharacterName is null)
+        {
+            BuildClickableComponents();
+            SnapForGamepad();
+            return;
+        }
+        int characterIndex = filtered.FindIndex(character => character.Name == focusCharacterName);
+        if (characterIndex < 0)
+        {
+            BuildClickableComponents();
+            SnapForGamepad();
+            return;
+        }
+        (int restoredScroll, int visibleSlot) = GalleryUiRules.ResolveReturnPosition(
+            characterIndex, oldScrollRow, Columns, VisibleRows, filtered.Count);
+        scrollRow = restoredScroll;
+        BuildClickableComponents();
+        if (visibleSlot >= 0 && !confirming)
+        {
+            currentlySnappedComponent = cardComponents.FirstOrDefault(component => component.myID == visibleSlot);
+            if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+                snapCursorToCurrentSnappedComponent();
+        }
+        else
+        {
+            SnapForGamepad();
+        }
     }
 
     public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds)
@@ -134,9 +170,13 @@ internal sealed class GalleryMenu : IClickableMenu
             if (!character.IsMet && !isUnlocked())
                 return;
             Game1.playSound("smallSelect");
+            string returnSearchText = search.Text;
+            int returnScrollRow = scrollRow;
+            string returnCharacterName = character.Name;
             Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene,
                 isUnlocked,
-                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay),
+                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay,
+                    returnSearchText, returnScrollRow, returnCharacterName),
                 watchedVersions,
                 (entry, version, scroll) => replay(character, entry, version, scroll));
             return;
@@ -331,9 +371,13 @@ internal sealed class GalleryMenu : IClickableMenu
         GalleryCharacter? character = filtered.FirstOrDefault();
         if (character is null || !character.IsMet && !isUnlocked())
             return;
+        string returnSearchText = search.Text;
+        int returnScrollRow = scrollRow;
+        string returnCharacterName = character.Name;
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene,
             isUnlocked,
-            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay),
+            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay,
+                returnSearchText, returnScrollRow, returnCharacterName),
             watchedVersions,
             (entry, version, scroll) => replay(character, entry, version, scroll));
     }
