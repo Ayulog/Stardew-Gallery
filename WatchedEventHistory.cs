@@ -1,40 +1,57 @@
-using System.IO.Compression;
-using System.Text;
-using System.Text.Json;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 
 namespace StardewGallery;
 
-internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, Func<bool> debugDiagnostics)
+internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiagnostics)
 {
-    private const string SaveKey = "watched-event-versions";
     private readonly Dictionary<EventIdentity, Dictionary<ObservedVariantKey, WatchedEventSnapshot>> entries = [];
     private Event? observedEvent;
     private WatchedEventSnapshot? pendingSnapshot;
-    private bool canSave = true;
+    private LegacyHistoryStore? legacyStore;
+    private HistoryRepository? repository;
+    private bool sqliteDegraded;
+
+    internal void AttachPersistence(LegacyHistoryStore store, HistoryRepository? repo)
+    {
+        legacyStore = store;
+        repository = repo;
+        sqliteDegraded = false;
+    }
+
+    internal void DetachPersistence()
+    {
+        legacyStore = null;
+        repository = null;
+        sqliteDegraded = false;
+    }
 
     internal void Load()
     {
         entries.Clear();
         observedEvent = null;
         pendingSnapshot = null;
-        canSave = true;
         try
         {
-            string? payload = helper.Data.ReadSaveData<string>(SaveKey);
-            if (string.IsNullOrWhiteSpace(payload))
-                return;
-            using MemoryStream source = new(Convert.FromBase64String(payload));
-            using GZipStream gzip = new(source, CompressionMode.Decompress);
-            List<WatchedEventSnapshot>? saved = JsonSerializer.Deserialize<List<WatchedEventSnapshot>>(gzip);
-            foreach (WatchedEventSnapshot snapshot in saved ?? [])
-                Add(snapshot, save: false);
+            IReadOnlyList<WatchedEventSnapshot> saved = legacyStore?.Load() ?? [];
+            if (repository is not null && !sqliteDegraded)
+            {
+                try
+                {
+                    repository.ImportLegacy(saved);
+                }
+                catch (Exception error)
+                {
+                    sqliteDegraded = true;
+                    monitor.Log($"SQLite 历史迁移失败，本会话降级为 legacy：{error.Message}", LogLevel.Error);
+                }
+            }
+            foreach (WatchedEventSnapshot snapshot in saved)
+                Add(snapshot);
         }
         catch (Exception error)
         {
-            canSave = false;
             monitor.Log($"已观看事件版本记录无法读取，本次不会覆盖原记录：{error.Message}", LogLevel.Error);
         }
     }
@@ -158,9 +175,34 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
         pendingSnapshot = null;
         if (snapshot is null || !Game1.player.eventsSeen.Contains(snapshot.EventId))
             return;
-        if (Add(snapshot, save: true) && debugDiagnostics())
+
+        if (repository is not null && !sqliteDegraded)
+        {
+            try
+            {
+                LegacyHistoryProjection projection = LegacyHistoryAdapter.From(snapshot);
+                repository.UpsertObservation(projection.Variant, projection.Observation);
+            }
+            catch (Exception error)
+            {
+                sqliteDegraded = true;
+                monitor.Log($"SQLite 写入失败，本会话降级为 legacy：{error.Message}", LogLevel.Error);
+            }
+        }
+
+        bool isNew = Add(snapshot);
+        if (legacyStore is not null)
+        {
+            bool ok = legacyStore.TrySave(SnapshotList());
+            if (!ok)
+                monitor.Log("legacy watched-event-versions 写入失败（不影响当前会话）。", LogLevel.Debug);
+        }
+        if (isNew && debugDiagnostics())
             monitor.Log($"已记录完整观看事件版本：地点={snapshot.LocationName}，事件={snapshot.EventId}，指纹={snapshot.Fingerprint[..12]}。", LogLevel.Debug);
     }
+
+    private IReadOnlyList<WatchedEventSnapshot> SnapshotList()
+        => entries.Values.SelectMany(value => value.Values).ToList();
 
     private static bool CollectFragments(string rootScript, string rootLocation,
         Dictionary<string, Dictionary<string, string>> eventAssets, Dictionary<string, string> translations)
@@ -223,7 +265,7 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
         return true;
     }
 
-    private bool Add(WatchedEventSnapshot snapshot, bool save)
+    private bool Add(WatchedEventSnapshot snapshot)
     {
         EventIdentity identity = snapshot.Identity;
         if (!entries.TryGetValue(identity, out Dictionary<ObservedVariantKey, WatchedEventSnapshot>? variants))
@@ -239,19 +281,7 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
         else
             variants[key] = snapshot;
 
-        if (save)
-            Save();
         return existing is null;
-    }
-
-    private void Save()
-    {
-        if (!canSave)
-            return;
-        using MemoryStream target = new();
-        using (GZipStream gzip = new(target, CompressionLevel.SmallestSize, leaveOpen: true))
-            JsonSerializer.Serialize(gzip, entries.Values.SelectMany(value => value.Values).ToList());
-        helper.Data.WriteSaveData(SaveKey, Convert.ToBase64String(target.ToArray()));
     }
 }
 

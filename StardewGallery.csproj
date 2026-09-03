@@ -9,10 +9,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableModDeploy>false</EnableModDeploy>
     <EnableModZip>true</EnableModZip>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <Reference Include="0Harmony">
       <HintPath>$(GamePath)\smapi-internal\0Harmony.dll</HintPath>
       <Private>false</Private>
@@ -22,5 +24,7 @@
   <ItemGroup>
     <Compile Remove="Checks\**\*.cs" />
     <None Remove="Checks\**\*" />
+    <Compile Remove="PersistenceChecks\**\*.cs" />
+    <None Remove="PersistenceChecks\**\*" />
   </ItemGroup>
 </Project>

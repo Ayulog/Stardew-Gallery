@@ -17,6 +17,8 @@ internal sealed class ModEntry : Mod
     private ReplayCoordinator replay = null!;
     private WatchedEventHistory watchedHistory = null!;
     private HistoricalReplayAssets historicalAssets = null!;
+    private GalleryDatabase? sqliteDatabase;
+    private HistoryRepository? historyRepository;
     private bool rollbackWarningShown;
     private bool replayProtectionReady;
 
@@ -35,7 +37,7 @@ internal sealed class ModEntry : Mod
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
         historicalAssets = new HistoricalReplayAssets(helper);
-        watchedHistory = new WatchedEventHistory(helper, Monitor, () => Config.DebugDiagnostics);
+        watchedHistory = new WatchedEventHistory(Monitor, () => Config.DebugDiagnostics);
         replay = new ReplayCoordinator(Monitor, helper, historicalAssets, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
         try
         {
@@ -48,11 +50,12 @@ internal sealed class ModEntry : Mod
             Monitor.Log($"回放存档保护无法启用，本次运行已禁用回放：{error}", LogLevel.Error);
         }
         tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-horizontal-v5.png");
-        helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); rollbackWarningShown = false; watchedHistory.Load(); };
+        helper.Events.GameLoop.SaveLoaded += (_, _) => { InitSqliteSession(); catalog.Invalidate(); rollbackWarningShown = false; watchedHistory.Load(); };
         helper.Events.GameLoop.GameLaunched += (_, _) => RegisterGmcm();
         helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
+            DisposeSqliteSession();
             catalog.Invalidate();
             unlockAll = false;
             rollbackWarningShown = false;
@@ -200,6 +203,49 @@ internal sealed class ModEntry : Mod
         }
         else
             component.bounds = bounds;
+    }
+
+    private void InitSqliteSession()
+    {
+        DisposeSqliteSession();
+        try
+        {
+            SaveProfileKey profile = new(
+                Game1.uniqueIDForThisGame,
+                Game1.player.UniqueMultiplayerID);
+            string path = Path.Combine(Constants.DataPath, "StardewGallery", "gallery.sqlite3");
+            GalleryDatabase database = new(path, message => Monitor.Log(message, LogLevel.Error));
+            if (!database.Open() || !database.EnsureSchema())
+            {
+                database.Dispose();
+                Monitor.Log("SQLite 不可用，本次会话降级为 legacy 持久化。", LogLevel.Debug);
+                historyRepository = null;
+                sqliteDatabase = null;
+                LegacyHistoryStore degradedStore = new(Helper);
+                watchedHistory.AttachPersistence(degradedStore, null);
+                return;
+            }
+            sqliteDatabase = database;
+            historyRepository = new HistoryRepository(database, profile, message => Monitor.Log(message, LogLevel.Error));
+            historyRepository.EnsureProfile(Constants.SaveFolderName, Game1.player.Name, DateTimeOffset.Now);
+            LegacyHistoryStore store = new(Helper);
+            watchedHistory.AttachPersistence(store, historyRepository);
+        }
+        catch (Exception error)
+        {
+            DisposeSqliteSession();
+            Monitor.Log($"SQLite 会话初始化失败，降级为 legacy：{error.Message}", LogLevel.Error);
+            LegacyHistoryStore degradedStore = new(Helper);
+            watchedHistory.AttachPersistence(degradedStore, null);
+        }
+    }
+
+    private void DisposeSqliteSession()
+    {
+        watchedHistory.DetachPersistence();
+        historyRepository = null;
+        sqliteDatabase?.Dispose();
+        sqliteDatabase = null;
     }
 
     private static bool IsControllerNavigation(SButton button) => button is
