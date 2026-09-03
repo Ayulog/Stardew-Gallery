@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text.Json;
 using StardewModdingAPI;
 
 namespace StardewGallery;
@@ -8,25 +6,28 @@ internal sealed class LegacyHistoryStore(IModHelper helper)
 {
     internal const string SaveKey = "watched-event-versions";
 
-    internal IReadOnlyList<WatchedEventSnapshot> Load()
+    internal bool TryLoad(out IReadOnlyList<WatchedEventSnapshot> snapshots)
     {
-        string? payload = helper.Data.ReadSaveData<string>(SaveKey);
-        if (string.IsNullOrWhiteSpace(payload))
-            return [];
-        using MemoryStream source = new(Convert.FromBase64String(payload));
-        using GZipStream gzip = new(source, CompressionMode.Decompress);
-        List<WatchedEventSnapshot>? saved = JsonSerializer.Deserialize<List<WatchedEventSnapshot>>(gzip);
-        return saved ?? [];
+        snapshots = [];
+        try
+        {
+            string? payload = helper.Data.ReadSaveData<string>(SaveKey);
+            return LegacyHistoryCodec.TryDecode(payload, out snapshots);
+        }
+        catch
+        {
+            snapshots = [];
+            return false;
+        }
     }
 
     internal bool TrySave(IReadOnlyList<WatchedEventSnapshot> snapshots)
     {
+        if (!LegacyHistoryCodec.TryEncode(snapshots, out string payload))
+            return false;
         try
         {
-            using MemoryStream target = new();
-            using (GZipStream gzip = new(target, CompressionLevel.SmallestSize, leaveOpen: true))
-                JsonSerializer.Serialize(gzip, snapshots);
-            helper.Data.WriteSaveData(SaveKey, Convert.ToBase64String(target.ToArray()));
+            helper.Data.WriteSaveData(SaveKey, payload);
             return true;
         }
         catch

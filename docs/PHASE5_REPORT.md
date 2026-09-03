@@ -103,7 +103,23 @@ Linux/macOS 未在环境实跑，**不在报告中声称 runtime-tested**；仅�
 ## 9. documented limitations
 
 - Linux/macOS runtime 未实跑（仅 packaging 证据；Windows runtime 已实机验证）。
-- SQLite-primary 读路径（`GetCompatibilityVersions`）当前由 PersistenceChecks 验证，但 UI 仍读 `WatchedEventHistory.entries` session cache（由 legacy 填充）——SQLite read 为潜伏路径，未接入 UI。
+- SQLite-primary 读路径已接入 `WatchedEventHistory.Load`：SQLite available → legacy idempotent import → SQLite 全量（未 collapse）hydrate 进 session cache → UI 读 cache。SQLite degraded → legacy hydrate。
 - degraded 模式（SQLite 不可用）已 attach legacy store 保证 fallback（含 catch 分支）。
 - `AddHistoricalEventRecord` 无 production caller（表空）。
 - 未实现 multiplayer sync；未开始 Phase 6。
+
+## 10. Correction（本轮）：SQLite-primary read
+
+修复 code review blocker：SQLite 现在作为实际 read source-of-truth。
+
+- `HistoryRepository.LoadAllSnapshotsForProfile()` 新增：当前 profile 全部 observed variants + summaries，不按 PlaybackHash collapse，每 `ObservedVariantKey` 一条 compatibility snapshot，defensive dictionaries，malformed playback_json row skip + logger，SQL/connection/integrity 错误抛给上层（不吞成空 list）。
+- `LegacyHistoryCodec`（BCL-only，base64/gzip/json）拆出，供 LegacyHistoryStore 委托；`LegacyHistoryStore.TryLoad(out ...)` 安全失败（no payload → success+empty；malformed → failure；异常不穿透）。
+- `WatchedEventHistory.Load` 最终行为：`entries.Clear` → TryLoad legacy → (SQLite healthy) import legacy + `LoadAllSnapshotsForProfile` hydrate → return；否则 fallback legacy hydrate。SQLite healthy 时 DB 为主；legacy 仅供 bootstrap/merge；DB read failure → degrade fallback legacy；legacy corrupt 不阻断 valid SQLite read。
+- condition-only variants 在 DB/cache/legacy full projection 保留；UI 仍 collapse same PlaybackHash。
+
+新增 PersistenceChecks：
+- full hydrate（2 condition-only variants）count==2；compat collapse count==1。
+- legacy codec corrupt → SQLite hydrate 仍恢复 history。
+- non-ASCII collation fixture（"Ünïcode" vs "ünicode"）经真实 SQLite table/UNIQUE index 合并为一行。
+- 强制 transaction rollback（`fail_summary_insert` trigger）→ UpsertObservation 抛 → event/variant/summary 均 0 新增。
+- future schema 加强：user_version 保持 999、v1 table 未创建（no downgrade/overwrite）。

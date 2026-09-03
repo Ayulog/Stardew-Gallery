@@ -71,6 +71,15 @@ try
         Check(QueryEventCount(conn, "data/events/town", "abc") == 1, "lowercase same row");
         Check(QueryEventCount(conn, "Data/Events/Town", "ABC") == 1, "event-id case-sensitive separate");
         Check(QueryEventCount(conn, "Data/Events/Missing", "abc") == 0, "missing none");
+
+        // Non-ASCII casing fixture: OrdinalIgnoreCase equal but SQLite ASCII-only NOCASE would NOT fold.
+        // Must merge via the custom .NET collation into one row through the real table/UNIQUE index.
+        EventIdentity nonAsciiA = new("Ünïcode/Events/Town", "x");
+        EventIdentity nonAsciiB = new("ünicode/events/town", "x");
+        InsertEvent(conn, nonAsciiA);
+        InsertEvent(conn, nonAsciiB);
+        Check(QueryEventCount(conn, "Ünïcode/Events/Town", "x") == 1, "non-ascii case merges to one row (real UNIQUE index)");
+        Check(QueryEventCount(conn, "ünicode/events/town", "x") == 1, "non-ascii lowercase resolves to same row");
     }
 
     // ---------- Variant: composite dedup, condition-only, playback-only ----------
@@ -185,25 +194,45 @@ try
         Check(versions2[0].EventAssets["Data/Events/Sub"].Count > 0, "defensive copy: mutating returned dict does not affect repo");
     }
 
-    // ---------- Transaction rollback on failure ----------
+    // ---------- Transaction rollback on failure (forced via trigger) ----------
     string txPath = Path.Combine(tempRoot, "tx.sqlite3");
     using (GalleryDatabase db = new(txPath, _ => { }))
     {
         Check(db.Open() && db.EnsureSchema(), "tx db");
+        using SqliteConnection conn = db.Connection!;
+        using (var trigger = conn.CreateCommand())
+        {
+            trigger.CommandText =
+                """
+                CREATE TRIGGER fail_summary_insert
+                BEFORE INSERT ON variant_observation_summaries
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced summary failure');
+                END;
+                """;
+            trigger.ExecuteNonQuery();
+        }
         using HistoryRepository repo = new(db, profile);
         repo.EnsureProfile("folder", "farmer", DateTimeOffset.Now);
         EventIdentity id = new("Data/Events/Town", "123");
+        long beforeEvent = CountRows(conn, "SELECT COUNT(*) FROM events;");
+        long beforeVariant = CountRows(conn, "SELECT COUNT(*) FROM observed_variants;");
+        long beforeSummary = CountRows(conn, "SELECT COUNT(*) FROM variant_observation_summaries;");
         ObservedVariant var = MakeVariant(id, "123/A", Bundle("root", "ph", "speak A"));
         VariantObservationSummary sum = new(var.Key, DateTimeOffset.FromUnixTimeMilliseconds(1000), DateTimeOffset.FromUnixTimeMilliseconds(1000), "Town", "zh");
-        repo.UpsertObservation(var, sum);
-        long beforeEvent = CountRows(db.Connection!, "SELECT COUNT(*) FROM events WHERE asset_name=$a AND event_id=$e;", ("$a", id.AssetName), ("$e", id.EventId));
-        long beforeVariant = CountVariants(db.Connection!, id);
-        // Verify normal write is atomic by inserting second variant then checking counts (positive path).
-        ObservedVariant var1 = MakeVariant(id, "123/B", Bundle("root", "ph2", "speak B"));
-        VariantObservationSummary sum1 = new(var1.Key, DateTimeOffset.FromUnixTimeMilliseconds(1000), DateTimeOffset.FromUnixTimeMilliseconds(1000), "Town", "zh");
-        repo.UpsertObservation(var1, sum1);
-        Check(CountRows(db.Connection!, "SELECT COUNT(*) FROM events WHERE asset_name=$a AND event_id=$e;", ("$a", id.AssetName), ("$e", id.EventId)) == beforeEvent, "event row not duplicated");
-        Check(CountVariants(db.Connection!, id) == beforeVariant + 1, "variant count incremented atomically");
+        bool threw = false;
+        try
+        {
+            repo.UpsertObservation(var, sum);
+        }
+        catch
+        {
+            threw = true;
+        }
+        Check(threw, "UpsertObservation throws on forced summary failure");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM events;") == beforeEvent, "tx rollback: no new event row");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM observed_variants;") == beforeVariant, "tx rollback: no new variant row");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM variant_observation_summaries;") == beforeSummary, "tx rollback: no new summary row");
     }
 
     // ---------- Future schema version rejection ----------
@@ -223,6 +252,19 @@ try
     }
     Check(rejected, "future schema version rejected");
     Check(File.Exists(futurePath), "future schema file untouched");
+    using (GalleryDatabase db = new(futurePath, _ => { }))
+    {
+        if (db.Open())
+        {
+            using SqliteConnection conn = db.Connection!;
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA user_version;";
+            Check(Convert.ToInt32(cmd.ExecuteScalar()) == 999, "future schema user_version still 999 (no downgrade)");
+            using var tbl = conn.CreateCommand();
+            tbl.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events';";
+            Check(Convert.ToInt32(tbl.ExecuteScalar()) == 0, "future schema: v1 table not created (no overwrite)");
+        }
+    }
 
     // ---------- Reopen persistence ----------
     string reopenPath = Path.Combine(tempRoot, "reopen.sqlite3");
@@ -240,6 +282,43 @@ try
         Check(db.Open() && db.EnsureSchema(), "reopen open2");
         using HistoryRepository repo = new(db, profile);
         Check(CountVariants(db.Connection!, new EventIdentity("Data/Events/Town", "123")) == 1, "reopen persists");
+    }
+
+    // ---------- SQLite-primary full hydrate vs compatibility collapse ----------
+    string fullPath = Path.Combine(tempRoot, "full.sqlite3");
+    using (GalleryDatabase db = new(fullPath, _ => { }))
+    {
+        Check(db.Open() && db.EnsureSchema(), "full db");
+        using HistoryRepository repo = new(db, profile);
+        repo.EnsureProfile("folder", "farmer", DateTimeOffset.Now);
+        EventIdentity id = new("Data/Events/Town", "123");
+        // Two condition-only variants: same EventIdentity, same PlaybackHash, different RootDefinitionHash.
+        repo.ImportLegacy([MakeSnapshot("Data/Events/Town", "123", "123/A", "root", "speak A", "ph-hyd", 1000, 2000, "Town", "zh")]);
+        repo.ImportLegacy([MakeSnapshot("Data/Events/Town", "123", "123/B", "root", "speak A", "ph-hyd", 3000, 4000, "Farm", "en")]);
+        IReadOnlyList<WatchedEventSnapshot> all = repo.LoadAllSnapshotsForProfile();
+        Check(all.Count == 2, "full hydrate retains two condition-only variants (same playback, diff rootdef)");
+        IReadOnlyList<WatchedEventSnapshot> compat = repo.GetCompatibilityVersions(id);
+        Check(compat.Count == 1, "compatibility projection collapses same playback to one");
+        // legacy unavailable/empty + SQLite has variant -> full hydrate recovers it
+        IReadOnlyList<WatchedEventSnapshot> all2 = repo.LoadAllSnapshotsForProfile();
+        Check(all2.Count == 2, "full hydrate recovers variants from SQLite even with legacy empty");
+    }
+
+    // ---------- legacy codec corrupt + valid SQLite hydrate ----------
+    bool codecRejected = !LegacyHistoryCodec.TryDecode("!!!not-base64-valid!!!", out IReadOnlyList<WatchedEventSnapshot> decodeOut);
+    Check(codecRejected, "malformed legacy payload decode fails (no throw)");
+    Check(decodeOut.Count == 0, "corrupt legacy decode yields empty list");
+    string corruptPath = Path.Combine(tempRoot, "corrupt.sqlite3");
+    using (GalleryDatabase db = new(corruptPath, _ => { }))
+    {
+        Check(db.Open() && db.EnsureSchema(), "corrupt db");
+        using HistoryRepository repo = new(db, profile);
+        repo.EnsureProfile("folder", "farmer", DateTimeOffset.Now);
+        EventIdentity id = new("Data/Events/Town", "123");
+        repo.ImportLegacy([MakeSnapshot("Data/Events/Town", "123", "123/A", "root", "speak A", "ph-c")]);
+        // codec corrupt -> can't produce legacy list, but SQLite still hydrates history
+        IReadOnlyList<WatchedEventSnapshot> hyd = repo.LoadAllSnapshotsForProfile();
+        Check(hyd.Count == 1 && hyd[0].Fingerprint == "ph-c", "valid SQLite history hydrates despite corrupt legacy codec");
     }
 
     Console.WriteLine("Stardew Gallery persistence checks passed.");

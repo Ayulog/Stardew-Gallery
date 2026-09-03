@@ -32,14 +32,25 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
         entries.Clear();
         observedEvent = null;
         pendingSnapshot = null;
-        try
+
+        IReadOnlyList<WatchedEventSnapshot> legacy = [];
+        bool legacySucceeded = true;
+        if (legacyStore is not null)
         {
-            IReadOnlyList<WatchedEventSnapshot> saved = legacyStore?.Load() ?? [];
-            if (repository is not null && !sqliteDegraded)
+            bool ok = legacyStore.TryLoad(out IReadOnlyList<WatchedEventSnapshot> saved);
+            legacy = saved;
+            legacySucceeded = ok;
+            if (!ok)
+                monitor.Log("legacy watched-event-versions 无法读取，本次不覆盖原记录。", LogLevel.Error);
+        }
+
+        if (repository is not null && !sqliteDegraded)
+        {
+            if (legacySucceeded && legacy.Count > 0)
             {
                 try
                 {
-                    repository.ImportLegacy(saved);
+                    repository.ImportLegacy(legacy);
                 }
                 catch (Exception error)
                 {
@@ -47,12 +58,28 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
                     monitor.Log($"SQLite 历史迁移失败，本会话降级为 legacy：{error.Message}", LogLevel.Error);
                 }
             }
-            foreach (WatchedEventSnapshot snapshot in saved)
-                Add(snapshot);
+
+            if (!sqliteDegraded)
+            {
+                try
+                {
+                    IReadOnlyList<WatchedEventSnapshot> dbSnapshots = repository.LoadAllSnapshotsForProfile();
+                    foreach (WatchedEventSnapshot snapshot in dbSnapshots)
+                        Add(snapshot);
+                    return;
+                }
+                catch (Exception error)
+                {
+                    sqliteDegraded = true;
+                    monitor.Log($"SQLite 历史读取失败，本会话降级为 legacy：{error.Message}", LogLevel.Error);
+                }
+            }
         }
-        catch (Exception error)
+
+        if (legacySucceeded)
         {
-            monitor.Log($"已观看事件版本记录无法读取，本次不会覆盖原记录：{error.Message}", LogLevel.Error);
+            foreach (WatchedEventSnapshot snapshot in legacy)
+                Add(snapshot);
         }
     }
 

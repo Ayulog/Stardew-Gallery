@@ -229,6 +229,42 @@ internal sealed class HistoryRepository(GalleryDatabase database, SaveProfileKey
         }
     }
 
+    internal IReadOnlyList<WatchedEventSnapshot> LoadAllSnapshotsForProfile()
+    {
+        SqliteConnection? conn = database.Connection;
+        if (conn is null)
+            return [];
+        long? profilePk = ResolveProfilePk(conn);
+        if (profilePk is null)
+            return [];
+
+        List<WatchedEventSnapshot> rows = [];
+        using var command = conn.CreateCommand();
+        command.CommandText =
+            """
+            SELECT e.asset_name, e.event_id,
+                   v.root_definition_hash, v.playback_hash, v.root_script_hash, v.raw_event_key, v.root_script,
+                   v.playback_json,
+                   s.first_observed_at, s.last_observed_at, s.last_observed_location_name, s.last_observed_locale
+            FROM observed_variants v
+            JOIN events e ON e.event_pk = v.event_fk
+            JOIN variant_observation_summaries s ON s.variant_fk = v.variant_pk
+            WHERE s.profile_fk = $profile;
+            """;
+        command.Parameters.AddWithValue("$profile", profilePk.Value);
+        using (SqliteDataReader reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                string asset = reader.GetString(0);
+                string eventId = reader.GetString(1);
+                if (TryMaterializeSnapshot(reader, 2, asset, eventId, out WatchedEventSnapshot? snapshot) && snapshot is not null)
+                    rows.Add(snapshot);
+            }
+        }
+        return rows;
+    }
+
     internal IReadOnlyList<WatchedEventSnapshot> GetCompatibilityVersions(EventIdentity identity)
     {
         SqliteConnection? conn = database.Connection;
@@ -254,34 +290,13 @@ internal sealed class HistoryRepository(GalleryDatabase database, SaveProfileKey
             """;
         command.Parameters.AddWithValue("$event", eventPk);
         command.Parameters.AddWithValue("$profile", profilePk.Value);
-        using SqliteDataReader reader = command.ExecuteReader();
-        while (reader.Read())
+        using (SqliteDataReader reader = command.ExecuteReader())
         {
-            string playbackJson = reader.GetString(5);
-            PlaybackPayload? payload = null;
-            try
+            while (reader.Read())
             {
-                payload = JsonSerializer.Deserialize<PlaybackPayload>(playbackJson);
+                if (TryMaterializeSnapshot(reader, 0, identity.AssetName, identity.EventId, out WatchedEventSnapshot? snapshot) && snapshot is not null)
+                    rows.Add(snapshot);
             }
-            catch (Exception error)
-            {
-                logger?.Invoke($"playback_json 反序列化失败：{error.Message}");
-            }
-            if (payload is null)
-                continue;
-
-            rows.Add(new WatchedEventSnapshot(
-                reader.IsDBNull(8) ? "" : reader.GetString(8),
-                identity.AssetName,
-                identity.EventId,
-                reader.GetString(3),
-                reader.GetString(4),
-                DeepCopyAssets(payload.EventAssets),
-                DeepCopyStrings(payload.Translations),
-                reader.IsDBNull(9) ? "" : reader.GetString(9),
-                reader.GetString(1),
-                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)),
-                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7))));
         }
 
         List<WatchedEventSnapshot> collapsed = rows
@@ -290,6 +305,39 @@ internal sealed class HistoryRepository(GalleryDatabase database, SaveProfileKey
             .OrderByDescending(snapshot => snapshot.LastWatchedAt)
             .ToList();
         return collapsed;
+    }
+
+    private bool TryMaterializeSnapshot(SqliteDataReader reader, int offset, string assetName, string eventId,
+        out WatchedEventSnapshot? snapshot)
+    {
+        snapshot = null;
+        string playbackJson = reader.GetString(offset + 5);
+        PlaybackPayload? payload = null;
+        try
+        {
+            payload = JsonSerializer.Deserialize<PlaybackPayload>(playbackJson);
+        }
+        catch (Exception error)
+        {
+            logger?.Invoke($"playback_json 反序列化失败：{error.Message}");
+            return false;
+        }
+        if (payload is null)
+            return false;
+
+        snapshot = new WatchedEventSnapshot(
+            reader.IsDBNull(offset + 8) ? "" : reader.GetString(offset + 8),
+            assetName,
+            eventId,
+            reader.GetString(offset + 3),
+            reader.GetString(offset + 4),
+            DeepCopyAssets(payload.EventAssets),
+            DeepCopyStrings(payload.Translations),
+            reader.IsDBNull(offset + 9) ? "" : reader.GetString(offset + 9),
+            reader.GetString(offset + 1),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(offset + 6)),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(offset + 7)));
+        return true;
     }
 
     private long ResolveEventPk(SqliteConnection conn, EventIdentity identity)

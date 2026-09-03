@@ -28,5 +28,6 @@
     <Compile Include="..\Persistence\GalleryDatabase.cs" Link="Persistence\GalleryDatabase.cs" />
     <Compile Include="..\Persistence\GallerySchema.cs" Link="Persistence\GallerySchema.cs" />
     <Compile Include="..\Persistence\HistoryRepository.cs" Link="Persistence\HistoryRepository.cs" />
+    <Compile Include="..\Persistence\LegacyHistoryCodec.cs" Link="Persistence\LegacyHistoryCodec.cs" />
   </ItemGroup>
 </Project>
