@@ -10,7 +10,7 @@ namespace StardewGallery;
 internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, Func<bool> debugDiagnostics)
 {
     private const string SaveKey = "watched-event-versions";
-    private readonly Dictionary<EventIdentity, List<WatchedEventSnapshot>> entries = [];
+    private readonly Dictionary<EventIdentity, Dictionary<ObservedVariantKey, WatchedEventSnapshot>> entries = [];
     private Event? observedEvent;
     private WatchedEventSnapshot? pendingSnapshot;
     private bool canSave = true;
@@ -47,12 +47,26 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
     }
 
     internal IReadOnlyList<WatchedEventSnapshot> Get(EventIdentity identity)
-        => entries.TryGetValue(identity, out List<WatchedEventSnapshot>? versions)
-            ? versions.OrderByDescending(version => version.LastWatchedAt).ToList()
-            : [];
+        => CollapseForCompatibility(identity);
 
     internal IReadOnlyList<WatchedEventSnapshot> Get(GalleryEvent entry)
         => Get(entry.Resolved.Identity);
+
+    // UI compatibility projection: collapse same EventIdentity + PlaybackHash into one snapshot,
+    // selecting the most recently observed (by LastWatchedAt) representative. Sorting stays
+    // LastWatchedAt descending. This is NOT domain dedup — full ObservedVariantKey variants are kept.
+    private IReadOnlyList<WatchedEventSnapshot> CollapseForCompatibility(EventIdentity identity)
+    {
+        if (!entries.TryGetValue(identity, out Dictionary<ObservedVariantKey, WatchedEventSnapshot>? variants))
+            return [];
+        List<WatchedEventSnapshot> collapsed = [];
+        foreach ((string playbackHash, WatchedEventSnapshot latest) in variants.Values
+            .GroupBy(snapshot => snapshot.Fingerprint, StringComparer.Ordinal)
+            .Select(group => (group.Key, group.OrderByDescending(snapshot => snapshot.LastWatchedAt).First())))
+            collapsed.Add(latest);
+        collapsed.Sort((left, right) => right.LastWatchedAt.CompareTo(left.LastWatchedAt));
+        return collapsed;
+    }
 
     internal void Update(bool replayActive)
     {
@@ -195,17 +209,22 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
     private bool Add(WatchedEventSnapshot snapshot, bool save)
     {
         EventIdentity identity = snapshot.Identity;
-        if (!entries.TryGetValue(identity, out List<WatchedEventSnapshot>? versions))
-            entries[identity] = versions = [];
-        int existing = versions.FindIndex(version => version.Fingerprint == snapshot.Fingerprint);
-        if (existing >= 0)
-            versions[existing] = snapshot with { FirstWatchedAt = versions[existing].FirstWatchedAt, LastWatchedAt = snapshot.LastWatchedAt };
+        if (!entries.TryGetValue(identity, out Dictionary<ObservedVariantKey, WatchedEventSnapshot>? variants))
+            entries[identity] = variants = [];
+
+        ObservedVariantKey key = new(
+            identity,
+            EventHashes.RootDefinition(snapshot.EventKey, snapshot.RootScript),
+            snapshot.Fingerprint);
+
+        if (variants.TryGetValue(key, out WatchedEventSnapshot? existing))
+            variants[key] = snapshot with { FirstWatchedAt = existing.FirstWatchedAt, LastWatchedAt = snapshot.LastWatchedAt };
         else
-            versions.Add(snapshot);
-        versions.Sort((left, right) => right.LastWatchedAt.CompareTo(left.LastWatchedAt));
+            variants[key] = snapshot;
+
         if (save)
             Save();
-        return existing < 0;
+        return existing is null;
     }
 
     private void Save()
@@ -214,7 +233,7 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
             return;
         using MemoryStream target = new();
         using (GZipStream gzip = new(target, CompressionLevel.SmallestSize, leaveOpen: true))
-            JsonSerializer.Serialize(gzip, entries.Values.SelectMany(value => value).ToList());
+            JsonSerializer.Serialize(gzip, entries.Values.SelectMany(value => value.Values).ToList());
         helper.Data.WriteSaveData(SaveKey, Convert.ToBase64String(target.ToArray()));
     }
 }

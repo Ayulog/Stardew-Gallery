@@ -30,6 +30,12 @@
     <Compile Include="..\Domain\EventHashes.cs" Link="Domain\EventHashes.cs" />
     <Compile Include="..\Domain\ResolvedEvent.cs" Link="Domain\ResolvedEvent.cs" />
     <Compile Include="..\Domain\HistoricalPlaybackBundle.cs" Link="Domain\HistoricalPlaybackBundle.cs" />
+    <Compile Include="..\Domain\ObservedVariantKey.cs" Link="Domain\ObservedVariantKey.cs" />
+    <Compile Include="..\Domain\ObservedVariant.cs" Link="Domain\ObservedVariant.cs" />
+    <Compile Include="..\Domain\VariantObservationSummary.cs" Link="Domain\VariantObservationSummary.cs" />
+    <Compile Include="..\Domain\HistoricalEventRecord.cs" Link="Domain\HistoricalEventRecord.cs" />
+    <Compile Include="..\Domain\KnownSeenEvidence.cs" Link="Domain\KnownSeenEvidence.cs" />
+    <Compile Include="..\History\LegacyHistoryAdapter.cs" Link="History\LegacyHistoryAdapter.cs" />
     <Compile Include="..\EventKey.cs" Link="EventKey.cs" />
     <Compile Include="..\EventOwnership.cs" Link="EventOwnership.cs" />
     <Compile Include="..\EventFragments.cs" Link="EventFragments.cs" />

@@ -136,6 +136,87 @@ using (JsonDocument roundTrip = JsonDocument.Parse(JsonSerializer.Serialize(lega
     Check(!root.TryGetProperty("Playback", out _));
 }
 
+LegacyHistoryProjection legacyProjection = LegacyHistoryAdapter.From(legacySnapshot);
+Check(legacyProjection.Variant.Key.Identity == new EventIdentity("Data/Events/Town", "123"));
+Check(legacyProjection.Variant.RawEventKey == "123/f Haley 1000");
+Check(legacyProjection.Variant.RootScriptHash == EventHashes.RootScript("speak Haley hello"));
+Check(legacyProjection.Variant.Key.RootDefinitionHash == EventHashes.RootDefinition("123/f Haley 1000", "speak Haley hello"));
+Check(legacyProjection.Variant.Key.PlaybackHash == "abc");
+Check(legacyProjection.Variant.Playback.PlaybackHash == "abc");
+Check(legacyProjection.Observation.FirstObservedAt == legacySnapshot.FirstWatchedAt);
+Check(legacyProjection.Observation.LastObservedAt == legacySnapshot.LastWatchedAt);
+Check(legacyProjection.Observation.LastObservedLocationName == "Town");
+Check(legacyProjection.Observation.LastObservedLocale == "zh");
+Check(legacyProjection.Seen.EventId == "123");
+Check(legacyProjection.Seen.Identity == new EventIdentity("Data/Events/Town", "123"));
+Check(legacyProjection.Seen.Source == KnownSeenSource.LegacyCapturedVariant);
+
+EventIdentity townId = new("Data/Events/Town", "123");
+ObservedVariantKey keyA = new(townId, EventHashes.RootDefinition("123/A", "root"), "playback");
+ObservedVariantKey keyB = new(townId, EventHashes.RootDefinition("123/A", "root"), "playback");
+ObservedVariantKey keyC = new(townId, EventHashes.RootDefinition("123/B", "root"), "playback");
+ObservedVariantKey keyD = new(townId, EventHashes.RootDefinition("123/A", "root"), "playback2");
+Check(keyA == keyB);
+Check(keyA != keyC);
+Check(keyA != keyD);
+Check(keyA.GetHashCode() == keyB.GetHashCode());
+Check(new EventIdentity("Data\\Events\\Town", "123") == townId);
+
+string condDiffRootDef = EventHashes.RootDefinition("123/A", "root");
+string condDiffPlayback = EventKey.GetSnapshotFingerprint("root", new Dictionary<string, IReadOnlyDictionary<string, string>>(), new Dictionary<string, string>());
+Check(EventHashes.RootDefinition("123/B", "root") != condDiffRootDef);
+Check(EventKey.GetSnapshotFingerprint("root", new Dictionary<string, IReadOnlyDictionary<string, string>>(), new Dictionary<string, string>()) == condDiffPlayback);
+Check(new ObservedVariantKey(townId, condDiffRootDef, condDiffPlayback) != new ObservedVariantKey(townId, EventHashes.RootDefinition("123/B", "root"), condDiffPlayback));
+
+WatchedEventSnapshot condA = legacySnapshot with { EventKey = "123/A", RootScript = "same root", Fingerprint = "same-play", FirstWatchedAt = new DateTimeOffset(2026, 9, 1, 1, 1, 1, TimeSpan.Zero), LastWatchedAt = new DateTimeOffset(2026, 9, 1, 1, 1, 1, TimeSpan.Zero) };
+WatchedEventSnapshot condB = legacySnapshot with { EventKey = "123/B", RootScript = "same root", Fingerprint = "same-play", FirstWatchedAt = new DateTimeOffset(2026, 9, 2, 2, 2, 2, TimeSpan.Zero), LastWatchedAt = new DateTimeOffset(2026, 9, 2, 2, 2, 2, TimeSpan.Zero) };
+LegacyHistoryProjection projA = LegacyHistoryAdapter.From(condA);
+LegacyHistoryProjection projB = LegacyHistoryAdapter.From(condB);
+Check(projA.Variant.Key.PlaybackHash == projB.Variant.Key.PlaybackHash, "condition-only same playback");
+Check(projA.Variant.Key.RootDefinitionHash != projB.Variant.Key.RootDefinitionHash, "condition-only diff rootdef");
+Check(projA.Variant.Key != projB.Variant.Key, "condition-only diff ObservedVariantKey");
+
+Dictionary<string, Dictionary<string, string>> fragA = new() { ["Data/Events/Sub"] = new Dictionary<string, string> { ["branch"] = "speak A" } };
+Dictionary<string, Dictionary<string, string>> fragB = new() { ["Data/Events/Sub"] = new Dictionary<string, string> { ["branch"] = "speak B" } };
+WatchedEventSnapshot playA = legacySnapshot with { EventKey = "123/f Haley 1000", RootScript = "root", EventAssets = fragA, Fingerprint = EventKey.GetSnapshotFingerprint("root", Assets(fragA), new Dictionary<string, string>()) };
+WatchedEventSnapshot playB = legacySnapshot with { EventKey = "123/f Haley 1000", RootScript = "root", EventAssets = fragB, Fingerprint = EventKey.GetSnapshotFingerprint("root", Assets(fragB), new Dictionary<string, string>()) };
+LegacyHistoryProjection projA2 = LegacyHistoryAdapter.From(playA);
+LegacyHistoryProjection projB2 = LegacyHistoryAdapter.From(playB);
+Check(projA2.Variant.Key.RootDefinitionHash == projB2.Variant.Key.RootDefinitionHash, "playback-only same rootdef");
+Check(projA2.Variant.Key.PlaybackHash != projB2.Variant.Key.PlaybackHash, "playback-only diff playback");
+Check(projA2.Variant.Key != projB2.Variant.Key, "playback-only diff ObservedVariantKey");
+
+Check(projA.Observation.FirstObservedAt == condA.FirstWatchedAt);
+Check(projA.Observation.LastObservedAt == condA.LastWatchedAt);
+Check(projA.Observation.LastObservedLocationName == "Town");
+Check(projA.Seen.Identity is not null);
+Check(projA.Seen.Source == KnownSeenSource.LegacyCapturedVariant);
+
+KnownSeenEvidence saveSeen = new("999", null, KnownSeenSource.SaveEventsSeen);
+Check(saveSeen.EventId == "999");
+Check(saveSeen.Identity is null);
+Check(saveSeen.Source == KnownSeenSource.SaveEventsSeen);
+
+Dictionary<string, Dictionary<string, string>> defensiveSource = new() { ["Data/Events/Sub"] = new Dictionary<string, string> { ["branch"] = "speak X" } };
+Dictionary<string, string> defensiveTranslation = new() { ["z:key"] = "value" };
+WatchedEventSnapshot defensiveSnap = legacySnapshot with { EventAssets = defensiveSource, Translations = defensiveTranslation };
+LegacyHistoryProjection defensiveProj = LegacyHistoryAdapter.From(defensiveSnap);
+defensiveSource["Data/Events/Sub"]["branch"] = "speak MUTATED";
+defensiveTranslation["z:key"] = "MUTATED";
+Check(defensiveProj.Variant.Playback.EventAssets["Data/Events/Sub"]["branch"] == "speak X", "defensive asset copy");
+Check(defensiveProj.Variant.Playback.Translations["z:key"] == "value", "defensive translation copy");
+
+WatchedEventSnapshot conditionOnlyA = legacySnapshot with { EventKey = "123/A", RootScript = "same root", Fingerprint = "same-play" };
+WatchedEventSnapshot conditionOnlyB = legacySnapshot with { EventKey = "123/B", RootScript = "same root", Fingerprint = "same-play" };
+List<WatchedEventSnapshot> persistenceList = [conditionOnlyA, conditionOnlyB];
+Check(persistenceList.Count(snapshot => snapshot.Fingerprint == "same-play") == 2, "two snapshots same playback diff rootdef");
+string reSer = JsonSerializer.Serialize(persistenceList);
+List<WatchedEventSnapshot>? reLoad = JsonSerializer.Deserialize<List<WatchedEventSnapshot>>(reSer);
+Check(reLoad is not null && reLoad.Count == 2, "load retains two diff-rootdef snapshots");
+Check(reLoad![0].Fingerprint == reLoad[1].Fingerprint && reLoad[0].EventKey != reLoad[1].EventKey, "load does not merge by fingerprint");
+
+Check(LegacyHistoryAdapter.From(conditionOnlyA).Variant.Key != LegacyHistoryAdapter.From(conditionOnlyB).Variant.Key, "adapter diff ObservedVariant even with same playback");
+
 ResolvedEventReader testReader = new(
     (key, _) => !key.StartsWith("invalid", StringComparison.Ordinal),
     script => script.Split('|'),
@@ -892,6 +973,14 @@ static ResolvedEventCandidate Candidate(
 }
 
 static HashSet<string> Set(params string[] names) => new(names, StringComparer.Ordinal);
+
+static Dictionary<string, IReadOnlyDictionary<string, string>> Assets(Dictionary<string, Dictionary<string, string>> source)
+{
+    Dictionary<string, IReadOnlyDictionary<string, string>> result = new(StringComparer.OrdinalIgnoreCase);
+    foreach ((string asset, Dictionary<string, string> entries) in source)
+        result[asset] = entries;
+    return result;
+}
 
 static string[] FakeSplitArgs(string segment)
 {

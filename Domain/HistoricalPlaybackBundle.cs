@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace StardewGallery;
 
+// Legacy persistence DTO + compatibility projection. Not a Phase 4 core domain model.
+// Persisted as gzip + base64 + JSON List<WatchedEventSnapshot> under save key "watched-event-versions".
 internal sealed record WatchedEventSnapshot(
     string LocationName,
     string AssetName,
