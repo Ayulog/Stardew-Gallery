@@ -109,28 +109,45 @@ internal sealed class WatchedEventHistory(IModHelper helper, IMonitor monitor, F
             return false;
 
         Dictionary<string, string> asset = Game1.content.Load<Dictionary<string, string>>(assetName);
-        KeyValuePair<string, string>? match = asset
-            .Where(pair => EventKey.TryGetId(pair.Key, out string id) && id == eventId)
-            .Cast<KeyValuePair<string, string>?>()
-            .FirstOrDefault(pair => Event.ParseCommands(pair!.Value.Value).SequenceEqual(current.eventCommands));
-        if (match is null)
+        List<KeyValuePair<string, string>> matching = asset
+            .Where(pair => EventKey.TryGetId(pair.Key, out string id) && id == eventId
+                && Event.ParseCommands(pair.Value).SequenceEqual(current.eventCommands))
+            .ToList();
+        if (matching.Count == 0)
         {
             reason = $"地点={location.NameOrUniqueName}，事件={eventId} 的实际命令与当前资产候选均不一致。";
             return false;
         }
 
+        KeyValuePair<string, string> match;
+        if (matching.Count == 1)
+        {
+            match = matching[0];
+        }
+        else
+        {
+            List<string> candidateRawKeys = matching.Select(pair => pair.Key).ToList();
+            if (!ObservedVariantSelector.TrySelect(candidateRawKeys,
+                key => location.checkEventPrecondition(key, check_seen: false), out int selectedIndex))
+            {
+                reason = $"地点={location.NameOrUniqueName}，事件={eventId} 存在多个相同脚本的候选，且无法根据当前状态确认实际定义。";
+                return false;
+            }
+            match = matching[selectedIndex];
+        }
+
         Dictionary<string, Dictionary<string, string>> eventAssets = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, string> translations = new(StringComparer.Ordinal);
-        if (!CollectFragments(match.Value.Value, location.Name, eventAssets, translations))
+        if (!CollectFragments(match.Value, location.Name, eventAssets, translations))
         {
             reason = $"地点={location.NameOrUniqueName}，事件={eventId} 存在无法读取的事件片段。";
             return false;
         }
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> fingerprintAssets = eventAssets
             .ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, string>)pair.Value, StringComparer.OrdinalIgnoreCase);
-        string fingerprint = EventKey.GetSnapshotFingerprint(match.Value.Value, fingerprintAssets, translations);
+        string fingerprint = EventKey.GetSnapshotFingerprint(match.Value, fingerprintAssets, translations);
         DateTimeOffset now = DateTimeOffset.Now;
-        snapshot = new WatchedEventSnapshot(location.NameOrUniqueName, assetName, eventId, match.Value.Key, match.Value.Value,
+        snapshot = new WatchedEventSnapshot(location.NameOrUniqueName, assetName, eventId, match.Key, match.Value,
             eventAssets, translations, LocalizedContentManager.CurrentLanguageCode.ToString(), fingerprint, now, now);
         return true;
     }

@@ -217,6 +217,37 @@ Check(reLoad![0].Fingerprint == reLoad[1].Fingerprint && reLoad[0].EventKey != r
 
 Check(LegacyHistoryAdapter.From(conditionOnlyA).Variant.Key != LegacyHistoryAdapter.From(conditionOnlyB).Variant.Key, "adapter diff ObservedVariant even with same playback");
 
+Check(ObservedVariantSelector.TrySelect(["single"], _ => "0", out int sel0), "single candidate");
+Check(sel0 == 0, "single candidate index 0");
+Check(ObservedVariantSelector.TrySelect(["A", "B"], key => key == "B" ? "0" : "-1", out int sel1), "first false second true");
+Check(sel1 == 1, "second selected");
+Check(ObservedVariantSelector.TrySelect(["A", "B"], _ => "0", out int sel2), "both true");
+Check(sel2 == 0, "first selected");
+Check(!ObservedVariantSelector.TrySelect(["A", "B"], key => throw new InvalidOperationException(key), out _), "both throw failure");
+Check(ObservedVariantSelector.TrySelect(["A", "B"], key => key == "B" ? "0" : throw new InvalidOperationException("A throws"), out int sel3), "first throws handled");
+Check(sel3 == 1, "second selected after first throws");
+Check(!ObservedVariantSelector.TrySelect(["A", "B"], _ => "-1", out _), "all false failure");
+Check(!ObservedVariantSelector.TrySelect([], _ => "0", out _), "empty candidates failure");
+Check(!ObservedVariantSelector.IsCurrentState(null), "null false");
+Check(!ObservedVariantSelector.IsCurrentState(""), "empty false");
+Check(!ObservedVariantSelector.IsCurrentState("-1"), "-1 false");
+Check(ObservedVariantSelector.IsCurrentState("0"), "0 true");
+Check(ObservedVariantSelector.IsCurrentState(" "), "whitespace true");
+Check(ObservedVariantSelector.IsCurrentState("matched"), "other nonempty true");
+
+const string sameRootScript = "same";
+string candidateAKey = "123/Friendship Haley 1000";
+string candidateBKey = "123/Friendship Haley 2000";
+Check(ObservedVariantSelector.TrySelect([candidateAKey, candidateBKey],
+    key => key == candidateBKey ? "0" : "-1", out int selectedDefinitionIndex), "semantic fixture selects second");
+Check(selectedDefinitionIndex == 1, "semantic fixture second index");
+string selectedKey = selectedDefinitionIndex == 1 ? candidateBKey : candidateAKey;
+Check(selectedKey == candidateBKey, "semantic fixture selected B");
+string rootDefB = EventHashes.RootDefinition(candidateBKey, sameRootScript);
+Check(rootDefB == EventHashes.RootDefinition("123/Friendship Haley 2000", "same"), "B rootdef");
+Check(rootDefB != EventHashes.RootDefinition(candidateAKey, sameRootScript), "B rootdef != A rootdef");
+Check(EventHashes.RootDefinition(candidateAKey, sameRootScript) != rootDefB, "A rootdef != B rootdef");
+
 ResolvedEventReader testReader = new(
     (key, _) => !key.StartsWith("invalid", StringComparison.Ordinal),
     script => script.Split('|'),

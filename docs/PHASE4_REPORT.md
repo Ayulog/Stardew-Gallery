@@ -80,3 +80,52 @@ Checks 覆盖：legacy adapter（Identity / hashes / PlaybackHash==Fingerprint /
 - `CollapseForCompatibility` 位于 `WatchedEventHistory.cs`（SMAPI 依赖），无法进入 BCL-only Checks；BCL Checks 只覆盖 domain side（两个 distinct ObservedVariants），collapse 行为经源码审查确认。
 - `KnownSeenSource.SaveEventsSeen` 的 null-Identity 断言已加入 Checks。
 - legacy FirstWatchedAt / LastWatchedAt 语义不清（可能看过多次），不作为多次历史实例。
+
+## 10. Semantic correction（第二轮）
+
+本轮修正 Phase 4 natural capture 对 condition-only variants 的 definition resolution。不引入 SQLite，不修改 UI / ReplayCoordinator / ResolvedEventIndex selection / ConditionIR。
+
+### 问题
+
+`WatchedEventHistory.TryCapture` 原先通过 `EventId 相同 + Event.ParseCommands(script).SequenceEqual(current.eventCommands)` 后 `FirstOrDefault` 恢复正在运行事件的 raw EventKey。当多个 definition 拥有 same EventIdentity、same root script/eventCommands、different RawEventKey 时（如 `123/Friendship Haley 1000` 与 `123/Friendship Haley 2000` 脚本相同），FirstOrDefault 可能错误记录第一个 EventKey，导致错误的 RootDefinitionHash，condition-only variant 仍被错误归类。
+
+composite key 本身正确，问题只在 capture definition resolution。
+
+### 修正
+
+新增 `History/ObservedVariantSelector.cs`（BCL-only）：
+
+```csharp
+internal static bool TrySelect(
+    IReadOnlyList<string> candidateRawKeys,
+    Func<string, string?> checkPrecondition,
+    out int selectedIndex);
+```
+
+语义：
+
+- candidate count == 1 → 直接选 index 0。
+- 多个 candidate → 按原始顺序调用 `checkPrecondition(rawKey)`，用与 Phase 2 characterization 一致的结果判定（null/""/"-1" false；其他非空 true），第一个满足者选中。
+- 某 candidate 的 precondition evaluator 抛异常 → 该 candidate 视为 false，继续后续。
+- 没有任何候选被确认 → selection failure（返回 false）。
+
+`TryCapture` 改为两阶段 definition resolution：
+
+1. 收集所有 `EventId == current.id && ParseCommands(script) == current.eventCommands` 的候选。
+2. 0 个 → capture failure（保持现状）。
+3. 1 个 → 直接使用该 definition。
+4. 多个 → `ObservedVariantSelector.TrySelect(candidateRawKeys, key => location.checkEventPrecondition(key, check_seen: false), out idx)`；失败则 capture failure（reason + debug diagnostic），**不 fallback 到第一个**，不生成错误 ObservedVariant。
+
+原则：宁可漏记一次 ambiguous natural capture，也不给 ObservedVariant 写入错误 RawEventKey / RootDefinitionHash。
+
+### Checks
+
+新增 BCL-only Checks 覆盖：single candidate（index 0）、two candidates first false second true（second）、first true second true（first）、first throws second true（second）、all false（failure）、empty（failure）、`null`/`""`/`"-1"` false、`"0"`/whitespace/other nonempty true、以及完整语义 fixture（candidate A `123/Friendship Haley 1000`、candidate B `123/Friendship Haley 2000`、A false、B true → 选 B，RootDefinitionHash == `EventHashes.RootDefinition("123/Friendship Haley 2000", "same")`，不等于 A 的）。
+
+### 修正后声明
+
+condition-only variant 在 capture 可辨识的情况下不会被 Fingerprint-only dedup 丢失（现在定义先经 current-state precondition disambiguation，再进入 composite ObservedVariantKey）。
+
+### 保留限制
+
+若运行时已无法根据当前 precondition 状态可靠确认 ambiguous raw definition，该次 capture 会安全跳过（capture failure），而不是猜测。先前 reserved 的 documented limitations 仍成立（不产生 HistoricalEventRecord 实例等）。
