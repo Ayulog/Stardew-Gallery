@@ -17,7 +17,7 @@ internal sealed record EventOwnership(
 );
 
 internal sealed record EventEvidence(
-    string Identity,
+    EventIdentity Identity,
     string EventId,
     IReadOnlyDictionary<string, int> FriendshipRequirements,
     IReadOnlyList<string> PrerequisiteEventIds,
@@ -27,11 +27,11 @@ internal sealed record EventEvidence(
 
 internal static class OwnershipResolver
 {
-    internal static IReadOnlyDictionary<string, EventOwnership> Resolve(
+    internal static IReadOnlyDictionary<EventIdentity, EventOwnership> Resolve(
         IReadOnlyList<EventEvidence> events,
         IReadOnlySet<string> eligibleCharacters)
     {
-        Dictionary<string, EventOwnership> result = new(StringComparer.Ordinal);
+        Dictionary<EventIdentity, EventOwnership> result = [];
         Dictionary<string, List<EventEvidence>> byId = events
             .GroupBy(entry => entry.EventId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);

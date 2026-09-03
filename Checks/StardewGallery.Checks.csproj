@@ -9,6 +9,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="..\Catalog\EventAssetSource.cs" Link="Catalog\EventAssetSource.cs" />
+    <Compile Include="..\Catalog\ResolvedEventReader.cs" Link="Catalog\ResolvedEventReader.cs" />
+    <Compile Include="..\Catalog\ResolvedEventIndex.cs" Link="Catalog\ResolvedEventIndex.cs" />
+    <Compile Include="..\Catalog\GalleryCatalogBuilder.cs" Link="Catalog\GalleryCatalogBuilder.cs" />
     <Compile Include="..\Domain\EventIdentity.cs" Link="Domain\EventIdentity.cs" />
     <Compile Include="..\Domain\EventHashes.cs" Link="Domain\EventHashes.cs" />
     <Compile Include="..\Domain\ResolvedEvent.cs" Link="Domain\ResolvedEvent.cs" />
