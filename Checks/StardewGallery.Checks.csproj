@@ -9,6 +9,19 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="..\Conditions\ConditionTruth.cs" Link="Conditions\ConditionTruth.cs" />
+    <Compile Include="..\Conditions\ConditionKnowledge.cs" Link="Conditions\ConditionKnowledge.cs" />
+    <Compile Include="..\Conditions\ConditionSource.cs" Link="Conditions\ConditionSource.cs" />
+    <Compile Include="..\Conditions\ConditionPlayerScope.cs" Link="Conditions\ConditionPlayerScope.cs" />
+    <Compile Include="..\Conditions\ConditionGapKind.cs" Link="Conditions\ConditionGapKind.cs" />
+    <Compile Include="..\Conditions\ConditionExpression.cs" Link="Conditions\ConditionExpression.cs" />
+    <Compile Include="..\Conditions\ConditionGap.cs" Link="Conditions\ConditionGap.cs" />
+    <Compile Include="..\Conditions\ConditionEvaluation.cs" Link="Conditions\ConditionEvaluation.cs" />
+    <Compile Include="..\Conditions\ConditionEvaluationContext.cs" Link="Conditions\ConditionEvaluationContext.cs" />
+    <Compile Include="..\Conditions\ConditionParser.cs" Link="Conditions\ConditionParser.cs" />
+    <Compile Include="..\Conditions\ConditionEvaluator.cs" Link="Conditions\ConditionEvaluator.cs" />
+    <Compile Include="..\Conditions\ConditionDescriber.cs" Link="Conditions\ConditionDescriber.cs" />
+    <Compile Include="..\Conditions\ConditionProduction.cs" Link="Conditions\ConditionProduction.cs" />
     <Compile Include="..\Catalog\EventAssetSource.cs" Link="Catalog\EventAssetSource.cs" />
     <Compile Include="..\Catalog\ResolvedEventReader.cs" Link="Catalog\ResolvedEventReader.cs" />
     <Compile Include="..\Catalog\ResolvedEventIndex.cs" Link="Catalog\ResolvedEventIndex.cs" />
