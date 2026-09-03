@@ -201,3 +201,22 @@ Phase 3 BCL-only ConditionIR + Evaluator 已按 Codex 23 条决议实施并通�
 - ConditionEvaluation 不强制构造器 Truth/Knowledge 不变式，Evaluator 保证即可。
 - 不接生产 UI；不创建真实 ConditionEvaluationContext factory；不真实绑定 `GameStateQuery.CheckConditions` 到 UI。
 - 不实现 Preview、Planner、SQLite、variant discovery 或 Phase 4。
+
+## 11. Final cleanup（第三轮）
+
+本轮为 Phase 3 最后一轮收尾，不引入新能力，未触达 UI / i18n / Replay / History / ResolvedEvent / ResolvedEventIndex / GalleryCatalog / ownership / Phase 2 selection。
+
+内容：
+
+1. **deprecated NotX long names**：补齐 `NotSeason`、`NotSawEvent`、`NotLocalMail`、`NotSpouse`，以及 `NotHostMail`、`NotHostOrLocalMail`、`NotRoommate`，全部映射到现有 typed leaf，`Negated` 与外部 `!` 前缀 XOR，与 `z`/`k`/`l`/`o` 短别名及现代 `!` 语法语义一致。strict arity 继续生效，非法参数仍 Opaque。
+2. **empty splitArguments 健壮性**：`splitArguments` 返回空数组时返回保留完整 `RawSegment` 的 `OpaqueCondition`，不再读取 `tokens[0]`，避免 `IndexOutOfRangeException`。
+3. **文档同步**：`docs/PHASE3_TASK.md` 修正 `DaysPlayedCondition`（无 Max）、`NativeQueryCondition`（无 Scope）、parser 双 delegate / `ParseRawKey` Skip(1) / strict arity、Year==1 语义、Dating/Spouse/Roommate RawFallback、Friendship multi-pair / SawEvent multi-ID 已知限制；本报告记录此轮 cleanup。
+
+最终 documented limitations（不扩范围）：
+
+- Friendship multi-pair → Opaque（合法 native 语法，MVP 未 typed）。
+- SawEvent multi-ID → Opaque（合法 native 语法，MVP 未 typed）。
+- negated 非核心类型 OverState detail 可为空。
+- `ConditionEvaluation` 构造器不强制 Truth/Knowledge 不变式（Evaluator 保证）。
+- 不接 `GalleryCharacterMenu`；不创建真实 `ConditionEvaluationContext` factory；不真实绑定 `GameStateQuery.CheckConditions`。
+- 不新增 i18n；不实现 Preview / Planner / SQLite / variant discovery；不开始 Phase 4。

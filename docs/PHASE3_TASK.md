@@ -77,6 +77,11 @@ raw event conditions
 
 所有其他条件 → `OpaqueCondition`，`Truth = Unknown` + `Knowledge = Unsupported`。
 
+已知限制（不扩范围）：
+
+- `Friendship` 多 pair（`Friendship <npc> <points> <npc> <points>…`）是合法 Stardew native syntax，当前 MVP 只 typed 单个 pair，其余 `OpaqueCondition`。
+- `SawEvent` 多 ID（`SawEvent <id> <id>…`）是合法 Stardew native syntax，当前 MVP 只 typed 单个 ID，其余 `OpaqueCondition`。
+
 ---
 
 ## 3. 领域模型（BCL-only）
@@ -108,9 +113,9 @@ typed leaves 全部通过 `ConditionExpression` 基类挂 `Source` / `RawSegment
 - `DatingCondition(string Npc, ...)`
 - `SpouseCondition(string Npc, ...)`
 - `RoommateCondition(...)`
-- `DaysPlayedCondition(int Min, int? Max, ConditionPlayerScope Scope, ...)`
+- `DaysPlayedCondition(int Min, ConditionPlayerScope Scope, ...)`（`Scope` 固定 `HostPlayer`，无 `Max`）
 - `WorldStateCondition(string Id, ...)`
-- `NativeQueryCondition(string Query, ConditionPlayerScope Scope, ...)`
+- `NativeQueryCondition(string Query, ...)`（无 `ConditionPlayerScope`；player/world target 保留在 Query 内，全部委托 Stardew 原生 evaluator）
 - `OpaqueCondition(...)`
 - `ConditionSet(IReadOnlyList<ConditionExpression> Conditions)`
 
@@ -166,14 +171,19 @@ internal sealed record ConditionEvaluationContext(
 
 ### 4.1 Parser
 
-- 输入：单个 raw segment（来自生产环境的 `Event.SplitPreconditions(rawKey)` 注入，或多个由 `ConditionSet` 组合)。
+- `ConditionParser(Func<string,string[]> splitPreconditions, Func<string,string[]> splitArguments)` 注入两个 delegate；`Conditions/` 保持 BCL-only，不自实现 quote parser。
+- `ParseRawKey(rawKey)`：`splitPreconditions(rawKey)` 后 `Skip(1)` 跳过 EventId，再交给 `Parse`。
+- `Parse(rawSegments)`：输入已是纯 condition segments，不再 skip。
 - 对每 segment 输出一个 leaf：known typed / `NativeQuery` / `Opaque`。
-- `negated`（`!` 前缀）记录到 `Negated`。
+- `negated`（`!` 前缀）与 deprecated negative alias（`z`/`k`/`l`/`o`）及 deprecated negative long name（`NotSeason`/`NotSawEvent`/`NotLocalMail`/`NotHostMail`/`NotHostOrLocalMail`/`NotSpouse`/`NotRoommate`）均按 XOR 与外部 `!` 合并，语义一致。
+- `splitArguments` 返回空数组时，返回保留完整 `RawSegment` 的 `OpaqueCondition`，不抛异常。
+- strict arity：已知 condition 参数形状不符时一律 `OpaqueCondition`（宁可 Unsupported，不允许错误 Known）。
 - `ConditionSet` 表示 implicit AND 与顺序。
 
 ### 4.2 Evaluator
 
-`ConditionEvaluationContext` 缺数据时：
+- Year 原生语义：`Year 1` 仅当 `currentYear == 1`；`Year N (N>1)` 为 `currentYear >= N`。
+- `ConditionEvaluationContext` 缺数据时：
 
 | 情况 | Truth | Knowledge |
 | --- | --- | --- |
@@ -190,6 +200,7 @@ internal sealed record ConditionEvaluationContext(
 - 输出可本地化 key + 参数（包括 points/hearts），不带 raw parser 泄漏。
 - 未知条件保留 `RawSegment`。
 - `Negated` 通过前缀词表达。
+- Dating / Spouse / Roommate 当前 `RawFallback`，不复用语义错误的 `condition.present`（未来 UI integration 阶段再新增专用 i18n key）。
 - 本阶段不接入 UI。
 
 ### 4.4 生产组合点

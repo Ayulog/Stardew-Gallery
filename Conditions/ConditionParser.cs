@@ -27,6 +27,8 @@ internal sealed class ConditionParser(
         if (segment.Length == 0)
             return new OpaqueCondition(ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
         string[] tokens = splitArguments(segment);
+        if (tokens.Length == 0)
+            return new OpaqueCondition(ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
         string head = tokens[0];
         string[] arguments = tokens.Skip(1).ToArray();
 
@@ -100,6 +102,20 @@ internal sealed class ConditionParser(
                 return ParseNativeQuery(arguments, rawSegment, negated);
             case "WORLDSTATE":
                 return ParseWorldState(arguments, rawSegment, negated);
+            case "NOTSEASON":
+                return ParseSeason(arguments, rawSegment, negated ^ true);
+            case "NOTSAWEVENT":
+                return ParseSawEvent(arguments, rawSegment, negated ^ true);
+            case "NOTLOCALMAIL":
+                return ParseMail(arguments, rawSegment, negated ^ true, ConditionPlayerScope.LocalPlayer);
+            case "NOTHOSTMAIL":
+                return ParseMail(arguments, rawSegment, negated ^ true, ConditionPlayerScope.HostPlayer);
+            case "NOTHOSTORLOCALMAIL":
+                return ParseMail(arguments, rawSegment, negated ^ true, ConditionPlayerScope.HostOrLocal);
+            case "NOTSPOUSE":
+                return ParseSpouse(arguments, rawSegment, negated ^ true);
+            case "NOTROOMMATE":
+                return ParseRoommate(arguments, rawSegment, negated ^ true);
             default:
                 return Opaque(rawSegment, negated);
         }

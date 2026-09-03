@@ -782,6 +782,36 @@ Check(aliasParser.ParseSegment("Spouse Alex Emily") is OpaqueCondition, "Spouse 
 Check(aliasParser.ParseSegment("Roommate extra") is OpaqueCondition, "Roommate extra arg");
 Check(aliasParser.ParseSegment("WorldState a b") is OpaqueCondition, "WorldState extra arg");
 
+Check(aliasParser.ParseSegment("NotSeason Winter") is SeasonCondition { Seasons: ["Winter"], Negated: true }, "NotSeason");
+Check(aliasParser.ParseSegment("!NotSeason Winter") is SeasonCondition { Seasons: ["Winter"], Negated: false }, "!NotSeason");
+Check(aliasParser.ParseSegment("NotSawEvent 123") is SawEventCondition { EventId: "123", Negated: true }, "NotSawEvent");
+Check(aliasParser.ParseSegment("!NotSawEvent 123") is SawEventCondition { EventId: "123", Negated: false }, "!NotSawEvent");
+Check(aliasParser.ParseSegment("NotLocalMail letter") is MailCondition { MailId: "letter", Negated: true, Scope: ConditionPlayerScope.LocalPlayer }, "NotLocalMail");
+Check(aliasParser.ParseSegment("!NotLocalMail letter") is MailCondition { MailId: "letter", Negated: false, Scope: ConditionPlayerScope.LocalPlayer }, "!NotLocalMail");
+Check(aliasParser.ParseSegment("NotSpouse Alex") is SpouseCondition { Npc: "Alex", Negated: true }, "NotSpouse");
+Check(aliasParser.ParseSegment("!NotSpouse Alex") is SpouseCondition { Npc: "Alex", Negated: false }, "!NotSpouse");
+Check(aliasParser.ParseSegment("NotHostMail mail") is MailCondition { MailId: "mail", Negated: true, Scope: ConditionPlayerScope.HostPlayer }, "NotHostMail");
+Check(aliasParser.ParseSegment("NotHostOrLocalMail mail") is MailCondition { MailId: "mail", Negated: true, Scope: ConditionPlayerScope.HostOrLocal }, "NotHostOrLocalMail");
+Check(aliasParser.ParseSegment("NotRoommate") is RoommateCondition { Negated: true }, "NotRoommate");
+Check(aliasParser.ParseSegment("!NotRoommate") is RoommateCondition { Negated: false }, "!NotRoommate");
+
+Check(aliasParser.ParseSegment("NotSeason") is OpaqueCondition, "NotSeason missing arg");
+Check(aliasParser.ParseSegment("NotSawEvent 1 2") is OpaqueCondition, "NotSawEvent extra arg");
+Check(aliasParser.ParseSegment("NotLocalMail a b") is OpaqueCondition, "NotLocalMail extra arg");
+Check(aliasParser.ParseSegment("NotSpouse A B") is OpaqueCondition, "NotSpouse extra arg");
+
+int emptySplitCalls = 0;
+ConditionParser emptySplitParser = new(_ => [], _ => { emptySplitCalls++; return []; });
+ConditionExpression emptySplitResult = emptySplitParser.ParseSegment("AnythingAtAll");
+Check(emptySplitCalls == 1, "empty splitArguments must be invoked");
+Check(emptySplitResult is OpaqueCondition, "empty splitArguments yields Opaque");
+Check(emptySplitResult.RawSegment == "AnythingAtAll", "empty splitArguments preserves raw segment");
+
+Check(aliasParser.ParseSegment("NotSeason Winter").RawSegment == "NotSeason Winter", "NotSeason raw preserved");
+Check(aliasParser.ParseSegment("z Winter") is SeasonCondition { Negated: true }, "z alias parity");
+Check(aliasParser.ParseSegment("Season Winter") is SeasonCondition { Negated: false }, "Season parity");
+Check(aliasParser.ParseSegment("NotSeason Winter") is SeasonCondition { Negated: true }, "NotSeason == z parity");
+
 ConditionSet aliasSet = parser2.Parse(["f Haley 2500", "e 123", "k 456"]);
 Check(aliasSet.Conditions[0] is FriendshipCondition { Npc: "Haley", Points: 2500 });
 Check(aliasSet.Conditions[1] is SawEventCondition { EventId: "123", Negated: false });
