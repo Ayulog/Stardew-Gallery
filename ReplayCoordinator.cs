@@ -43,42 +43,36 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             return false;
         }
 
-        GameLocation? location = Game1.getLocationFromName(entry.LocationName);
-        if (location is null)
-        {
-            error = helper.Translation.Get("replay.location-missing", new { location = entry.LocationName });
-            return false;
-        }
+        EventPlayback playback = watchedVersion is null
+            ? EventPlayback.ForCurrent(entry.Resolved)
+            : EventPlayback.ForHistorical(watchedVersion);
 
         try
         {
-            Trace($"回放请求：地点={entry.LocationName}，事件={entry.EventId}，版本={(watchedVersion is null ? "当前" : watchedVersion.Fingerprint[..12])}。");
+            Trace($"回放请求：地点={playback.LocationName}，事件={playback.EventId}，版本={(watchedVersion is null ? "当前" : watchedVersion.Fingerprint[..12])}。");
             backupPath = ReplayBackup.Create();
             Trace($"回放备份完成：{backupPath}");
             snapshot = ReplaySnapshot.Capture();
             reopen = reopenMenu;
-            eventId = entry.EventId;
-            targetLocationName = entry.LocationName;
+            eventId = playback.EventId;
+            targetLocationName = playback.LocationName;
             speedMultiplier = 1;
             WriteDiagnostics("requested");
             Game1.activeClickableMenu = null;
-            EventPlayback playback = watchedVersion is null
-                ? EventPlayback.ForCurrent(entry.Resolved)
-                : EventPlayback.ForHistorical(watchedVersion);
             if (watchedVersion is not null)
                 historicalAssets.Activate(watchedVersion);
             EventLaunchResult launch = eventLauncher.TryLaunch(playback);
             if (launch.Accepted)
             {
-                Trace($"事件回放已接受：地点={entry.LocationName}，事件={entry.EventId}。");
+                Trace($"事件回放已接受：地点={playback.LocationName}，事件={playback.EventId}。");
                 WriteDiagnostics("accepted");
                 return true;
             }
-            error = MapLaunchFailure(launch.Failure, entry.LocationName);
+            error = MapLaunchFailure(launch.Failure, playback.LocationName);
         }
         catch (Exception ex)
         {
-            monitor.Log($"回放启动失败：地点={entry.LocationName}，事件={entry.EventId}。\n{ex}", LogLevel.Error);
+            monitor.Log($"回放启动失败：地点={playback.LocationName}，事件={playback.EventId}。\n{ex}", LogLevel.Error);
             error = helper.Translation.Get("replay.failed");
         }
 

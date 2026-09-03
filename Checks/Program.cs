@@ -1009,12 +1009,14 @@ Check(p6Current.RootScript == "ScriptA", "P6-B selection independence: chosen sc
 Check(p6Current.RootScript != p6CandidateB.ResolvedScript, "P6-B candidate B script not used by launcher");
 
 WatchedEventSnapshot p6Hist = new(
-    "Town", "Data/Events/Town", "123", "123/A", "HistoricalRoot",
+    "HistoricalTown", "Data/Events/Town", "123", "123/A", "HistoricalRoot",
     new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase),
     new Dictionary<string, string>(StringComparer.Ordinal), "zh", "fp", DateTimeOffset.Now, DateTimeOffset.Now);
 EventPlayback p6Historical = EventPlayback.ForHistorical(p6Hist);
 Check(p6Historical.RootScript == "HistoricalRoot", "P6-C historical root script = snapshot.RootScript");
 Check(p6Historical.EventId == "123" && p6Historical.AssetName == "Data/Events/Town", "P6-C historical identity");
+Check(p6Historical.LocationName == "HistoricalTown", "P6-C historical snapshot LocationName is the sole launch target (independent of current entry location)");
+Check(p6Current.LocationName == "Town", "P6-C current entry location retained for its own playback");
 Check(p6Current is EventPlayback && p6Historical is EventPlayback, "P6-D both current/historical produce EventPlayback");
 
 Console.WriteLine("Stardew Gallery checks passed.");
