@@ -32,7 +32,6 @@ internal static class SqliteNativeBootstrap
                     return NativeLibrary.Load(nativePath, assembly, searchPath);
                 });
                 initialized = true;
-                logger?.Invoke($"SQLite native resolver 已注册：{nativePath}");
                 return true;
             }
             catch (Exception error)
