@@ -155,6 +155,8 @@ Game1.warpFarmer(...)
 
 **推荐 B**，理由：统一 same/diff-location 初始化语义，避免 cross-location 事件缺 eventUp/HUD 导致 UI 状态异常；且与 same-location `startEvent` 保持一致。但跨地图 `startEvent` 在 `OnLoad` 回调时机（location 就绪后）执行是可行路径。标记 **CODE EVIDENCE + RUNTIME CONFIRMATION REQUIRED**——需实机 smoke 确认跨地图 startEvent 的 viewport/fade 时序（P6-2）。
 
+**Phase 6 implementation 保守决定**：本轮实现保守保持 vanilla-compatible 当前语义，cross-location 继续 `OnLoad → currentLocation.currentEvent = replayEvent`（与 `Game1.PlayEvent` 历史路径一致），**不改为 `startEvent(replayEvent)`**。理由：`Game1.PlayEvent` 本身也是 direct assignment；现有 historical replay 也是 direct assignment；Phase 6 只解决 exact-script launch，不顺带修改跨地图初始化语义。`startEvent` normalization 记录为 **future hardening candidate**，不在本轮实现。
+
 当前修复保守建议：若实机确认 B 有回归，回退到 A（vanilla 语义），并在 P6 报告说明。最终给 B。
 
 ---
@@ -184,7 +186,7 @@ SMAPI 侧：无独立注册 API；标准做法是调用游戏静态 `Event.Regis
 1. exact root `Event` 启动后，fork/switchEvent 依然从 `Data/Events/<location>` 源读取——即**读取当前 live resolved content**。
 2. current replay 若只 freeze exact root script 而不 freeze nested graph，switch/fork 会读 live content。
 3. historical replay 的 `HistoricalReplayAssets`（`WatchedEventHistory.cs:315-369`）通过 `OnAssetRequested` 对 `Data/Events/...` 及 translation asset 做 late-edit 注入 `snapshot.EventAssets`/`Translations` —— 即 root + nested event asset + translation 都被冻结 `[REPO]`。
-4. 统一 launcher 后：**Current replay 第一版只 freeze root exact script，nested 用当前 live resolved content 允许**；**Historical replay 维持 `HistoricalReplayAssets.Activate(snapshot)`（需在 launcher 外围完成）**。launcher 本身知道 current/historical。
+4. 统一 launcher 后：**Current replay 第一版只 freeze root exact script，nested 用当前 live resolved content 允许**；**Historical replay 维持 `HistoricalReplayAssets.Activate(snapshot)`（需在 launcher 外围完成）**。launcher 本身不知道 current/historical；区别仅由 ReplayCoordinator 外围处理。
 
 结论（问题 E 对应）：
 - fork/switch 从 live asset 解析——root-only freeze 让 nested graph 保持 live（符合 Phase 6 scope 允许）。`[NATIVE]`

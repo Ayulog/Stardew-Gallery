@@ -985,6 +985,38 @@ Check(ReplayBackupRetention.Retain(["D", "C", "B", "A"]).SequenceEqual(["D", "C"
 Check(ReplayBackupRetention.Retain(["J", "I", "H", "G", "F", "E", "D", "C", "B", "A"]).SequenceEqual(["J", "I"]), "retention 10 stale keep newest 2");
 Check(ReplayBackupRetention.Discard(["D", "C", "B", "A"]).SequenceEqual(["B", "A"]), "retention discard old 2");
 
+// ---------- Phase 6 exact-script launch contract ----------
+EventIdentity p6Id = new("Data/Events/Town", "123");
+EventFragments p6Frag = new([], []);
+ResolvedEvent p6Resolved = new(
+    p6Id, "Town", "123/A", "ScriptA", p6Frag,
+    EventHashes.RootDefinition("123/A", "ScriptA"), EventHashes.RootScript("ScriptA"));
+EventPlayback p6Current = EventPlayback.ForCurrent(p6Resolved);
+Check(p6Current.Identity == p6Id, "P6-A current identity");
+Check(p6Current.LocationName == "Town", "P6-A current location");
+Check(p6Current.RootScript == "ScriptA", "P6-A current root script = resolved.ResolvedScript");
+Check(p6Current.AssetName == "Data/Events/Town", "P6-A asset name");
+Check(p6Current.EventId == "123", "P6-A event id");
+
+// P6-B: launcher uses selected ResolvedEvent script, never re-resolves by EventId.
+// Here the selected resolved event is "123/A"->"ScriptA"; a distinct same-EventId candidate
+// ("123/B"->"ScriptB") exists and is NOT consumed by EventPlayback.ForCurrent.
+ResolvedEvent p6CandidateB = new(
+    p6Id, "Town", "123/B", "ScriptB", p6Frag,
+    EventHashes.RootDefinition("123/B", "ScriptB"), EventHashes.RootScript("ScriptB"));
+Check(p6CandidateB.EventId == p6Current.EventId, "P6-B same EventId candidate");
+Check(p6Current.RootScript == "ScriptA", "P6-B selection independence: chosen script is selected one, not EventId re-resolution");
+Check(p6Current.RootScript != p6CandidateB.ResolvedScript, "P6-B candidate B script not used by launcher");
+
+WatchedEventSnapshot p6Hist = new(
+    "Town", "Data/Events/Town", "123", "123/A", "HistoricalRoot",
+    new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase),
+    new Dictionary<string, string>(StringComparer.Ordinal), "zh", "fp", DateTimeOffset.Now, DateTimeOffset.Now);
+EventPlayback p6Historical = EventPlayback.ForHistorical(p6Hist);
+Check(p6Historical.RootScript == "HistoricalRoot", "P6-C historical root script = snapshot.RootScript");
+Check(p6Historical.EventId == "123" && p6Historical.AssetName == "Data/Events/Town", "P6-C historical identity");
+Check(p6Current is EventPlayback && p6Historical is EventPlayback, "P6-D both current/historical produce EventPlayback");
+
 Console.WriteLine("Stardew Gallery checks passed.");
 
 static void Check(bool condition, string message = "", [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)

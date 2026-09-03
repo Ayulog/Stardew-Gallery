@@ -8,6 +8,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
     Func<bool> autoAdvanceDialogue, Func<bool> debugDiagnostics)
 {
     private const int StartTimeoutTicks = 900;
+    private readonly EventLauncher eventLauncher = new();
     private ReplaySnapshot? snapshot;
     private Action? reopen;
     private string? backupPath;
@@ -61,23 +62,19 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             speedMultiplier = 1;
             WriteDiagnostics("requested");
             Game1.activeClickableMenu = null;
-            bool started;
-            bool validEvent;
-            if (watchedVersion is null)
-                started = Game1.PlayEvent(entry.EventId, location, out validEvent, checkPreconditions: false, checkSeen: false);
-            else
-            {
+            EventPlayback playback = watchedVersion is null
+                ? EventPlayback.ForCurrent(entry.Resolved)
+                : EventPlayback.ForHistorical(watchedVersion);
+            if (watchedVersion is not null)
                 historicalAssets.Activate(watchedVersion);
-                started = StartHistoricalEvent(watchedVersion, location);
-                validEvent = started;
-            }
-            if (started && validEvent)
+            EventLaunchResult launch = eventLauncher.TryLaunch(playback);
+            if (launch.Accepted)
             {
                 Trace($"事件回放已接受：地点={entry.LocationName}，事件={entry.EventId}。");
                 WriteDiagnostics("accepted");
                 return true;
             }
-            error = helper.Translation.Get(validEvent ? "replay.not-started" : "replay.not-found");
+            error = MapLaunchFailure(launch.Failure, entry.LocationName);
         }
         catch (Exception ex)
         {
@@ -89,28 +86,16 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         return false;
     }
 
-    private static bool StartHistoricalEvent(WatchedEventSnapshot snapshot, GameLocation location)
+    private string MapLaunchFailure(EventLaunchFailure? failure, string locationName)
     {
-        Event replayEvent = new(snapshot.RootScript, snapshot.AssetName, snapshot.EventId, Game1.player);
-        if (location.Name != Game1.currentLocation.Name)
+        return failure?.Kind switch
         {
-            LocationRequest request = Game1.getLocationRequest(location.Name);
-            request.OnLoad += () => Game1.currentLocation.currentEvent = replayEvent;
-            int x = 8;
-            int y = 8;
-            Utility.getDefaultWarpLocation(request.Name, ref x, ref y);
-            Game1.warpFarmer(request, x, y, Game1.player.FacingDirection);
-        }
-        else
-        {
-            Game1.globalFadeToBlack(() =>
-            {
-                Game1.forceSnapOnNextViewportUpdate = true;
-                Game1.currentLocation.startEvent(replayEvent);
-                Game1.globalFadeToClear();
-            });
-        }
-        return true;
+            EventLaunchFailureKind.InvalidPlayback => helper.Translation.Get("replay.not-found"),
+            EventLaunchFailureKind.LocationMissing => helper.Translation.Get("replay.location-missing", new { location = locationName }),
+            EventLaunchFailureKind.ConstructionFailed => helper.Translation.Get("replay.failed"),
+            EventLaunchFailureKind.SchedulingFailed => helper.Translation.Get("replay.not-started"),
+            _ => helper.Translation.Get("replay.not-started")
+        };
     }
 
     internal void Update()
