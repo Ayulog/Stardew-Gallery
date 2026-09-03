@@ -123,3 +123,37 @@ Linux/macOS 未在环境实跑，**不在报告中声称 runtime-tested**；仅�
 - non-ASCII collation fixture（"Ünïcode" vs "ünicode"）经真实 SQLite table/UNIQUE index 合并为一行。
 - 强制 transaction rollback（`fail_summary_insert` trigger）→ UpsertObservation 抛 → event/variant/summary 均 0 新增。
 - future schema 加强：user_version 保持 999、v1 table 未创建（no downgrade/overwrite）。
+
+## 11. Runtime hardening（本轮）
+
+### SQLite native probing（root cause）
+
+实机确认：SMAPI 动态加载 Mod 时未自动从 `runtimes/<rid>/native` probe `e_sqlite3`，导致嵌套 native 在 native-only 情况下 type initializer 失败 → fallback legacy → gallery.sqlite3 不出现；手工复制 `e_sqlite3.dll` 到 Mod 根目录才正常。手工复制不再是发布方案。
+
+修复：新增 `Persistence/SqliteNativeBootstrap.cs` + `Persistence/SqliteNativeResolver.cs`。
+
+- `SqliteNativeResolver`（BCL-only，可测）：RID 选择 —— `ResolveNativePath(modDirectory, runtimeIdentifier, os, arch)` 优先 exact `runtimes/<rid>/native/` 存在，fallback OS + ProcessArchitecture（win-x64/x86/arm64/arm、osx-x64/arm64、linux-x64/x86/arm/arm64；musl exact RID 保留）；native filename Windows e_sqlite3.dll / Linux libe_sqlite3.so / macOS libe_sqlite3.dylib。
+- `SqliteNativeBootstrap.TryInitialize(modDirectory, logger)`：幂等（同 process 不重复注册），`Assembly.Load("SQLitePCLRaw.provider.e_sqlite3")` 后 `NativeLibrary.SetDllImportResolver`，resolver 只处理 e_sqlite3/libe_sqlite3（其它返回 IntPtr.Zero），`NativeLibrary.Load(fullPath)`；failure → false + 完整日志；不修改 PATH / 不复制到系统目录 / 不扁平复制 native。
+- 接入：`ModEntry.InitSqliteSession` 最先行 `SqliteNativeBootstrap.TryInitialize(Helper.DirectoryPath)`，failure → legacy fallback（degrade）。
+- `GalleryDatabase` 的 open/schema 失败日志改为完整异常（`\n{error}`，含 type/inner/stack），不逐 tick spam。
+- PersistenceChecks：RID/path 选择测试（win-x64 exact 优先、win-x86、osx-arm64、linux-arm64、linux-musl-x64 exact 缺失 → OS+arch fallback、unsupported → failure），ReplayBackupRetention 测试。
+
+### ReplayBackup 无界增长（confirmed）
+
+实机确认 `backups-archive` 永不删除 → 约 1.2GB / 414 files / 73 folders。
+
+修复：ReplayBackup 生命周期从「5 active + 无限 archive」改为：
+
+- `Create()`：先 `Prune(save)`（backups + backups-archive 合并，保留最新 2 个（`ReplayBackupRetention.MaxStale=2`），其余删除；archive 内保留项 migrate 回 `backups/<save>`，删空 archive/<save>），再 create current（最多 3）。
+- `FinishRestore` 成功后 `ReplayBackup.Delete(backupPath)` 删除当前临时备份；删除失败 → log warn（保留 stale 后续 prune），不把成功 replay 变失败。FailSafe 保留 backup 供人工 recovery（`Clear()` 不删）。
+- `Delete`/`Prune` 只在 `Constants.DataPath/StardewGallery/backups*` 内路径操作（path boundary check），IO/Unauthorized 捕获并 log，cleanup failure 不影响 gameplay。
+- 正常使用下 backups ≈ 0（成功 replay 后删除）；只保留紧急恢复用途。
+- 旧 `backups-archive`：per-save migration/prune（不删其它 save 的 archive、不整目录删除 backups-archive 根）。
+
+PersistenceChecks 增加 ReplayBackupRetention 测试；核心 Checks 增加 ReplayBackupRetention（0/1/2/3/10 stale → newest 2；discard old）。
+
+### 运行时验证
+
+- Windows runtime 已实机验证（PersistenceChecks open/schema/insert/read/reopen）。
+- 移除 Mod 根目录手工 e_sqlite3.dll、仅保留 runtimes/win-x64/native 后 SQLite 正常。
+- Linux/macOS 仅 resolver/path/package coverage + 报告注明，未声称 runtime-tested。

@@ -209,6 +209,9 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
     private void FinishRestore()
     {
         Trace($"回放状态恢复完成：事件={eventId}。");
+        string? completedBackup = backupPath;
+        if (completedBackup is not null && !ReplayBackup.Delete(completedBackup))
+            monitor.Log($"回放成功后清理临时备份失败（保留为 stale）：{completedBackup}", LogLevel.Warn);
         Action? open = reopen;
         Clear();
         open?.Invoke();
@@ -324,21 +327,27 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
 
 internal static class ReplayBackup
 {
+    private const string RootName = "backups";
+    private const string ArchiveRootName = "backups-archive";
+
+    internal static string DataRoot()
+        => Path.Combine(Constants.DataPath, "StardewGallery");
+
+    internal static string RootFor(string save)
+        => Path.Combine(DataRoot(), RootName, save);
+
+    internal static string ArchiveRootFor(string save)
+        => Path.Combine(DataRoot(), ArchiveRootName, save);
+
     internal static string Create()
     {
         string source = Constants.CurrentSavePath ?? throw new InvalidOperationException("当前存档目录不存在。");
         string save = Constants.SaveFolderName ?? throw new InvalidOperationException("当前存档名称不存在。");
-        string data = Path.Combine(Constants.DataPath, "StardewGallery");
-        string root = Path.Combine(data, "backups", save);
+        string root = RootFor(save);
         Directory.CreateDirectory(root);
+        Prune(save);
         string destination = Path.Combine(root, DateTime.Now.ToString("yyyyMMdd-HHmmss-fff"));
         Copy(source, destination, overwrite: false);
-        foreach (DirectoryInfo old in new DirectoryInfo(root).EnumerateDirectories().OrderByDescending(p => p.Name).Skip(5))
-        {
-            string archive = Path.Combine(data, "backups-archive", save);
-            Directory.CreateDirectory(archive);
-            old.MoveTo(Path.Combine(archive, old.Name));
-        }
         return destination;
     }
 
@@ -346,6 +355,71 @@ internal static class ReplayBackup
     {
         string destination = Constants.CurrentSavePath ?? throw new InvalidOperationException("当前存档目录不存在。");
         Copy(backup, destination, overwrite: true);
+    }
+
+    internal static bool Delete(string backupPath)
+    {
+        if (string.IsNullOrWhiteSpace(backupPath) || !IsUnderDataRoot(backupPath))
+            return false;
+        try
+        {
+            if (Directory.Exists(backupPath))
+                Directory.Delete(backupPath, recursive: true);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    internal static void Prune(string save)
+    {
+        string root = RootFor(save);
+        string archive = ArchiveRootFor(save);
+        try
+        {
+            IEnumerable<string> activeDirs = Directory.Exists(root) ? Directory.EnumerateDirectories(root) : [];
+            IEnumerable<string> archiveDirs = Directory.Exists(archive) ? Directory.EnumerateDirectories(archive) : [];
+            List<string> names = activeDirs
+                .Concat(archiveDirs)
+                .Select(Path.GetFileName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToList();
+            IReadOnlyList<string> retain = ReplayBackupRetention.Retain(names);
+            foreach (string name in names.Where(name => !retain.Contains(name)))
+            {
+                string activePath = Path.Combine(root, name);
+                string archivePath = Path.Combine(archive, name);
+                if (Directory.Exists(activePath))
+                    Directory.Delete(activePath, recursive: true);
+                else if (Directory.Exists(archivePath))
+                    Directory.Delete(archivePath, recursive: true);
+            }
+            // migrate retained archive dirs back into active root; drop empty archive/save dir
+            foreach (string name in retain)
+            {
+                string activePath = Path.Combine(root, name);
+                string archivePath = Path.Combine(archive, name);
+                if (!Directory.Exists(activePath) && Directory.Exists(archivePath))
+                    Directory.Move(archivePath, activePath);
+            }
+            if (Directory.Exists(archive) && !Directory.EnumerateDirectories(archive).Any())
+                Directory.Delete(archive, recursive: false);
+        }
+        catch (Exception)
+        {
+            // cleanup failure must not affect gameplay/replay
+        }
+    }
+
+    private static bool IsUnderDataRoot(string path)
+    {
+        string root = Path.GetFullPath(DataRoot()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        string full = Path.GetFullPath(path);
+        return full.StartsWith(root, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void Copy(string source, string destination, bool overwrite)

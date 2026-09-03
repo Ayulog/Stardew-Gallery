@@ -38,7 +38,7 @@ internal sealed class GalleryDatabase(string databasePath, Action<string>? logge
         }
         catch (Exception error)
         {
-            logger?.Invoke($"SQLite 打开失败：{error.Message}");
+            logger?.Invoke($"SQLite 打开失败：\n{error}");
             Dispose();
             return false;
         }

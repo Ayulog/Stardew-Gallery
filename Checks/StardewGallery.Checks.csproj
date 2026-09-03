@@ -44,5 +44,6 @@
     <Compile Include="..\GalleryLayout.cs" Link="GalleryLayout.cs" />
     <Compile Include="..\GalleryUiRules.cs" Link="GalleryUiRules.cs" />
     <Compile Include="..\ReplayLifecycleRules.cs" Link="ReplayLifecycleRules.cs" />
+    <Compile Include="..\ReplayBackupRetention.cs" Link="ReplayBackupRetention.cs" />
   </ItemGroup>
 </Project>

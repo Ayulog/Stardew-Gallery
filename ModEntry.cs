@@ -210,6 +210,16 @@ internal sealed class ModEntry : Mod
         DisposeSqliteSession();
         try
         {
+            if (!SqliteNativeBootstrap.TryInitialize(Helper.DirectoryPath, message => Monitor.Log(message, LogLevel.Error)))
+            {
+                Monitor.Log("SQLite native 运行时 bootstrap 失败，本次会话降级为 legacy 持久化。", LogLevel.Error);
+                historyRepository = null;
+                sqliteDatabase = null;
+                LegacyHistoryStore degradedStore = new(Helper);
+                watchedHistory.AttachPersistence(degradedStore, null);
+                return;
+            }
+
             SaveProfileKey profile = new(
                 Game1.uniqueIDForThisGame,
                 Game1.player.UniqueMultiplayerID);
@@ -234,7 +244,7 @@ internal sealed class ModEntry : Mod
         catch (Exception error)
         {
             DisposeSqliteSession();
-            Monitor.Log($"SQLite 会话初始化失败，降级为 legacy：{error.Message}", LogLevel.Error);
+            Monitor.Log($"SQLite 会话初始化失败，降级为 legacy：\n{error}", LogLevel.Error);
             LegacyHistoryStore degradedStore = new(Helper);
             watchedHistory.AttachPersistence(degradedStore, null);
         }

@@ -29,5 +29,7 @@
     <Compile Include="..\Persistence\GallerySchema.cs" Link="Persistence\GallerySchema.cs" />
     <Compile Include="..\Persistence\HistoryRepository.cs" Link="Persistence\HistoryRepository.cs" />
     <Compile Include="..\Persistence\LegacyHistoryCodec.cs" Link="Persistence\LegacyHistoryCodec.cs" />
+    <Compile Include="..\Persistence\SqliteNativeResolver.cs" Link="Persistence\SqliteNativeResolver.cs" />
+    <Compile Include="..\ReplayBackupRetention.cs" Link="ReplayBackupRetention.cs" />
   </ItemGroup>
 </Project>

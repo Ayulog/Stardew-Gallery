@@ -978,6 +978,13 @@ Check(spouseReadable.RawFallback == "Spouse Alex");
 ReadableCondition roommateReadable = ConditionDescriber.Describe(parser2.Parse(["Roommate"]).Conditions[0]);
 Check(roommateReadable.LocalizationKey is null, "Roommate must be raw fallback");
 
+Check(ReplayBackupRetention.Retain([]).Count == 0, "retention 0 stale keep 0");
+Check(ReplayBackupRetention.Retain(["A"]).SequenceEqual(["A"]), "retention 1 stale keep 1");
+Check(ReplayBackupRetention.Retain(["A", "B"]).Count == 2, "retention 2 stale keep 2");
+Check(ReplayBackupRetention.Retain(["D", "C", "B", "A"]).SequenceEqual(["D", "C"]), "retention 4 stale keep newest 2");
+Check(ReplayBackupRetention.Retain(["J", "I", "H", "G", "F", "E", "D", "C", "B", "A"]).SequenceEqual(["J", "I"]), "retention 10 stale keep newest 2");
+Check(ReplayBackupRetention.Discard(["D", "C", "B", "A"]).SequenceEqual(["B", "A"]), "retention discard old 2");
+
 Console.WriteLine("Stardew Gallery checks passed.");
 
 static void Check(bool condition, string message = "", [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)

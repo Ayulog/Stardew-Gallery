@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using StardewGallery;
@@ -320,6 +321,39 @@ try
         IReadOnlyList<WatchedEventSnapshot> hyd = repo.LoadAllSnapshotsForProfile();
         Check(hyd.Count == 1 && hyd[0].Fingerprint == "ph-c", "valid SQLite history hydrates despite corrupt legacy codec");
     }
+
+    // ---------- SqliteNativeResolver RID/path selection ----------
+    string ridRoot = Path.Combine(tempRoot, "ridroot");
+    string win64 = Path.Combine(ridRoot, "runtimes", "win-x64", "native");
+    Directory.CreateDirectory(win64);
+    File.WriteAllText(Path.Combine(win64, "e_sqlite3.dll"), "x");
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "win-x64", OSPlatform.Windows, Architecture.X64) is not null, "exact rid wins");
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "win-x86", OSPlatform.Windows, Architecture.X86) is null, "exact missing -> no match");
+    Directory.CreateDirectory(Path.Combine(ridRoot, "runtimes", "win-x86", "native"));
+    File.WriteAllText(Path.Combine(ridRoot, "runtimes", "win-x86", "native", "e_sqlite3.dll"), "x");
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "win-x86", OSPlatform.Windows, Architecture.X86) is not null, "win-x86 exact path resolved");
+    Directory.CreateDirectory(Path.Combine(ridRoot, "runtimes", "osx-arm64", "native"));
+    File.WriteAllText(Path.Combine(ridRoot, "runtimes", "osx-arm64", "native", "libe_sqlite3.dylib"), "x");
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "osx-arm64", OSPlatform.OSX, Architecture.Arm64) is not null, "osx-arm64 path resolved");
+    Directory.CreateDirectory(Path.Combine(ridRoot, "runtimes", "linux-arm64", "native"));
+    File.WriteAllText(Path.Combine(ridRoot, "runtimes", "linux-arm64", "native", "libe_sqlite3.so"), "x");
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "linux-arm64", OSPlatform.Linux, Architecture.Arm64) is not null, "linux-arm64 path resolved");
+    // exact-missing fallback to OS+arch
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "linux-musl-x64", OSPlatform.Linux, Architecture.X64) is null, "musl exact missing -> no linux-x64 fallback when only musl dir absent");
+    // linux-x64 dir present -> fallback OS+arch
+    Directory.CreateDirectory(Path.Combine(ridRoot, "runtimes", "linux-x64", "native"));
+    File.WriteAllText(Path.Combine(ridRoot, "runtimes", "linux-x64", "native", "libe_sqlite3.so"), "x");
+    Check(SqliteNativeResolver.ResolveNativePath(ridRoot, "linux-musl-x64", OSPlatform.Linux, Architecture.X64) is not null, "musl exact missing -> OS+arch fallback to linux-x64");
+    Check(SqliteNativeResolver.FallbackRid(OSPlatform.Windows, Architecture.Arm64) == "win-arm64", "fallback win-arm64");
+    Check(SqliteNativeResolver.NativeFileName("linux-musl-x64") == "libe_sqlite3.so", "native linux so");
+    Check(SqliteNativeResolver.NativeFileName("osx-arm64") == "libe_sqlite3.dylib", "native osx dylib");
+
+    // ---------- ReplayBackupRetention ----------
+    Check(ReplayBackupRetention.Retain([]).Count == 0, "stale 0 keep 0");
+    Check(ReplayBackupRetention.Retain(["A"]).Count == 1, "stale 1 keep 1");
+    Check(ReplayBackupRetention.Retain(["A", "B"]).Count == 2, "stale 2 keep 2");
+    Check(ReplayBackupRetention.Retain(["D", "C", "B", "A"]).SequenceEqual(["D", "C"]), "stale 4 keep newest 2");
+    Check(ReplayBackupRetention.Discard(["D", "C", "B", "A"]).SequenceEqual(["B", "A"]), "discard old");
 
     Console.WriteLine("Stardew Gallery persistence checks passed.");
 }
