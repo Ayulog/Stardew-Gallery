@@ -19,8 +19,11 @@
     <Compile Include="..\Domain\ObservedVariant.cs" Link="Domain\ObservedVariant.cs" />
     <Compile Include="..\Domain\VariantObservationSummary.cs" Link="Domain\VariantObservationSummary.cs" />
     <Compile Include="..\Domain\HistoricalEventRecord.cs" Link="Domain\HistoricalEventRecord.cs" />
+    <Compile Include="..\Domain\HistoricalExecutionContext.cs" Link="Domain\HistoricalExecutionContext.cs" />
     <Compile Include="..\Domain\KnownSeenEvidence.cs" Link="Domain\KnownSeenEvidence.cs" />
     <Compile Include="..\History\LegacyHistoryAdapter.cs" Link="History\LegacyHistoryAdapter.cs" />
+    <Compile Include="..\History\HistoricalExecutionContextRules.cs" Link="History\HistoricalExecutionContextRules.cs" />
+    <Compile Include="..\History\HistoricalExecutionContextCodec.cs" Link="History\HistoricalExecutionContextCodec.cs" />
     <Compile Include="..\EventKey.cs" Link="EventKey.cs" />
     <Compile Include="..\EventFragments.cs" Link="EventFragments.cs" />
     <Compile Include="..\Persistence\SaveProfileKey.cs" Link="Persistence\SaveProfileKey.cs" />
@@ -28,6 +31,7 @@
     <Compile Include="..\Persistence\GalleryDatabase.cs" Link="Persistence\GalleryDatabase.cs" />
     <Compile Include="..\Persistence\GallerySchema.cs" Link="Persistence\GallerySchema.cs" />
     <Compile Include="..\Persistence\HistoryRepository.cs" Link="Persistence\HistoryRepository.cs" />
+    <Compile Include="..\Persistence\HistoricalOccurrencePersistence.cs" Link="Persistence\HistoricalOccurrencePersistence.cs" />
     <Compile Include="..\Persistence\LegacyHistoryCodec.cs" Link="Persistence\LegacyHistoryCodec.cs" />
     <Compile Include="..\Persistence\SqliteNativeResolver.cs" Link="Persistence\SqliteNativeResolver.cs" />
     <Compile Include="..\ReplayBackupRetention.cs" Link="ReplayBackupRetention.cs" />

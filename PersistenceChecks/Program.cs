@@ -15,16 +15,16 @@ int failures = 0;
 
 try
 {
-    // ---------- Schema: empty DB create, user_version=1, reopen, tables, history 0 rows ----------
+    // ---------- Schema: empty DB create, user_version=2, reopen, tables, history 0 rows ----------
     string dbPath = Path.Combine(tempRoot, "schema.sqlite3");
     using (GalleryDatabase db = new(dbPath, _ => { }))
     {
         Check(db.Open(), "db open");
         Check(db.EnsureSchema(), "schema created");
-        Check(db.SchemaVersion() == 1, "user_version=1");
+        Check(db.SchemaVersion() == 2, "user_version=2");
         Check(db.IsAvailable, "available");
         using SqliteConnection conn = db.Connection!;
-        string[] expectedTables = ["save_profiles", "events", "observed_variants", "variant_observation_summaries", "historical_event_records"];
+        string[] expectedTables = ["save_profiles", "events", "observed_variants", "variant_observation_summaries", "historical_event_records", "historical_execution_contexts"];
         foreach (string table in expectedTables)
         {
             using var cmd = conn.CreateCommand();
@@ -41,7 +41,91 @@ try
     using (GalleryDatabase db2 = new(dbPath, _ => { }))
     {
         Check(db2.Open(), "reopen open");
-        Check(db2.SchemaVersion() == 1, "reopen user_version=1");
+        Check(db2.SchemaVersion() == 2, "reopen user_version=2");
+    }
+
+    // ---------- Schema v1 -> v2: empty, populated, no fabricated contexts, repeat open ----------
+    string emptyV1Path = Path.Combine(tempRoot, "empty-v1.sqlite3");
+    using (GalleryDatabase db = new(emptyV1Path, _ => { }))
+    {
+        Check(db.Open(), "empty v1 open");
+        CreateVersion1Schema(db.Connection!);
+        Check(db.SchemaVersion() == 1, "empty v1 starts at 1");
+        Check(db.EnsureSchema(), "empty v1 migrates");
+        Check(db.SchemaVersion() == 2, "empty v1 becomes v2");
+        Check(TableExists(db.Connection!, "historical_execution_contexts"), "empty v1 context table created");
+    }
+    using (GalleryDatabase db = new(emptyV1Path, _ => { }))
+    {
+        Check(db.Open() && db.EnsureSchema(), "migrated v2 repeat open");
+        Check(db.SchemaVersion() == 2, "repeat open remains v2");
+    }
+
+    string populatedV1Path = Path.Combine(tempRoot, "populated-v1.sqlite3");
+    using (GalleryDatabase db = new(populatedV1Path, _ => { }))
+    {
+        Check(db.Open(), "populated v1 open");
+        CreateVersion1Schema(db.Connection!);
+        InsertVersion1Fixture(db.Connection!);
+        Check(db.EnsureSchema(), "populated v1 migrates");
+        Check(db.SchemaVersion() == 2, "populated v1 becomes v2");
+        Check(CountRows(db.Connection!, "SELECT COUNT(*) FROM observed_variants;") == 1, "v1 variant preserved");
+        Check(CountRows(db.Connection!, "SELECT COUNT(*) FROM historical_event_records;") == 1, "v1 occurrence preserved");
+        Check(CountRows(db.Connection!, "SELECT COUNT(*) FROM historical_execution_contexts;") == 0, "v1 occurrence has no fabricated context");
+    }
+
+    // ---------- Migration failure rolls back and leaves user_version=1 ----------
+    string migrationFailPath = Path.Combine(tempRoot, "migration-fail.sqlite3");
+    using (GalleryDatabase db = new(migrationFailPath, _ => { }))
+    {
+        Check(db.Open(), "migration failure open");
+        CreateVersion1Schema(db.Connection!);
+        using (var incompatible = db.Connection!.CreateCommand())
+        {
+            incompatible.CommandText = "CREATE TABLE historical_execution_contexts (bad INTEGER);";
+            incompatible.ExecuteNonQuery();
+        }
+        Check(!db.EnsureSchema(), "incompatible v1 migration rejected");
+        Check(db.SchemaVersion() == 1, "failed migration leaves user_version=1");
+        Check(CountRows(db.Connection!, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='historical_event_records';") == 1, "failed migration preserves v1 tables");
+    }
+
+    // ---------- Migration validation failure after DDL rolls back ----------
+    string migrationValidationFailPath = Path.Combine(tempRoot, "migration-validation-fail.sqlite3");
+    using (GalleryDatabase db = new(migrationValidationFailPath, _ => { }))
+    {
+        Check(db.Open(), "migration validation failure open");
+        using (var version = db.Connection!.CreateCommand())
+        {
+            version.CommandText = "PRAGMA user_version = 1;";
+            version.ExecuteNonQuery();
+        }
+        Check(!db.EnsureSchema(), "orphaned v1 migration validation rejected");
+        Check(db.SchemaVersion() == 1, "post-DDL validation failure rolls back user_version");
+        Check(!TableExists(db.Connection!, "historical_execution_contexts"), "post-DDL validation failure rolls back created table");
+    }
+
+    // ---------- Malformed database already marked v2 is rejected ----------
+    string malformedV2Path = Path.Combine(tempRoot, "malformed-v2.sqlite3");
+    using (GalleryDatabase db = new(malformedV2Path, _ => { }))
+    {
+        Check(db.Open(), "malformed v2 open");
+        CreateVersion1Schema(db.Connection!);
+        using var malformed = db.Connection!.CreateCommand();
+        malformed.CommandText =
+            """
+            CREATE TABLE historical_execution_contexts (
+                context_pk INTEGER PRIMARY KEY,
+                record_fk INTEGER NOT NULL,
+                schema_version INTEGER NOT NULL,
+                completion_status TEXT NOT NULL,
+                execution_json TEXT NOT NULL
+            );
+            PRAGMA user_version = 2;
+            """;
+        malformed.ExecuteNonQuery();
+        Check(!db.EnsureSchema(), "malformed current v2 rejected");
+        Check(db.SchemaVersion() == 2, "malformed v2 is not overwritten");
     }
 
     // ---------- SaveProfileKey ----------
@@ -278,6 +362,168 @@ try
         repo.ImportLegacy([MakeSnapshot("Data/Events/Town", "123", "123/A", "root", "speak A", "ph1")]);
         Check(CountVariants(db.Connection!, id) == 1, "write persisted");
     }
+
+    // ---------- Natural occurrence + optional execution context persistence ----------
+    string occurrencePath = Path.Combine(tempRoot, "occurrences.sqlite3");
+    using (GalleryDatabase db = new(occurrencePath, _ => { }))
+    {
+        Check(db.Open() && db.EnsureSchema(), "occurrence db");
+        using HistoryRepository repo = new(db, profile);
+        repo.EnsureProfile("folder", "farmer", DateTimeOffset.Now);
+        EventIdentity id = new("Data/Events/HaleyHouse", "195012");
+        string playbackHash = FullHash('A');
+        ObservedVariant variant = MakeVariant(id, "195012/f Haley 2500", Bundle("root", playbackHash, "branch"));
+        VariantObservationSummary summary = new(
+            variant.Key,
+            DateTimeOffset.FromUnixTimeMilliseconds(1000),
+            DateTimeOffset.FromUnixTimeMilliseconds(2000),
+            "HaleyHouse",
+            "zh");
+        HistoricalExecutionContext context = EmptyExecutionContext(playbackHash);
+
+        NaturalOccurrenceWriteResult first = repo.AddNaturalOccurrence(
+            variant,
+            summary,
+            new HistoricalEventRecord(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(3000), "HaleyHouse", "zh"),
+            context);
+        NaturalOccurrenceWriteResult second = repo.AddNaturalOccurrence(
+            variant,
+            summary,
+            new HistoricalEventRecord(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(4000), "HaleyHouse", "zh"),
+            context);
+        Check(first.RecordId > 0 && second.RecordId > first.RecordId, "two occurrence IDs");
+        Check(first.ContextStatus == ExecutionContextWriteStatus.Stored && second.ContextStatus == ExecutionContextWriteStatus.Stored, "valid contexts stored");
+        Check(HistoryCount(db.Connection!) == 2, "same variant keeps multiple occurrences");
+
+        NaturalOccurrenceWriteResult missing = repo.AddNaturalOccurrence(
+            variant,
+            summary,
+            new HistoricalEventRecord(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(5000), "HaleyHouse", "zh"),
+            null);
+        Check(missing.ContextStatus == ExecutionContextWriteStatus.Missing, "occurrence without context stored as Missing");
+
+        HistoricalExecutionContext mismatchContext = EmptyExecutionContext(FullHash('B'));
+        NaturalOccurrenceWriteResult mismatch = repo.AddNaturalOccurrence(
+            variant,
+            summary,
+            new HistoricalEventRecord(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(6000), "HaleyHouse", "zh"),
+            mismatchContext);
+        Check(mismatch.ContextStatus == ExecutionContextWriteStatus.Rejected, "PlaybackHash mismatch rejected");
+        Check(HistoryCount(db.Connection!) == 4, "rejected context preserves occurrence");
+
+        IReadOnlyList<PersistedHistoricalOccurrence> loaded = repo.LoadHistoricalOccurrencesForProfile();
+        Check(loaded.Count == 4, "occurrences hydrate");
+        Check(loaded.Count(value => value.ExecutionContext.State == HistoricalExecutionContextState.EmptyComplete) == 2, "valid contexts hydrate");
+        Check(loaded.Count(value => value.ExecutionContext.State == HistoricalExecutionContextState.Missing) == 2, "missing/rejected contexts hydrate Missing");
+        Check(loaded[0].Record.WatchedAt == DateTimeOffset.FromUnixTimeMilliseconds(6000), "occurrences ordered newest first");
+
+        using (var corrupt = db.Connection!.CreateCommand())
+        {
+            corrupt.CommandText = "UPDATE historical_execution_contexts SET execution_json='{bad json' WHERE record_fk=$record;";
+            corrupt.Parameters.AddWithValue("$record", first.RecordId);
+            corrupt.ExecuteNonQuery();
+        }
+        loaded = repo.LoadHistoricalOccurrencesForProfile();
+        Check(loaded.Count == 4, "malformed child does not drop occurrences");
+        Check(loaded.Single(value => value.RecordId == first.RecordId).ExecutionContext.State == HistoricalExecutionContextState.Invalid, "malformed child isolated to record");
+        Check(loaded.Single(value => value.RecordId == second.RecordId).ExecutionContext.State == HistoricalExecutionContextState.EmptyComplete, "neighbor context remains valid");
+
+        using (var corruptMirror = db.Connection!.CreateCommand())
+        {
+            corruptMirror.CommandText = "UPDATE historical_execution_contexts SET schema_version='bad', completion_status=123 WHERE record_fk=$record;";
+            corruptMirror.Parameters.AddWithValue("$record", second.RecordId);
+            corruptMirror.ExecuteNonQuery();
+        }
+        loaded = repo.LoadHistoricalOccurrencesForProfile();
+        Check(loaded.Count == 4, "malformed mirror does not drop occurrences");
+        Check(loaded.Single(value => value.RecordId == second.RecordId).ExecutionContext.State == HistoricalExecutionContextState.Invalid, "malformed mirror isolated to record");
+
+        using (var delete = db.Connection!.CreateCommand())
+        {
+            delete.CommandText = "DELETE FROM historical_event_records WHERE record_pk=$record;";
+            delete.Parameters.AddWithValue("$record", second.RecordId);
+            delete.ExecuteNonQuery();
+        }
+        Check(CountRows(db.Connection!, "SELECT COUNT(*) FROM historical_execution_contexts WHERE record_fk=$record;", ("$record", second.RecordId)) == 0, "context cascades with occurrence delete");
+    }
+
+    // ---------- Context child failure preserves core occurrence ----------
+    string contextFailPath = Path.Combine(tempRoot, "context-fail.sqlite3");
+    using (GalleryDatabase db = new(contextFailPath, _ => { }))
+    {
+        Check(db.Open() && db.EnsureSchema(), "context failure db");
+        using SqliteConnection conn = db.Connection!;
+        using (var trigger = conn.CreateCommand())
+        {
+            trigger.CommandText =
+                """
+                CREATE TRIGGER fail_execution_context
+                BEFORE INSERT ON historical_execution_contexts
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced context failure');
+                END;
+                """;
+            trigger.ExecuteNonQuery();
+        }
+        using HistoryRepository repo = new(db, profile);
+        repo.EnsureProfile("folder", "farmer", DateTimeOffset.Now);
+        EventIdentity id = new("Data/Events/Town", "123");
+        string playbackHash = FullHash('C');
+        ObservedVariant variant = MakeVariant(id, "123/A", Bundle("root", playbackHash, "branch"));
+        VariantObservationSummary summary = new(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(1), DateTimeOffset.FromUnixTimeMilliseconds(2), "Town", "en");
+        NaturalOccurrenceWriteResult result = repo.AddNaturalOccurrence(
+            variant,
+            summary,
+            new HistoricalEventRecord(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(3), "Town", "en"),
+            EmptyExecutionContext(playbackHash));
+        Check(result.ContextStatus == ExecutionContextWriteStatus.Failed, "context SQL failure reported");
+        Check(HistoryCount(conn) == 1, "context SQL failure preserves occurrence");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM historical_execution_contexts;") == 0, "failed context row absent");
+    }
+
+    // ---------- Core occurrence failure rolls back event/variant/summary ----------
+    string occurrenceFailPath = Path.Combine(tempRoot, "occurrence-fail.sqlite3");
+    using (GalleryDatabase db = new(occurrenceFailPath, _ => { }))
+    {
+        Check(db.Open() && db.EnsureSchema(), "occurrence failure db");
+        using SqliteConnection conn = db.Connection!;
+        using (var trigger = conn.CreateCommand())
+        {
+            trigger.CommandText =
+                """
+                CREATE TRIGGER fail_occurrence
+                BEFORE INSERT ON historical_event_records
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced occurrence failure');
+                END;
+                """;
+            trigger.ExecuteNonQuery();
+        }
+        using HistoryRepository repo = new(db, profile);
+        repo.EnsureProfile("folder", "farmer", DateTimeOffset.Now);
+        EventIdentity id = new("Data/Events/Town", "fail");
+        string playbackHash = FullHash('D');
+        ObservedVariant variant = MakeVariant(id, "fail/A", Bundle("root", playbackHash, "branch"));
+        VariantObservationSummary summary = new(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(1), DateTimeOffset.FromUnixTimeMilliseconds(2), "Town", "en");
+        bool threw = false;
+        try
+        {
+            repo.AddNaturalOccurrence(
+                variant,
+                summary,
+                new HistoricalEventRecord(variant.Key, DateTimeOffset.FromUnixTimeMilliseconds(3), "Town", "en"),
+                EmptyExecutionContext(playbackHash));
+        }
+        catch
+        {
+            threw = true;
+        }
+        Check(threw, "core occurrence failure throws to caller boundary");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM events WHERE event_id='fail';") == 0, "core failure rolls back event");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM observed_variants;") == 0, "core failure rolls back variant");
+        Check(CountRows(conn, "SELECT COUNT(*) FROM variant_observation_summaries;") == 0, "core failure rolls back summary");
+        Check(HistoryCount(conn) == 0, "core failure rolls back occurrence");
+    }
     using (GalleryDatabase db = new(reopenPath, _ => { }))
     {
         Check(db.Open() && db.EnsureSchema(), "reopen open2");
@@ -471,6 +717,78 @@ static long QueryEventCount(SqliteConnection conn, string asset, string eventId)
     return Convert.ToInt64(cmd.ExecuteScalar());
 }
 
+static bool TableExists(SqliteConnection conn, string table)
+    => CountRows(conn, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=$name;", ("$name", table)) == 1;
+
+static void CreateVersion1Schema(SqliteConnection conn)
+{
+    using var command = conn.CreateCommand();
+    command.CommandText =
+        """
+        CREATE TABLE save_profiles (
+            profile_pk INTEGER PRIMARY KEY,
+            farm_unique_id INTEGER NOT NULL,
+            player_unique_id INTEGER NOT NULL,
+            save_folder_name TEXT,
+            farmer_name TEXT,
+            created_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            UNIQUE(farm_unique_id, player_unique_id)
+        );
+        CREATE TABLE events (
+            event_pk INTEGER PRIMARY KEY,
+            asset_name TEXT NOT NULL COLLATE ORDINAL_NOCASE,
+            event_id TEXT NOT NULL COLLATE BINARY,
+            UNIQUE(asset_name, event_id)
+        );
+        CREATE TABLE observed_variants (
+            variant_pk INTEGER PRIMARY KEY,
+            event_fk INTEGER NOT NULL REFERENCES events(event_pk) ON DELETE CASCADE,
+            root_definition_hash TEXT NOT NULL COLLATE BINARY,
+            playback_hash TEXT NOT NULL COLLATE BINARY,
+            root_script_hash TEXT NOT NULL COLLATE BINARY,
+            raw_event_key TEXT NOT NULL,
+            root_script TEXT NOT NULL,
+            playback_json TEXT NOT NULL,
+            UNIQUE(event_fk, root_definition_hash, playback_hash)
+        );
+        CREATE TABLE variant_observation_summaries (
+            summary_pk INTEGER PRIMARY KEY,
+            profile_fk INTEGER NOT NULL REFERENCES save_profiles(profile_pk) ON DELETE CASCADE,
+            variant_fk INTEGER NOT NULL REFERENCES observed_variants(variant_pk) ON DELETE CASCADE,
+            first_observed_at INTEGER NOT NULL,
+            last_observed_at INTEGER NOT NULL,
+            last_observed_location_name TEXT,
+            last_observed_locale TEXT,
+            UNIQUE(profile_fk, variant_fk)
+        );
+        CREATE TABLE historical_event_records (
+            record_pk INTEGER PRIMARY KEY,
+            profile_fk INTEGER NOT NULL REFERENCES save_profiles(profile_pk) ON DELETE CASCADE,
+            variant_fk INTEGER NOT NULL REFERENCES observed_variants(variant_pk) ON DELETE CASCADE,
+            watched_at INTEGER NOT NULL,
+            location_name TEXT,
+            locale TEXT
+        );
+        PRAGMA user_version = 1;
+        """;
+    command.ExecuteNonQuery();
+}
+
+static void InsertVersion1Fixture(SqliteConnection conn)
+{
+    using var command = conn.CreateCommand();
+    command.CommandText =
+        """
+        INSERT INTO save_profiles VALUES (1, 100, 200, 'folder', 'farmer', 1, 2);
+        INSERT INTO events VALUES (1, 'Data/Events/Town', '123');
+        INSERT INTO observed_variants VALUES (1, 1, 'rd', 'ph', 'rs', '123/A', 'root', '{"EventAssets":{},"Translations":{}}');
+        INSERT INTO variant_observation_summaries VALUES (1, 1, 1, 1, 2, 'Town', 'en');
+        INSERT INTO historical_event_records VALUES (1, 1, 1, 2, 'Town', 'en');
+        """;
+    command.ExecuteNonQuery();
+}
+
 static void HistoricPlaybackBundleForTest(SqliteConnection conn)
 {
     // roundtrip PlaybackPayload with no Locale
@@ -480,8 +798,9 @@ static void HistoricPlaybackBundleForTest(SqliteConnection conn)
     string json = JsonSerializer.Serialize(payload);
     Check(!json.Contains("\"Locale\""), "playback_json does not contain Locale");
     Check(!json.Contains("Locale"), "playback_json no locale anywhere");
-    PlaybackPayload? round = JsonSerializer.Deserialize<PlaybackPayload>(json);
-    Check(round is not null && round.EventAssets["Data/Events/Sub"]["branch"] == "speak X", "payload asset roundtrip");
+    PlaybackPayload round = JsonSerializer.Deserialize<PlaybackPayload>(json)
+        ?? throw new Exception("payload roundtrip returned null");
+    Check(round.EventAssets["Data/Events/Sub"]["branch"] == "speak X", "payload asset roundtrip");
     Check(round.Translations["z:key"] == "value", "payload translation roundtrip");
 
     bool malformedHandled = false;
@@ -504,6 +823,23 @@ static HistoricalPlaybackBundle Bundle(string rootScript, string playbackHash, s
     Dictionary<string, string> translations = new(StringComparer.Ordinal) { ["z:key"] = "value" };
     return new HistoricalPlaybackBundle(rootScript, assets, translations, "en", playbackHash);
 }
+
+static HistoricalExecutionContext EmptyExecutionContext(string playbackHash)
+    => new(
+        HistoricalExecutionContextRules.CurrentSchemaVersion,
+        playbackHash,
+        ExecutionTraceCompletion.EmptyComplete,
+        ExecutionTraceEndReason.NaturalComplete,
+        new ExecutionTraceCoverageSummary(
+            ExecutionTraceCoverage.Complete,
+            ExecutionTraceCoverage.Complete,
+            OpaqueDecisionCoverage.NoneObserved),
+        new ExecutionTraceProvenance("1.6.15.24356", "1.0.0", "en"),
+        [],
+        [],
+        []);
+
+static string FullHash(char value) => new(value, 64);
 
 static ObservedVariant MakeVariant(EventIdentity id, string rawKey, HistoricalPlaybackBundle bundle)
 {

@@ -174,20 +174,40 @@ internal sealed class HistoryRepository(GalleryDatabase database, SaveProfileKey
         return Convert.ToInt64(select.ExecuteScalar());
     }
 
-    internal void AddHistoricalEventRecord(HistoricalEventRecord record)
+    internal NaturalOccurrenceWriteResult AddNaturalOccurrence(
+        ObservedVariant variant,
+        VariantObservationSummary summary,
+        HistoricalEventRecord record,
+        HistoricalExecutionContext? context)
     {
         SqliteConnection? conn = database.Connection;
         if (conn is null || WriteDisabled)
-            return;
-        using var transaction = conn.BeginTransaction();
-        long eventPk = EnsureEvent(conn, transaction, record.Identity);
-        long variantPk = ResolveVariantPk(conn, transaction, record.Variant, eventPk);
-        long? profilePk = EnsureProfile(conn, transaction);
-        if (variantPk < 0 || profilePk is null)
+            return new NaturalOccurrenceWriteResult(-1, ExecutionContextWriteStatus.Failed);
+
+        if (record.Variant != variant.Key || summary.Variant != variant.Key)
+            throw new ArgumentException("Natural occurrence variant, summary, and record keys must match.");
+
+        string? executionJson = null;
+        ExecutionContextWriteStatus contextStatus = context is null
+            ? ExecutionContextWriteStatus.Missing
+            : ExecutionContextWriteStatus.Rejected;
+        if (context is not null
+            && StringComparer.Ordinal.Equals(context.PlaybackHash, variant.Key.PlaybackHash)
+            && HistoricalExecutionContextCodec.TryEncode(context, out string encoded))
         {
-            transaction.Rollback();
-            return;
+            executionJson = encoded;
+            contextStatus = ExecutionContextWriteStatus.Stored;
         }
+
+        using var transaction = conn.BeginTransaction();
+        long eventPk = EnsureEvent(conn, transaction, variant.Key.Identity);
+        long variantPk = EnsureVariant(conn, transaction, variant, eventPk);
+        UpsertSummary(conn, transaction, variantPk, summary);
+        long? profilePk = EnsureProfile(conn, transaction);
+        if (profilePk is null)
+            throw new InvalidOperationException("Natural occurrence profile could not be resolved.");
+
+        long recordId;
         using var command = conn.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
@@ -201,23 +221,52 @@ internal sealed class HistoryRepository(GalleryDatabase database, SaveProfileKey
         command.Parameters.AddWithValue("$loc", record.LocationName);
         command.Parameters.AddWithValue("$locale", record.Locale);
         command.ExecuteNonQuery();
+        using (var identity = conn.CreateCommand())
+        {
+            identity.Transaction = transaction;
+            identity.CommandText = "SELECT last_insert_rowid();";
+            recordId = Convert.ToInt64(identity.ExecuteScalar());
+        }
+
+        if (executionJson is not null)
+        {
+            Execute(transaction, "SAVEPOINT execution_context;");
+            try
+            {
+                using var execution = conn.CreateCommand();
+                execution.Transaction = transaction;
+                execution.CommandText =
+                    """
+                    INSERT INTO historical_execution_contexts
+                        (record_fk, schema_version, completion_status, execution_json)
+                    VALUES ($record, $schema, $completion, $json);
+                    """;
+                execution.Parameters.AddWithValue("$record", recordId);
+                execution.Parameters.AddWithValue("$schema", context!.SchemaVersion);
+                execution.Parameters.AddWithValue("$completion", context.Completion.ToString());
+                execution.Parameters.AddWithValue("$json", executionJson);
+                execution.ExecuteNonQuery();
+                Execute(transaction, "RELEASE execution_context;");
+            }
+            catch (Exception error)
+            {
+                Execute(transaction, "ROLLBACK TO execution_context;");
+                Execute(transaction, "RELEASE execution_context;");
+                contextStatus = ExecutionContextWriteStatus.Failed;
+                logger?.Invoke($"execution context persistence failed for record {recordId}: {error.Message}");
+            }
+        }
+
         transaction.Commit();
+        return new NaturalOccurrenceWriteResult(recordId, contextStatus);
     }
 
-    private static long ResolveVariantPk(SqliteConnection conn, SqliteTransaction tx, ObservedVariantKey key, long eventPk)
+    private static void Execute(SqliteTransaction transaction, string sql)
     {
-        using var select = conn.CreateCommand();
-        select.Transaction = tx;
-        select.CommandText =
-            """
-            SELECT variant_pk FROM observed_variants
-            WHERE event_fk = $event AND root_definition_hash = $rootdef AND playback_hash = $playback;
-            """;
-        select.Parameters.AddWithValue("$event", eventPk);
-        select.Parameters.AddWithValue("$rootdef", key.RootDefinitionHash);
-        select.Parameters.AddWithValue("$playback", key.PlaybackHash);
-        object? result = select.ExecuteScalar();
-        return result is null ? -1 : Convert.ToInt64(result);
+        using var command = transaction.Connection!.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
     }
 
     internal void ImportLegacy(IEnumerable<WatchedEventSnapshot> snapshots)
@@ -264,6 +313,66 @@ internal sealed class HistoryRepository(GalleryDatabase database, SaveProfileKey
         }
         return rows;
     }
+
+    internal IReadOnlyList<PersistedHistoricalOccurrence> LoadHistoricalOccurrencesForProfile()
+    {
+        SqliteConnection? conn = database.Connection;
+        if (conn is null)
+            return [];
+        long? profilePk = ResolveProfilePk(conn);
+        if (profilePk is null)
+            return [];
+
+        List<PersistedHistoricalOccurrence> rows = [];
+        using var command = conn.CreateCommand();
+        command.CommandText =
+            """
+            SELECT h.record_pk, e.asset_name, e.event_id,
+                   v.root_definition_hash, v.playback_hash,
+                   h.watched_at, h.location_name, h.locale,
+                   c.schema_version, c.completion_status, c.execution_json
+            FROM historical_event_records h
+            JOIN observed_variants v ON v.variant_pk = h.variant_fk
+            JOIN events e ON e.event_pk = v.event_fk
+            LEFT JOIN historical_execution_contexts c ON c.record_fk = h.record_pk
+            WHERE h.profile_fk = $profile
+            ORDER BY h.watched_at DESC, h.record_pk DESC;
+            """;
+        command.Parameters.AddWithValue("$profile", profilePk.Value);
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            EventIdentity identity = new(reader.GetString(1), reader.GetString(2));
+            ObservedVariantKey variant = new(identity, reader.GetString(3), reader.GetString(4));
+            HistoricalEventRecord record = new(
+                variant,
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5)),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7));
+
+            HistoricalExecutionContextLoad execution;
+            try
+            {
+                execution = reader.IsDBNull(8)
+                    ? HistoricalExecutionContextCodec.Decode(null, variant.PlaybackHash)
+                    : HistoricalExecutionContextCodec.Decode(reader.GetString(10), variant.PlaybackHash);
+                if (execution.Context is HistoricalExecutionContext context
+                    && (reader.GetInt32(8) != context.SchemaVersion
+                        || !StringComparer.Ordinal.Equals(reader.GetString(9), context.Completion.ToString())))
+                    execution = InvalidExecutionContext();
+            }
+            catch (Exception error)
+            {
+                logger?.Invoke($"execution context columns are invalid for record {reader.GetInt64(0)}: {error.Message}");
+                execution = InvalidExecutionContext();
+            }
+            rows.Add(new PersistedHistoricalOccurrence(reader.GetInt64(0), record, execution));
+        }
+        return rows;
+    }
+
+    private static HistoricalExecutionContextLoad InvalidExecutionContext()
+        => new(HistoricalExecutionContextState.Invalid, null, ExecutionContextInvalidReason.InvalidModel);
 
     internal IReadOnlyList<WatchedEventSnapshot> GetCompatibilityVersions(EventIdentity identity)
     {

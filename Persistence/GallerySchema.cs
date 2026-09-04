@@ -2,7 +2,7 @@ namespace StardewGallery;
 
 internal static class GallerySchema
 {
-    internal const int CurrentVersion = 1;
+    internal const int CurrentVersion = 2;
 
     internal const string CreateCommandText =
         """
@@ -56,6 +56,14 @@ internal static class GallerySchema
             locale        TEXT
         );
 
+        CREATE TABLE historical_execution_contexts (
+            context_pk       INTEGER PRIMARY KEY,
+            record_fk        INTEGER NOT NULL UNIQUE REFERENCES historical_event_records(record_pk) ON DELETE CASCADE,
+            schema_version   INTEGER NOT NULL,
+            completion_status TEXT NOT NULL,
+            execution_json   TEXT NOT NULL
+        );
+
         CREATE INDEX idx_observed_variants_event
         ON observed_variants(event_fk);
 
@@ -68,6 +76,19 @@ internal static class GallerySchema
         CREATE INDEX idx_history_variant
         ON historical_event_records(variant_fk);
 
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
+        """;
+
+    internal const string MigrateVersion1To2CommandText =
+        """
+        CREATE TABLE historical_execution_contexts (
+            context_pk       INTEGER PRIMARY KEY,
+            record_fk        INTEGER NOT NULL UNIQUE REFERENCES historical_event_records(record_pk) ON DELETE CASCADE,
+            schema_version   INTEGER NOT NULL,
+            completion_status TEXT NOT NULL,
+            execution_json   TEXT NOT NULL
+        );
+
+        PRAGMA user_version = 2;
         """;
 }
