@@ -35,7 +35,15 @@ internal sealed class PreviewInjectionScope : IDisposable
     internal static PreviewInjectionScope Apply(IPreviewStateAccessor accessor, PreviewState state)
     {
         PreviewInjectionScope scope = new(accessor);
-        scope.CaptureAndApply(state);
+        try
+        {
+            scope.CaptureAndApply(state);
+        }
+        catch
+        {
+            // The scope is still returned so its Dispose restores whatever was applied.
+            // Partial capture must never leave injected state on the live game.
+        }
         return scope;
     }
 
@@ -93,9 +101,6 @@ internal sealed class PreviewInjectionScope : IDisposable
                 accessor.SetMail(id, true);
             }
     }
-
-    internal void MarkRecoveryFailed()
-        => restores.Clear();
 
     public void Dispose()
     {

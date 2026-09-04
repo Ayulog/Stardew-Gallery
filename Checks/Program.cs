@@ -1477,6 +1477,16 @@ Check(pvFake.DayOfMonth is null && pvFake.Year is null, "F1-10 untouched slots u
 using (PreviewInjectionScope pvScope2 = PreviewInjectionScope.Apply(pvFake, pvFullInject)) { }
 Check(pvFake.Season == "spring", "F1-11 idempotent restore");
 
+// capture failure must still return a scope that restores applied state
+ThrowingPreviewAccessor pvThrow = new();
+pvThrow.Season = "spring";
+PreviewState pvThrowState = new(Season: "summer", Friendship: new Dictionary<string, int> { ["Haley"] = 2500 });
+using (PreviewInjectionScope pvThrowScope = PreviewInjectionScope.Apply(pvThrow, pvThrowState))
+{
+    Check(pvThrow.Season == "summer", "F1-14 applied before failure retained");
+}
+Check(pvThrow.Season == "spring", "F1-14 partial failure still restores applied state");
+
 // Playback stays current-state canonical
 GalleryEvent pvCurrent = TestEvent("130/A");
 EventPlayback pvPlayback = EventPlayback.ForCurrent(pvCurrent.Resolved);
@@ -1671,4 +1681,20 @@ internal sealed class FakePreviewAccessor : IPreviewStateAccessor
     public void SetEventSeen(string id, bool present) { if (present) seen.Add(id); else seen.Remove(id); }
     public bool HasMail(string id) => mail.Contains(id);
     public void SetMail(string id, bool present) { if (present) mail.Add(id); else mail.Remove(id); }
+}
+
+internal sealed class ThrowingPreviewAccessor : IPreviewStateAccessor
+{
+    public string? Season { get; set; }
+    public int? DayOfMonth { get; set; }
+    public int? Year { get; set; }
+    public int? Time { get; set; }
+    public int? GetFriendship(string npc) => 0;
+    public void SetFriendship(string npc, int points) { }
+    public bool HasEventSeen(string id) => false;
+    public void SetEventSeen(string id, bool seen) => throw new InvalidOperationException(
+        "injected eventsSeen failure");
+    public bool HasMail(string id) => false;
+    public void SetMail(string id, bool present) => throw new InvalidOperationException(
+        "injected mail failure");
 }
