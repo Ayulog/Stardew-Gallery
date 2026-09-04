@@ -1019,6 +1019,257 @@ Check(p6Historical.LocationName == "HistoricalTown", "P6-C historical snapshot L
 Check(p6Current.LocationName == "Town", "P6-C current entry location retained for its own playback");
 Check(p6Current is EventPlayback && p6Historical is EventPlayback, "P6-D both current/historical produce EventPlayback");
 
+// ---------- Phase 7B historical execution trace contract ----------
+string p7PlaybackHash = FullHash('A');
+string p7RootCommandsHash = HistoricalExecutionContextRules.HashCommandList(["question fork1 q#a#b", "fork branch"]);
+ScriptSourceIdentity p7RootSource = new(ScriptSourceKind.RootPlayback, null, null);
+ScriptSegmentIdentity p7Root = new(
+    ScriptSegmentKind.Root,
+    HistoricalExecutionContextRules.HashRootPath(p7PlaybackHash, p7RootCommandsHash),
+    p7RootCommandsHash,
+    p7RootSource,
+    null);
+DecisionLocator p7ChoiceLocator = new(
+    p7Root,
+    ExecutionDecisionKind.NativeQuestion,
+    HistoricalExecutionContextRules.HashCommand("question fork1 q#a#b"),
+    0,
+    0);
+List<ReplayResponseOption> p7Options =
+[
+    new(ResponseIdentityKind.GeneratedOrdinal, "0", FullHash('5')),
+    new(ResponseIdentityKind.GeneratedOrdinal, "1", FullHash('6'))
+];
+string p7OptionSetHash = HistoricalExecutionContextRules.HashOptionSet(p7Options);
+ResponseIdentity p7Response = new(
+    ResponseIdentityKind.GeneratedOrdinal,
+    "1",
+    1,
+    2,
+    p7OptionSetHash,
+    FullHash('6'),
+    "zh");
+PlayerChoiceDecision p7Choice = new(0, p7ChoiceLocator, p7Response);
+SegmentEntryIdentity p7Entry = new(
+    p7Root.PathHash,
+    HistoricalExecutionContextRules.HashCommand("fork branch"),
+    1,
+    0,
+    "branch");
+ScriptSourceIdentity p7BranchSource = new(ScriptSourceKind.EventAssetEntry, "Data/Events/HaleyHouse", "branch");
+string p7BranchCommandsHash = HistoricalExecutionContextRules.HashCommandList(["speak Sophia hi", "end"]);
+ScriptSegmentIdentity p7Branch = new(
+    ScriptSegmentKind.ForkReplacement,
+    HistoricalExecutionContextRules.HashChildPath(p7PlaybackHash, ScriptSegmentKind.ForkReplacement, p7BranchSource, p7Entry, p7BranchCommandsHash),
+    p7BranchCommandsHash,
+    p7BranchSource,
+    p7Entry);
+DecisionLocator p7ForkLocator = new(
+    p7Root,
+    ExecutionDecisionKind.Fork,
+    p7Entry.CommandHash,
+    1,
+    0);
+AutomaticDecision p7Fork = new(
+    1,
+    p7ForkLocator,
+    AutomaticDecisionCausality.PlayerChoiceDerived,
+    0,
+    new AutomaticDecisionResult(AutomaticDecisionOutcome.ReplaceCommands, "branch", null, p7Branch));
+ExecutionTraceCoverageSummary p7FullCoverage = new(
+    ExecutionTraceCoverage.Complete,
+    ExecutionTraceCoverage.Complete,
+    OpaqueDecisionCoverage.NoneObserved);
+HistoricalExecutionContext p7Context = new(
+    HistoricalExecutionContextRules.CurrentSchemaVersion,
+    p7PlaybackHash,
+    ExecutionTraceCompletion.Complete,
+    ExecutionTraceEndReason.NaturalComplete,
+    p7FullCoverage,
+    new ExecutionTraceProvenance("1.6.15.24356", "1.0.0", "zh"),
+    [p7Fork],
+    [p7Choice],
+    []);
+
+Check(HistoricalExecutionContextRules.TryValidate(p7Context, out _), "P7B valid context");
+Check(HistoricalExecutionContextCodec.TryEncode(p7Context, out string p7Json), "P7B context encodes");
+HistoricalExecutionContextLoad p7Roundtrip = HistoricalExecutionContextCodec.Decode(p7Json, p7PlaybackHash);
+Check(p7Roundtrip.State == HistoricalExecutionContextState.Complete && p7Roundtrip.Context is not null, "P7B roundtrip complete");
+HistoricalExecutionContext p7Loaded = p7Roundtrip.Context ?? throw new Exception("P7B roundtrip context missing");
+Check(p7Loaded.AutomaticDecisions[0].Result.ReplacementSegment == p7Branch, "P7B roundtrip nested segment");
+Check(p7Loaded.PlayerChoices[0].Response.NativeKey == "1", "P7B roundtrip response");
+Check(p7Loaded.Equals(p7Context) && p7Loaded.GetHashCode() == p7Context.GetHashCode(), "P7B deep value equality");
+Check(p7Json.Contains(p7PlaybackHash, StringComparison.Ordinal) && p7Json.Contains(p7Branch.PathHash, StringComparison.Ordinal), "P7B full hashes persisted");
+
+HistoricalExecutionContextLoad p7Missing = HistoricalExecutionContextCodec.Decode(null, p7PlaybackHash);
+Check(p7Missing.State == HistoricalExecutionContextState.Missing && p7Missing.Context is null, "P7B Missing is explicit");
+HistoricalExecutionContext p7Empty = CopyExecutionContext(
+    p7Context,
+    completion: ExecutionTraceCompletion.EmptyComplete,
+    automaticDecisions: [],
+    playerChoices: []);
+Check(HistoricalExecutionContextCodec.TryEncode(p7Empty, out string p7EmptyJson), "P7B EmptyComplete encodes");
+Check(HistoricalExecutionContextCodec.Decode(p7EmptyJson, p7PlaybackHash).State == HistoricalExecutionContextState.EmptyComplete, "P7B Missing != EmptyComplete");
+
+HistoricalExecutionContext p7Partial = CopyExecutionContext(
+    p7Context,
+    completion: ExecutionTraceCompletion.Partial,
+    endReason: ExecutionTraceEndReason.NaturalComplete,
+    coverage: p7FullCoverage with { AutomaticDecisions = ExecutionTraceCoverage.Incomplete });
+Check(HistoricalExecutionContextRules.TryValidate(p7Partial, out _), "P7B Partial is structurally valid");
+Check(HistoricalExecutionContextRules.GetState(p7Partial) == HistoricalExecutionContextState.Partial, "P7B Partial != Complete");
+Check(HistoricalExecutionContextRules.GetCapability(p7Partial, p7PlaybackHash) == HistoricalReplayCapability.ContentOnly, "P7B Partial is content-only");
+
+Check(HistoricalExecutionContextCodec.Decode("{not-json", p7PlaybackHash).InvalidReason == ExecutionContextInvalidReason.MalformedPayload, "P7B malformed payload degrades");
+Check(HistoricalExecutionContextCodec.Decode("[]", p7PlaybackHash).InvalidReason == ExecutionContextInvalidReason.MalformedPayload, "P7B non-object payload degrades");
+Check(HistoricalExecutionContextCodec.Decode("{\"schemaVersion\":\"1\"}", p7PlaybackHash).InvalidReason == ExecutionContextInvalidReason.MalformedPayload, "P7B non-numeric schema degrades");
+string p7FutureJson = p7Json.Replace("\"schemaVersion\":1", "\"schemaVersion\":99", StringComparison.Ordinal);
+Check(HistoricalExecutionContextCodec.Decode(p7FutureJson, p7PlaybackHash).InvalidReason == ExecutionContextInvalidReason.FutureSchema, "P7B future schema degrades");
+Check(HistoricalExecutionContextCodec.Decode(p7Json, FullHash('B')).InvalidReason == ExecutionContextInvalidReason.PlaybackMismatch, "P7B binding mismatch rejected");
+string p7NumericEnumJson = p7Json.Replace("\"completion\":\"Complete\"", "\"completion\":999", StringComparison.Ordinal);
+Check(HistoricalExecutionContextCodec.Decode(p7NumericEnumJson, p7PlaybackHash).InvalidReason == ExecutionContextInvalidReason.MalformedPayload, "P7B numeric enum rejected");
+HistoricalExecutionContext p7UndefinedEnum = CopyExecutionContext(p7Context, completion: (ExecutionTraceCompletion)999);
+Check(!HistoricalExecutionContextRules.TryValidate(p7UndefinedEnum, out _), "P7B undefined enum rejected");
+HistoricalExecutionContext p7ReboundWithoutSegments = CopyExecutionContext(p7Context, playbackHash: FullHash('B'));
+Check(!HistoricalExecutionContextRules.TryValidate(p7ReboundWithoutSegments, out _), "P7B segment paths bind playback hash");
+
+Check(p7ChoiceLocator == p7ChoiceLocator with { }, "P7B DecisionLocator equality");
+Check(p7ChoiceLocator != p7ChoiceLocator with { Occurrence = 1 }, "P7B repeated command occurrence differs");
+Check(p7ChoiceLocator != p7ChoiceLocator with { CommandOrdinal = 1 }, "P7B duplicate command ordinal differs");
+Check(p7Root == p7Root with { }, "P7B ScriptSegmentIdentity equality");
+Check(p7Root != p7Branch, "P7B child segment identity differs");
+
+HistoricalExecutionContext p7Gap = CopyExecutionContext(p7Context, automaticDecisions: [p7Fork with { Sequence = 2 }]);
+Check(!HistoricalExecutionContextRules.TryValidate(p7Gap, out _), "P7B sequence gap rejected");
+HistoricalExecutionContext p7BadCause = CopyExecutionContext(p7Context, automaticDecisions: [p7Fork with { CausedByPlayerChoiceSequence = 2 }]);
+Check(!HistoricalExecutionContextRules.TryValidate(p7BadCause, out _), "P7B future choice cause rejected");
+HistoricalExecutionContext p7BadResult = CopyExecutionContext(
+    p7Context,
+    automaticDecisions: [p7Fork with
+    {
+        Result = new AutomaticDecisionResult(AutomaticDecisionOutcome.ReplaceCommands, "branch", null, null)
+    }]);
+Check(!HistoricalExecutionContextRules.TryValidate(p7BadResult, out _), "P7B malformed automatic result rejected");
+ScriptSegmentIdentity p7WrongEntryBranch = p7Branch with
+{
+    EnteredBy = p7Entry with { CommandOrdinal = 99 }
+};
+p7WrongEntryBranch = p7WrongEntryBranch with
+{
+    PathHash = HistoricalExecutionContextRules.HashChildPath(
+        p7PlaybackHash, p7WrongEntryBranch.Kind, p7WrongEntryBranch.Source,
+        p7WrongEntryBranch.EnteredBy!, p7WrongEntryBranch.CommandListHash)
+};
+HistoricalExecutionContext p7WrongEntry = CopyExecutionContext(
+    p7Context,
+    automaticDecisions: [p7Fork with
+    {
+        Result = p7Fork.Result with { ReplacementSegment = p7WrongEntryBranch }
+    }]);
+Check(!HistoricalExecutionContextRules.TryValidate(p7WrongEntry, out _), "P7B replacement entry must match decision locator");
+
+List<ReplayResponseOption> p7AuthoredOptions =
+[
+    new(ResponseIdentityKind.AuthoredKey, "Olivia_event5", FullHash('5')),
+    new(ResponseIdentityKind.AuthoredKey, "Olivia_event6", FullHash('6'))
+];
+ResponseIdentity p7AuthoredResponse = new(
+    ResponseIdentityKind.AuthoredKey,
+    "Olivia_event5",
+    0,
+    2,
+    FullHash('F'),
+    FullHash('5'),
+    "zh");
+ResponseMatchResult p7AuthoredMatch = HistoricalExecutionContextRules.MatchResponse(
+    p7AuthoredResponse, p7AuthoredOptions, "en");
+Check(p7AuthoredMatch is { Matched: true, Index: 0, Kind: ResponseMatchKind.AuthoredKey }, "P7B authored key has priority");
+ResponseMatchResult p7IndexMatch = HistoricalExecutionContextRules.MatchResponse(p7Response, p7Options, "en");
+Check(p7IndexMatch is { Matched: true, Index: 1, Kind: ResponseMatchKind.OptionSetAndIndex }, "P7B option-set guarded index");
+ResponseIdentity p7TextFallback = p7Response with { OptionSetHash = FullHash('F'), SelectedTextHash = FullHash('5') };
+ResponseMatchResult p7TextMatch = HistoricalExecutionContextRules.MatchResponse(p7TextFallback, p7Options, "zh");
+Check(p7TextMatch is { Matched: true, Index: 0, Kind: ResponseMatchKind.SameLocaleText }, "P7B same-locale text fallback");
+Check(!HistoricalExecutionContextRules.MatchResponse(p7TextFallback, p7Options, "en").Matched, "P7B cross-locale text fallback rejected");
+List<ReplayResponseOption> p7AmbiguousText =
+[
+    new(ResponseIdentityKind.IndexOnly, null, FullHash('5')),
+    new(ResponseIdentityKind.IndexOnly, null, FullHash('5'))
+];
+Check(!HistoricalExecutionContextRules.MatchResponse(p7TextFallback, p7AmbiguousText, "zh").Matched, "P7B ambiguous text rejected");
+
+Check(HistoricalExecutionContextRules.GetCapability(null, p7PlaybackHash) == HistoricalReplayCapability.ContentOnly, "P7B legacy capability");
+Check(HistoricalExecutionContextRules.GetCapability(p7Context, p7PlaybackHash) == HistoricalReplayCapability.ExactCapable, "P7B exact capability");
+AutomaticDecision p7AutonomousFork = p7Fork with
+{
+    Sequence = 0,
+    Causality = AutomaticDecisionCausality.Autonomous,
+    CausedByPlayerChoiceSequence = null
+};
+HistoricalExecutionContext p7AutomaticOnly = CopyExecutionContext(
+    p7Context,
+    coverage: p7FullCoverage with { PlayerChoices = ExecutionTraceCoverage.NotCaptured },
+    automaticDecisions: [p7AutonomousFork],
+    playerChoices: []);
+Check(HistoricalExecutionContextRules.GetCapability(p7AutomaticOnly, p7PlaybackHash) == HistoricalReplayCapability.OutcomeAware, "P7B automatic-only capability");
+Check(HistoricalExecutionContextRules.GetCapability(p7Empty, p7PlaybackHash) == HistoricalReplayCapability.ExactCapable, "P7B EmptyComplete exact capability");
+HistoricalExecutionContext p7Unknown = CopyExecutionContext(
+    p7Context,
+    automaticDecisions: [p7Fork with
+    {
+        Causality = AutomaticDecisionCausality.Unknown,
+        CausedByPlayerChoiceSequence = null
+    }]);
+Check(HistoricalExecutionContextRules.TryValidate(p7Unknown, out _), "P7B unknown decision remains parseable");
+Check(HistoricalExecutionContextRules.GetCapability(p7Unknown, p7PlaybackHash) == HistoricalReplayCapability.ContentOnly, "P7B unknown decision prevents fidelity claim");
+HistoricalExecutionContext p7Opaque = CopyExecutionContext(
+    p7Context,
+    coverage: p7FullCoverage with { OpaqueDecisions = OpaqueDecisionCoverage.UnsupportedObserved });
+Check(HistoricalExecutionContextRules.GetCapability(p7Opaque, p7PlaybackHash) == HistoricalReplayCapability.ContentOnly, "P7B opaque behavior prevents fidelity claim");
+HistoricalExecutionContext p7OpaqueLocator = CopyExecutionContext(
+    p7Context,
+    automaticDecisions: [p7Fork with
+    {
+        Locator = p7ForkLocator with { Kind = ExecutionDecisionKind.Opaque }
+    }]);
+Check(HistoricalExecutionContextRules.TryValidate(p7OpaqueLocator, out _), "P7B opaque locator remains parseable");
+Check(HistoricalExecutionContextRules.GetCapability(p7OpaqueLocator, p7PlaybackHash) == HistoricalReplayCapability.ContentOnly, "P7B opaque locator prevents fidelity claim");
+
+HistoricalExecutionContext p7Oversized = CopyExecutionContext(
+    p7Empty,
+    provenance: p7Empty.Provenance with { ModVersion = new string('x', HistoricalExecutionContextRules.MaxExecutionJsonBytes) });
+Check(!HistoricalExecutionContextCodec.TryEncode(p7Oversized, out _), "P7B payload size limit");
+AutomaticDecision[] p7TooMany = Enumerable.Range(0, HistoricalExecutionContextRules.MaxTraceEntries + 1)
+    .Select(index => p7Fork with
+    {
+        Sequence = index,
+        Locator = p7ForkLocator with { Occurrence = index },
+        Causality = AutomaticDecisionCausality.Autonomous,
+        CausedByPlayerChoiceSequence = null
+    })
+    .ToArray();
+HistoricalExecutionContext p7OverEntryLimit = CopyExecutionContext(p7Context, automaticDecisions: p7TooMany, playerChoices: []);
+Check(!HistoricalExecutionContextRules.TryValidate(p7OverEntryLimit, out _), "P7B trace entry limit");
+List<AutomaticDecision> p7MutableDecisions = [p7Fork];
+HistoricalExecutionContext p7DefensiveCopy = CopyExecutionContext(p7Context, automaticDecisions: p7MutableDecisions);
+p7MutableDecisions.Clear();
+Check(p7DefensiveCopy.AutomaticDecisions.Count == 1, "P7B context defensively copies collections");
+HistoricalExecutionContext p7InvalidChoiceKind = CopyExecutionContext(
+    p7Context,
+    playerChoices: [p7Choice with { Locator = p7ChoiceLocator with { Kind = ExecutionDecisionKind.Fork } }]);
+Check(!HistoricalExecutionContextRules.TryValidate(p7InvalidChoiceKind, out _), "P7B player choice kind validation");
+HistoricalExecutionContext p7InvalidAutomaticKind = CopyExecutionContext(
+    p7Context,
+    automaticDecisions: [p7Fork with { Locator = p7ForkLocator with { Kind = ExecutionDecisionKind.NativeQuestion } }]);
+Check(!HistoricalExecutionContextRules.TryValidate(p7InvalidAutomaticKind, out _), "P7B automatic decision kind validation");
+HistoricalExecutionContext p7ContradictoryCoverage = CopyExecutionContext(
+    p7Context,
+    coverage: p7FullCoverage with { PlayerChoices = ExecutionTraceCoverage.NotCaptured });
+Check(!HistoricalExecutionContextRules.TryValidate(p7ContradictoryCoverage, out _), "P7B NotCaptured coverage requires empty list");
+ScriptSourceIdentity p7NormalizedSource = new(ScriptSourceKind.EventAssetEntry, " data\\events\\haleyhouse ", "branch");
+Check(p7NormalizedSource == p7BranchSource, "P7B source asset slash/case normalization");
+Check(HistoricalExecutionContextRules.HashChildPath(p7PlaybackHash, p7Branch.Kind, p7NormalizedSource, p7Entry, p7BranchCommandsHash)
+    == p7Branch.PathHash, "P7B normalized source produces stable path hash");
+
 Console.WriteLine("Stardew Gallery checks passed.");
 
 static void Check(bool condition, string message = "", [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
@@ -1061,6 +1312,30 @@ static ResolvedEventCandidate Candidate(
 }
 
 static HashSet<string> Set(params string[] names) => new(names, StringComparer.Ordinal);
+
+static string FullHash(char value) => new(value, 64);
+
+static HistoricalExecutionContext CopyExecutionContext(
+    HistoricalExecutionContext source,
+    int? schemaVersion = null,
+    string? playbackHash = null,
+    ExecutionTraceCompletion? completion = null,
+    ExecutionTraceEndReason? endReason = null,
+    ExecutionTraceCoverageSummary? coverage = null,
+    ExecutionTraceProvenance? provenance = null,
+    IReadOnlyList<AutomaticDecision>? automaticDecisions = null,
+    IReadOnlyList<PlayerChoiceDecision>? playerChoices = null,
+    IReadOnlyList<ExecutionTraceIssue>? issues = null)
+    => new(
+        schemaVersion ?? source.SchemaVersion,
+        playbackHash ?? source.PlaybackHash,
+        completion ?? source.Completion,
+        endReason ?? source.EndReason,
+        coverage ?? source.Coverage,
+        provenance ?? source.Provenance,
+        automaticDecisions ?? source.AutomaticDecisions,
+        playerChoices ?? source.PlayerChoices,
+        issues ?? source.Issues);
 
 static Dictionary<string, IReadOnlyDictionary<string, string>> Assets(Dictionary<string, Dictionary<string, string>> source)
 {

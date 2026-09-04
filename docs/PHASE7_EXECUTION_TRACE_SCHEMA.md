@@ -78,6 +78,8 @@ internal sealed record HistoricalExecutionContext(
 );
 ```
 
+The implementation uses a sealed value-equal class for `HistoricalExecutionContext`; its constructor defensively copies all three collections. The other leaf types are immutable records/value types.
+
 `Missing` and `Invalid` are not persisted as fake contexts. They are load states:
 
 ```csharp
@@ -146,7 +148,7 @@ Rules:
 
 - Root has `Source.Kind = RootPlayback` and `EnteredBy = null`.
 - Non-root segments require `EnteredBy`.
-- `PathHash` is SHA-256 over length-framed schema marker, parent path (or PlaybackHash for root), segment kind, source identity, entry command site, selected target, and resulting parsed command-list hash.
+- `PathHash` is SHA-256 over a length-framed schema marker and PlaybackHash. Child paths additionally include parent path, segment kind, source identity, entry command site, selected target, and resulting parsed command-list hash.
 - `CommandListHash` is SHA-256 over length-framed parsed command strings in order.
 - Asset names are normalized like `EventIdentity` before hashing.
 - Full uppercase 64-hex hashes are persisted. Prefixes are diagnostics only.

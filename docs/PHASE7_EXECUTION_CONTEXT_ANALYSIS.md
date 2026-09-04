@@ -263,8 +263,8 @@ ScriptSegmentIdentity
 Kinds: Root, ForkReplacement, SwitchEventReplacement, ChoiceInsertion, DynamicReplacement.
 
 - Root path binds to full historical `PlaybackHash` and root command-list hash.
-- Asset/translation child includes normalized source + key + parsed command-list hash.
-- Dynamic child includes parent path + transition command site + selected result + resulting command-list hash.
+- Every child path directly includes PlaybackHash, then normalized source + key + parent transition + parsed command-list hash.
+- Dynamic child additionally includes transition command site + selected result + resulting command-list hash.
 
 No recursive object graph is persisted; `EnteredBy` stores parent path and entry site. This handles destructive replacement while avoiding recursive serialization.
 
