@@ -11,6 +11,7 @@ internal sealed class ModEntry : Mod
 {
     private const int CollectionsGalleryComponentId = 7099;
     private GalleryCatalogCache catalog = null!;
+    private readonly PreviewPlanner planner = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware, null);
     private bool unlockAll;
     private bool pendingOpen;
     private Texture2D tabIcon = null!;
@@ -294,8 +295,8 @@ internal sealed class ModEntry : Mod
                 () => unlockAll,
                 ToggleUnlock,
                 watchedHistory.Get,
-                (character, entry, version, scroll) => RequestReplay(snapshot, character, entry, version, scroll)
-            );
+                (character, entry, previewState, scroll) => RequestReplay(snapshot, character, entry, previewState, scroll),
+                planner);
             Game1.playSound("bigSelect");
         }
         catch (Exception error)
@@ -304,7 +305,7 @@ internal sealed class ModEntry : Mod
         }
     }
 
-    private void RequestReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, WatchedEventSnapshot? watchedVersion, int scroll)
+    private void RequestReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, PreviewState? previewState, int scroll)
     {
         if (!replayProtectionReady)
         {
@@ -317,7 +318,7 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        Action start = () => StartReplay(snapshot, character, entry, watchedVersion, scroll);
+        Action start = () => StartReplay(snapshot, character, entry, previewState, scroll);
         if (Config.ShowRollbackWarning && !rollbackWarningShown)
         {
             Game1.activeClickableMenu = new ConfirmationDialog(Helper.Translation.Get("replay.warning"), _ =>
@@ -330,10 +331,16 @@ internal sealed class ModEntry : Mod
         start();
     }
 
-    private void StartReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, WatchedEventSnapshot? watchedVersion, int scroll)
+    private void StartReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, PreviewState? previewState, int scroll)
     {
         Action reopen = () => OpenCharacter(snapshot, character, scroll, entry.Identity);
-        if (!replay.TryStart(entry, watchedVersion, reopen, out string error))
+        bool ok;
+        string error;
+        if (previewState is null)
+            ok = replay.TryStart(entry, reopen, out error);
+        else
+            ok = replay.TryStartPreview(entry, previewState, reopen, out error);
+        if (!ok)
         {
             Game1.addHUDMessage(new HUDMessage(error, HUDMessage.error_type));
             if (!replay.IsActive)
@@ -348,8 +355,8 @@ internal sealed class ModEntry : Mod
             Helper.ModContent.Load<Texture2D>("assets/CharacterScene-day-v2.png"),
             () => unlockAll,
             OpenGallery,
-            watchedHistory.Get,
-            (entry, version, position) => RequestReplay(snapshot, character, entry, version, position),
+            planner,
+            (entry, previewState, position) => RequestReplay(snapshot, character, entry, previewState, position),
             scroll,
             focusIdentity);
     }

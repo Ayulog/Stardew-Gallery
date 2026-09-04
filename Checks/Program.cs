@@ -1399,6 +1399,89 @@ Check(p7cLimit.Context.AutomaticDecisions.Count > 0
 Check(p7cLimit.Diagnostic.ExecutionJsonBytes <= HistoricalExecutionContextRules.MaxExecutionJsonBytes, "P7C encoded trace byte cap");
 Check(HistoricalExecutionContextRules.TryValidate(p7cLimit.Context, out _), "P7C overflow context remains valid");
 
+// ---------- FINAL 1.0.0 preview planning + state injection ----------
+PreviewPlanner previewPlanner = new(
+    key => key.Split('/', StringSplitOptions.RemoveEmptyEntries),
+    FakeSplitArgs,
+    null);
+CurrentStateSnapshot pvState = new(
+    Season: "spring", Weather: "sunny", DayOfMonth: 12, Year: 1, Time: 900, DaysPlayed: 20,
+    Friendship: new Dictionary<string, int>(StringComparer.Ordinal) { ["Haley"] = 1500, ["Leah"] = 500 },
+    EventsSeen: new HashSet<string>(StringComparer.Ordinal), LocalMail: new HashSet<string>(StringComparer.Ordinal),
+    HostMail: null, HostOrLocalMail: null, Dating: null, Spouse: null, Roommate: false, WorldState: null);
+
+// satisfied event -> DirectReplay
+EventConditionStatus pvDirect = previewPlanner.Analyze(TestEvent("123"), pvState);
+Check(pvDirect.IsCurrentlyAvailable && pvDirect.MissingCount == 0 && pvDirect.UnknownCount == 0
+    && pvDirect.Capability == PreviewCapability.DirectReplay, "F1-1 satisfied event direct replay");
+
+// supported missing friendship -> PreviewSupported with override
+EventConditionStatus pvFriendship = previewPlanner.Analyze(TestEvent("124/f Haley 2500"), pvState);
+Check(!pvFriendship.IsCurrentlyAvailable && pvFriendship.MissingCount == 1
+    && pvFriendship.Capability == PreviewCapability.PreviewSupported, "F1-2 friendship gap preview-supported");
+PreviewPlan pvFriendshipPlan = previewPlanner.Plan(TestEvent("124/f Haley 2500"), pvState);
+Check(pvFriendshipPlan.Suggestion.Friendship?["Haley"] == 2500, "F1-2 friendship override suggested");
+Check(pvFriendshipPlan.Overrides.Any(value => value.Kind == PreviewOverrideKind.Friendship && value.Key == "Haley" && value.Value == 2500), "F1-2 friendship override collected");
+Check(pvFriendshipPlan.Capability == PreviewCapability.PreviewSupported, "F1-2 plan capability preview-supported");
+
+// missing event-seen -> supported
+EventConditionStatus pvSeen = previewPlanner.Analyze(TestEvent("125/e 555"), pvState);
+Check(pvSeen.MissingCount == 1 && pvSeen.Capability == PreviewCapability.PreviewSupported, "F1-3 eventsSeen gap supported");
+
+// opaque condition -> AnalysisOnly / partially-supported
+EventConditionStatus pvOpaque = previewPlanner.Analyze(TestEvent("126/G SOME QUERY"), pvState);
+Check(pvOpaque.UnknownCount >= 1 && pvOpaque.Capability is PreviewCapability.AnalysisOnly or PreviewCapability.PreviewPartiallySupported, "F1-4 opaque condition degrades");
+
+// AND grouping: multiple missing -> preview supported when all overridable
+EventConditionStatus pvMulti = previewPlanner.Analyze(TestEvent("127/f Leah 1000/e 777"), pvState);
+Check(pvMulti.MissingCount == 2 && pvMulti.Capability == PreviewCapability.PreviewSupported, "F1-5 AND grouping preview-supported");
+
+// NOT/relationship semantics: negated spouse is analyze-only when data is missing
+EventConditionStatus pvNegated = previewPlanner.Analyze(TestEvent("128/o Alex"), pvState);
+Check(pvNegated.UnknownCount >= 1 && pvNegated.Capability == PreviewCapability.AnalysisOnly, "F1-6 NOT/relationship analyze-only degrades");
+
+// unsupported mutation (weather is analyze-only, not restorable)
+EventConditionStatus pvWeather = previewPlanner.Analyze(TestEvent("129/w rainy"), pvState);
+Check(pvWeather.MissingCount == 1 && pvWeather.Capability == PreviewCapability.PreviewPartiallySupported, "F1-7 weather analyze-only not injected");
+
+// PreviewState is sparse and never a full snapshot
+PreviewState pvSparse = new(Season: "summer", Time: 1200, Friendship: new Dictionary<string, int> { ["Haley"] = 2500 });
+Check(pvSparse.Season == "summer" && pvSparse.Time == 1200 && pvSparse.Friendship?["Haley"] == 2500
+    && pvSparse.Year is null && pvSparse.DayOfMonth is null, "F1-8 PreviewState sparse");
+
+// StateInjector: apply + restore exact touched state (incl. eventsSeen/mail)
+PreviewState pvFullInject = new(Season: "summer", Time: 1200,
+    Friendship: new Dictionary<string, int> { ["Haley"] = 2500 },
+    EventsSeen: new HashSet<string>(StringComparer.Ordinal) { "777" },
+    Mail: new HashSet<string>(StringComparer.Ordinal) { "m1" });
+FakePreviewAccessor pvFake = new();
+pvFake.Season = "spring";
+pvFake.Time = 900;
+pvFake.SetFriendship("Haley", 1500);
+using (PreviewInjectionScope pvScope = PreviewInjectionScope.Apply(pvFake, pvFullInject))
+{
+    Check(pvFake.Season == "summer", "F1-9 injected season applied");
+    Check(pvFake.Time == 1200, "F1-9 injected time applied");
+    Check(pvFake.GetFriendship("Haley") == 2500, "F1-9 injected friendship applied");
+    Check(pvFake.HasEventSeen("777"), "F1-9 injected eventsSeen applied");
+    Check(pvFake.HasMail("m1"), "F1-9 injected mail applied");
+}
+Check(pvFake.Season == "spring", "F1-10 season restored");
+Check(pvFake.Time == 900, "F1-10 time restored");
+Check(pvFake.GetFriendship("Haley") == 1500, "F1-10 friendship restored");
+Check(pvFake.HasEventSeen("777") == false, "F1-10 eventsSeen restored");
+Check(pvFake.HasMail("m1") == false, "F1-10 mail restored");
+Check(pvFake.DayOfMonth is null && pvFake.Year is null, "F1-10 untouched slots unchanged");
+
+// idempotent restore: second dispose is a no-op
+using (PreviewInjectionScope pvScope2 = PreviewInjectionScope.Apply(pvFake, pvFullInject)) { }
+Check(pvFake.Season == "spring", "F1-11 idempotent restore");
+
+// Playback stays current-state canonical
+GalleryEvent pvCurrent = TestEvent("130/A");
+EventPlayback pvPlayback = EventPlayback.ForCurrent(pvCurrent.Resolved);
+Check(pvPlayback.RootScript == pvCurrent.Resolved.ResolvedScript, "F1-13 replay uses current resolved script");
+
 Console.WriteLine("Stardew Gallery checks passed.");
 
 static void Check(bool condition, string message = "", [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
@@ -1441,6 +1524,24 @@ static ResolvedEventCandidate Candidate(
 }
 
 static HashSet<string> Set(params string[] names) => new(names, StringComparer.Ordinal);
+
+static GalleryEvent TestEvent(string rawEventKey)
+{
+    EventIdentity identity = TestIdentity("evt");
+    string script = "speak npc hello/end";
+    ResolvedEvent resolved = new(
+        identity,
+        "Town",
+        rawEventKey,
+        script,
+        new EventFragments([script], []),
+        EventHashes.RootDefinition(rawEventKey, script),
+        EventHashes.RootScript(script));
+    return new GalleryEvent(resolved, new EventOwnership(
+        OwnershipKind.Direct,
+        [new EventOwner("Haley", 1000)],
+        null));
+}
 
 static string FullHash(char value) => new(value, 64);
 
@@ -1552,4 +1653,22 @@ internal sealed class FakeEventAssetSourceCatalog(
             calls?.Add("after:" + source.LaunchLocationName);
         }
     }
+}
+
+
+internal sealed class FakePreviewAccessor : IPreviewStateAccessor
+{
+    public string? Season { get; set; }
+    public int? DayOfMonth { get; set; }
+    public int? Year { get; set; }
+    public int? Time { get; set; }
+    private readonly Dictionary<string, int> friendship = new(StringComparer.Ordinal);
+    private readonly HashSet<string> seen = new(StringComparer.Ordinal);
+    private readonly HashSet<string> mail = new(StringComparer.Ordinal);
+    public int? GetFriendship(string npc) => friendship.GetValueOrDefault(npc);
+    public void SetFriendship(string npc, int points) => friendship[npc] = points;
+    public bool HasEventSeen(string id) => seen.Contains(id);
+    public void SetEventSeen(string id, bool present) { if (present) seen.Add(id); else seen.Remove(id); }
+    public bool HasMail(string id) => mail.Contains(id);
+    public void SetMail(string id, bool present) { if (present) mail.Add(id); else mail.Remove(id); }
 }

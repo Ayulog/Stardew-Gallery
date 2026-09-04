@@ -23,8 +23,9 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
     private int speedMultiplier = 1;
     private int dialogueAutoTicks;
     private Event? activeReplayEvent;
+    private PreviewInjectionScope? previewScope;
 
-    internal bool IsActive => snapshot is not null;
+    internal bool IsActive => snapshot is not null || previewScope is not null;
     internal int SpeedMultiplier => speedMultiplier;
     internal int EffectiveSpeedMultiplier => !IsActive || restoring || !observed || Game1.CurrentEvent is null
         || ReplayLifecycleRules.BlocksReplaySpeed(
@@ -34,7 +35,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         || Game1.activeClickableMenu is StardewValley.Menus.DialogueBox dialogue && ReplaySpeedPatches.IsChoice(dialogue)
         ? 1 : speedMultiplier;
 
-    internal bool TryStart(GalleryEvent entry, WatchedEventSnapshot? watchedVersion, Action reopenMenu, out string error)
+    internal bool TryStart(GalleryEvent entry, Action reopenMenu, out string error)
     {
         error = string.Empty;
         if (IsActive)
@@ -43,13 +44,11 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             return false;
         }
 
-        EventPlayback playback = watchedVersion is null
-            ? EventPlayback.ForCurrent(entry.Resolved)
-            : EventPlayback.ForHistorical(watchedVersion);
+        EventPlayback playback = EventPlayback.ForCurrent(entry.Resolved);
 
         try
         {
-            Trace($"回放请求：地点={playback.LocationName}，事件={playback.EventId}，版本={(watchedVersion is null ? "当前" : watchedVersion.Fingerprint[..12])}。");
+            Trace($"回放请求：地点={playback.LocationName}，事件={playback.EventId}。");
             backupPath = ReplayBackup.Create();
             Trace($"回放备份完成：{backupPath}");
             snapshot = ReplaySnapshot.Capture();
@@ -59,8 +58,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             speedMultiplier = 1;
             WriteDiagnostics("requested");
             Game1.activeClickableMenu = null;
-            if (watchedVersion is not null)
-                historicalAssets.Activate(watchedVersion);
             EventLaunchResult launch = eventLauncher.TryLaunch(playback);
             if (launch.Accepted)
             {
@@ -74,6 +71,53 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         {
             monitor.Log($"回放启动失败：地点={playback.LocationName}，事件={playback.EventId}。\n{ex}", LogLevel.Error);
             error = helper.Translation.Get("replay.failed");
+        }
+
+        Restore(error);
+        return false;
+    }
+
+    internal bool TryStartPreview(GalleryEvent entry, PreviewState state, Action reopenMenu, out string error)
+    {
+        error = string.Empty;
+        if (IsActive)
+        {
+            error = helper.Translation.Get("replay.already-running");
+            return false;
+        }
+        if (state is null)
+        {
+            error = helper.Translation.Get("preview.not-available");
+            return false;
+        }
+
+        EventPlayback playback = EventPlayback.ForCurrent(entry.Resolved);
+        try
+        {
+            Trace($"预览请求：地点={playback.LocationName}，事件={playback.EventId}。");
+            backupPath = ReplayBackup.Create();
+            Trace($"预览备份完成：{backupPath}");
+            snapshot = ReplaySnapshot.Capture();
+            previewScope = PreviewInjectionScope.Apply(new RuntimePreviewStateAccessor(), state);
+            reopen = reopenMenu;
+            eventId = playback.EventId;
+            targetLocationName = playback.LocationName;
+            speedMultiplier = 1;
+            WriteDiagnostics("preview-requested");
+            Game1.activeClickableMenu = null;
+            EventLaunchResult launch = eventLauncher.TryLaunch(playback);
+            if (launch.Accepted)
+            {
+                Trace($"事件预览已接受：地点={playback.LocationName}，事件={playback.EventId}。");
+                WriteDiagnostics("preview-accepted");
+                return true;
+            }
+            error = MapLaunchFailure(launch.Failure, playback.LocationName);
+        }
+        catch (Exception ex)
+        {
+            monitor.Log($"预览启动失败：地点={playback.LocationName}，事件={playback.EventId}。\n{ex}", LogLevel.Error);
+            error = helper.Translation.Get("preview.failed");
         }
 
         Restore(error);
@@ -219,6 +263,8 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
 
     private void Clear()
     {
+        previewScope?.Dispose();
+        previewScope = null;
         historicalAssets.Clear();
         snapshot = null;
         reopen = null;

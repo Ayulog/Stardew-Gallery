@@ -27,7 +27,8 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Func<bool> isUnlocked;
     private readonly Action toggleUnlock;
     private readonly Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions;
-    private readonly Action<GalleryCharacter, GalleryEvent, WatchedEventSnapshot?, int> replay;
+    private readonly Action<GalleryCharacter, GalleryEvent, PreviewState?, int> replay;
+    private readonly PreviewPlanner planner;
     private readonly TextBox search;
     private List<GalleryCharacter> filtered = [];
     private int scrollRow;
@@ -61,7 +62,8 @@ internal sealed class GalleryMenu : IClickableMenu
         Func<bool> isUnlocked,
         Action toggleUnlock,
         Func<GalleryEvent, IReadOnlyList<WatchedEventSnapshot>> watchedVersions,
-        Action<GalleryCharacter, GalleryEvent, WatchedEventSnapshot?, int> replay,
+        Action<GalleryCharacter, GalleryEvent, PreviewState?, int> replay,
+        PreviewPlanner planner,
         string initialSearchText = "",
         int initialScrollRow = 0,
         string? initialFocusCharacterName = null)
@@ -76,6 +78,7 @@ internal sealed class GalleryMenu : IClickableMenu
         this.toggleUnlock = toggleUnlock;
         this.watchedVersions = watchedVersions;
         this.replay = replay;
+        this.planner = planner;
         search = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor);
         search.OnEnterPressed += _ => OpenFirstMatch();
         search.Text = initialSearchText;
@@ -175,10 +178,10 @@ internal sealed class GalleryMenu : IClickableMenu
             string returnCharacterName = character.Name;
             Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene,
                 isUnlocked,
-                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay,
+                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay, planner,
                     returnSearchText, returnScrollRow, returnCharacterName),
-                watchedVersions,
-                (entry, version, scroll) => replay(character, entry, version, scroll));
+                planner,
+                (entry, previewState, scroll) => replay(character, entry, previewState, scroll));
             return;
         }
 
@@ -376,10 +379,10 @@ internal sealed class GalleryMenu : IClickableMenu
         string returnCharacterName = character.Name;
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene,
             isUnlocked,
-            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay,
+            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, watchedVersions, replay, planner,
                 returnSearchText, returnScrollRow, returnCharacterName),
-            watchedVersions,
-            (entry, version, scroll) => replay(character, entry, version, scroll));
+            planner,
+            (entry, previewState, scroll) => replay(character, entry, previewState, scroll));
     }
 
     private int MaxScroll => Math.Max(0, (filtered.Count + Columns - 1) / Columns - VisibleRows);

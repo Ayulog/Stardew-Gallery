@@ -39,6 +39,11 @@
     <Compile Include="..\History\LegacyHistoryAdapter.cs" Link="History\LegacyHistoryAdapter.cs" />
     <Compile Include="..\History\ObservedVariantSelector.cs" Link="History\ObservedVariantSelector.cs" />
     <Compile Include="..\History\HistoricalExecutionContextRules.cs" Link="History\HistoricalExecutionContextRules.cs" />
+    <Compile Include="..\Preview\PreviewCapability.cs" Link="Preview\PreviewCapability.cs" />
+    <Compile Include="..\Preview\PreviewOverride.cs" Link="Preview\PreviewOverride.cs" />
+    <Compile Include="..\Preview\PreviewPlan.cs" Link="Preview\PreviewPlan.cs" />
+    <Compile Include="..\Preview\PreviewPlanner.cs" Link="Preview\PreviewPlanner.cs" />
+    <Compile Include="..\Preview\StateInjector.cs" Link="Preview\StateInjector.cs" />
     <Compile Include="..\History\HistoricalExecutionContextCodec.cs" Link="History\HistoricalExecutionContextCodec.cs" />
     <Compile Include="..\History\NaturalExecutionTrace.cs" Link="History\NaturalExecutionTrace.cs" />
     <Compile Include="..\EventKey.cs" Link="EventKey.cs" />
