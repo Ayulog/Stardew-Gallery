@@ -1,12 +1,14 @@
 # Changelog / 更新日志
 
-## 1.0.0 — Public Beta / 公测版
+## 1.0.0 — Release / 正式版
 
-- Added the bilingual character and heart-event gallery. / 加入中英双语角色与好感事件画廊。
-- Added current-version and naturally watched historical-version replay. / 加入当前版本及自然观看历史版本回放。
-- Added safe backup, replay-state restoration, and save blocking. / 加入回放备份、状态恢复与保存保护。
+- Added the bilingual current-state event gallery and planning tool. / 加入中英双语“当前事件”图鉴与规划工具。
+- Current-state replay is canonical: replays always launch from currently resolved content; historical replay is no longer a product feature. / 当前状态回放成为主路径：回放一律从当前解析内容启动；历史回放不再作为产品功能。
+- Added readable condition explanation and progress gaps with truth/unknown separation. / 加入可读条件说明与进度缺口，并区分“满足/未满足/无法安全解析”。
+- Added safe preview for supportable conditions (friendship, seen events, mail, season, time) with exact restore. / 加入对可模拟条件的安全预览（好感、看过事件、邮件、季节、时间），并精确恢复。
+- Added scoped state injection and hardened restore/failure handling. / 加入受作用域约束的状态注入与更强的恢复/失败处理。
+- Preserved save backup, state restoration, and save blocking during replay/preview. / 保留回放/预览期间的存档备份、状态恢复与保存保护。
 - Added 1x / 2x / 4x replay speed and optional normal-dialogue auto-advance. / 加入 1x / 2x / 4x 快进和普通对话自动继续。
 - Added keyboard, mouse, controller, multi-binding, and chord input support. / 加入键鼠、手柄、多快捷键及组合键支持。
 - Added adaptive UI fitting and optional GMCM configuration. / 加入自适应界面缩放和可选 GMCM 配置。
 - Added opt-in diagnostics with quiet logs by default. / 加入按需诊断，默认保持简洁日志。
-
