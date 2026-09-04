@@ -1212,6 +1212,11 @@ HistoricalExecutionContext p7AutomaticOnly = CopyExecutionContext(
     playerChoices: []);
 Check(HistoricalExecutionContextRules.GetCapability(p7AutomaticOnly, p7PlaybackHash) == HistoricalReplayCapability.OutcomeAware, "P7B automatic-only capability");
 Check(HistoricalExecutionContextRules.GetCapability(p7Empty, p7PlaybackHash) == HistoricalReplayCapability.ExactCapable, "P7B EmptyComplete exact capability");
+HistoricalExecutionContext p7AutomaticEmpty = CopyExecutionContext(
+    p7Empty,
+    coverage: p7FullCoverage with { PlayerChoices = ExecutionTraceCoverage.NotCaptured });
+Check(HistoricalExecutionContextRules.TryValidate(p7AutomaticEmpty, out _), "P7C automatic-only EmptyComplete validates");
+Check(HistoricalExecutionContextRules.GetCapability(p7AutomaticEmpty, p7PlaybackHash) == HistoricalReplayCapability.OutcomeAware, "P7C automatic-only EmptyComplete is outcome-aware");
 HistoricalExecutionContext p7Unknown = CopyExecutionContext(
     p7Context,
     automaticDecisions: [p7Fork with
@@ -1269,6 +1274,130 @@ ScriptSourceIdentity p7NormalizedSource = new(ScriptSourceKind.EventAssetEntry, 
 Check(p7NormalizedSource == p7BranchSource, "P7B source asset slash/case normalization");
 Check(HistoricalExecutionContextRules.HashChildPath(p7PlaybackHash, p7Branch.Kind, p7NormalizedSource, p7Entry, p7BranchCommandsHash)
     == p7Branch.PathHash, "P7B normalized source produces stable path hash");
+
+// ---------- Phase 7C passive execution trace builder ----------
+Check(NaturalExecutionTraceRules.CanObserve(replayActive: false, isCurrentEvent: true), "P7C natural current event observed");
+Check(!NaturalExecutionTraceRules.CanObserve(replayActive: true, isCurrentEvent: true), "P7C replay excluded");
+Check(!NaturalExecutionTraceRules.CanObserve(replayActive: false, isCurrentEvent: false), "P7C unrelated event excluded");
+
+string[] p7cForkRoot = ["fork mailFlag branch", "end"];
+NaturalExecutionTraceBuilder p7cForkFalseBuilder = TraceBuilder(p7cForkRoot);
+CommandDispatchObservation p7cForkFalse = BeginTraceCommand(
+    p7cForkFalseBuilder, p7cForkRoot, 0, ["fork", "mailFlag", "branch"], "Fork", nativeFork: true);
+p7cForkFalseBuilder.EndCommand(p7cForkFalse, 1, p7cForkRoot, false, false, -1);
+NaturalExecutionTraceResult p7cForkFalseResult = p7cForkFalseBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cForkFalseResult.Context.AutomaticDecisions.Single().Result.Outcome == AutomaticDecisionOutcome.ContinueCurrentSegment, "P7C fork false captured");
+Check(p7cForkFalseResult.Context.AutomaticDecisions[0].Causality == AutomaticDecisionCausality.Autonomous, "P7C required-id fork autonomous");
+Check(HistoricalExecutionContextRules.TryValidate(p7cForkFalseResult.Context, out _), "P7C fork false context valid");
+
+NaturalExecutionTraceBuilder p7cForkTrueBuilder = TraceBuilder(p7cForkRoot);
+CommandDispatchObservation p7cForkTrue = BeginTraceCommand(
+    p7cForkTrueBuilder, p7cForkRoot, 0, ["fork", "mailFlag", "branch"], "Fork", nativeFork: true);
+string[] p7cBranchCommands = ["speak Sophia hi", "end"];
+p7cForkTrueBuilder.ObserveReplacement(p7cForkTrue, p7cBranchCommands);
+p7cForkTrueBuilder.EndCommand(p7cForkTrue, 0, p7cBranchCommands, true, false, -1);
+NaturalExecutionTraceResult p7cForkTrueResult = p7cForkTrueBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+AutomaticDecision p7cForkDecision = p7cForkTrueResult.Context.AutomaticDecisions.Single();
+Check(p7cForkDecision.Result.Outcome == AutomaticDecisionOutcome.ReplaceCommands, "P7C fork true captured");
+Check(p7cForkDecision.Result.ReplacementSegment is { Kind: ScriptSegmentKind.ForkReplacement }, "P7C fork child segment");
+Check(p7cForkTrueBuilder.CurrentSegment == p7cForkDecision.Result.ReplacementSegment, "P7C current segment moves to fork child");
+Check(HistoricalExecutionContextRules.TryValidate(p7cForkTrueResult.Context, out _), "P7C fork true context valid");
+
+string[] p7cSwitchRoot = ["switchEvent branch"];
+NaturalExecutionTraceBuilder p7cSwitchBuilder = TraceBuilder(p7cSwitchRoot);
+CommandDispatchObservation p7cSwitch = BeginTraceCommand(
+    p7cSwitchBuilder, p7cSwitchRoot, 0, ["switchEvent", "branch"], "SwitchEvent", nativeSwitch: true);
+p7cSwitchBuilder.ObserveReplacement(p7cSwitch, p7cBranchCommands);
+p7cSwitchBuilder.EndCommand(p7cSwitch, 0, p7cBranchCommands, true, false, -1);
+NaturalExecutionTraceResult p7cSwitchResult = p7cSwitchBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cSwitchResult.Context.AutomaticDecisions.Count == 0, "P7C switch is transition not decision");
+Check(p7cSwitchBuilder.CurrentSegment.Kind == ScriptSegmentKind.SwitchEventReplacement, "P7C switch child segment");
+Check(p7cSwitchResult.Context.Completion == ExecutionTraceCompletion.EmptyComplete, "P7C transition-only event EmptyComplete");
+Check(HistoricalExecutionContextRules.GetCapability(p7cSwitchResult.Context, FullHash('7')) == HistoricalReplayCapability.OutcomeAware, "P7C automatic-only EmptyComplete outcome-aware");
+
+NaturalExecutionTraceBuilder p7cDuplicateBuilder = TraceBuilder(p7cForkRoot);
+CommandDispatchObservation p7cDuplicate0 = BeginTraceCommand(
+    p7cDuplicateBuilder, p7cForkRoot, 0, ["fork", "mailFlag", "branch"], "Fork", nativeFork: true);
+p7cDuplicateBuilder.EndCommand(p7cDuplicate0, 1, p7cForkRoot, false, false, -1);
+CommandDispatchObservation p7cDuplicate1 = BeginTraceCommand(
+    p7cDuplicateBuilder, p7cForkRoot, 0, ["fork", "mailFlag", "branch"], "Fork", nativeFork: true);
+p7cDuplicateBuilder.EndCommand(p7cDuplicate1, 1, p7cForkRoot, false, false, -1);
+NaturalExecutionTraceResult p7cDuplicateResult = p7cDuplicateBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cDuplicateResult.Context.AutomaticDecisions.Select(value => value.Locator.Occurrence).SequenceEqual([0, 1]), "P7C repeated decision occurrence increments on commit");
+Check(p7cDuplicateResult.Context.AutomaticDecisions.Select(value => value.Sequence).SequenceEqual([0L, 1L]), "P7C global sequence");
+
+NaturalExecutionTraceBuilder p7cRetryBuilder = TraceBuilder(["pause 100"]);
+CommandDispatchObservation p7cRetry = BeginTraceCommand(
+    p7cRetryBuilder, ["pause 100"], 0, ["pause", "100"], "Pause");
+p7cRetryBuilder.EndCommand(p7cRetry, 0, ["pause 100"], false, false, -1);
+NaturalExecutionTraceResult p7cRetryResult = p7cRetryBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cRetryResult.Context.AutomaticDecisions.Count == 0, "P7C retried presentation command not recorded");
+
+NaturalExecutionTraceBuilder p7cUnknownForkBuilder = TraceBuilder(["fork branch"]);
+CommandDispatchObservation p7cUnknownFork = BeginTraceCommand(
+    p7cUnknownForkBuilder, ["fork branch"], 0, ["fork", "branch"], "Fork", nativeFork: true);
+p7cUnknownForkBuilder.EndCommand(p7cUnknownFork, 1, ["fork branch"], false, true, -1);
+NaturalExecutionTraceResult p7cUnknownForkResult = p7cUnknownForkBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cUnknownForkResult.Context.AutomaticDecisions[0].Causality == AutomaticDecisionCausality.Unknown, "P7C one-key fork causality fails closed");
+Check(HistoricalExecutionContextRules.GetCapability(p7cUnknownForkResult.Context, FullHash('7')) == HistoricalReplayCapability.ContentOnly, "P7C unknown fork content-only");
+
+NaturalExecutionTraceBuilder p7cOpaqueBuilder = TraceBuilder(["custom branch"]);
+CommandDispatchObservation p7cOpaque = BeginTraceCommand(
+    p7cOpaqueBuilder, ["custom branch"], 0, ["custom", "branch"], "custom", handlerIsNative: false);
+p7cOpaqueBuilder.ObserveReplacement(p7cOpaque, p7cBranchCommands);
+p7cOpaqueBuilder.EndCommand(p7cOpaque, 0, p7cBranchCommands, true, false, -1);
+NaturalExecutionTraceResult p7cOpaqueResult = p7cOpaqueBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cOpaqueResult.Context.Completion == ExecutionTraceCompletion.Partial, "P7C opaque replacement partial");
+Check(p7cOpaqueResult.Context.Coverage.OpaqueDecisions == OpaqueDecisionCoverage.UnsupportedObserved, "P7C opaque coverage");
+Check(HistoricalExecutionContextRules.GetCapability(p7cOpaqueResult.Context, FullHash('7')) == HistoricalReplayCapability.ContentOnly, "P7C opaque content-only");
+
+NaturalExecutionTraceBuilder p7cMutationBuilder = TraceBuilder(["custom"]);
+CommandDispatchObservation p7cMutation = BeginTraceCommand(
+    p7cMutationBuilder, ["custom"], 0, ["custom"], "custom", handlerIsNative: false);
+p7cMutationBuilder.EndCommand(p7cMutation, 0, ["changed"], true, false, -1);
+NaturalExecutionTraceResult p7cMutationResult = p7cMutationBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cMutationResult.Context is { Completion: ExecutionTraceCompletion.Partial, EndReason: ExecutionTraceEndReason.CaptureFailure }, "P7C unmarked mutation fails closed");
+
+NaturalExecutionTraceBuilder p7cAnswerBuilder = TraceBuilder(["quickQuestion q#a#b(break)x(break)y"]);
+AnswerDialogueObservation p7cAnswer = p7cAnswerBuilder.BeginAnswer(
+    "quickQuestion", 1, "quickQuestion q#a#b(break)x(break)y", 0,
+    ["quickQuestion q#a#b(break)x(break)y"], false, -1)!;
+p7cAnswerBuilder.EndAnswer(p7cAnswer, ["quickQuestion q#a#b(break)x(break)y", "y"], false, 1);
+NaturalExecutionTraceResult p7cAnswerResult = p7cAnswerBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cAnswerBuilder.CurrentSegment.Kind == ScriptSegmentKind.ChoiceInsertion, "P7C quickQuestion insertion segment diagnostic");
+Check(p7cAnswerResult.Context.PlayerChoices.Count == 0 && p7cAnswerResult.Context.Coverage.PlayerChoices == ExecutionTraceCoverage.NotCaptured, "P7C choice is diagnostic-only");
+
+NaturalExecutionTraceBuilder p7cNoDecisionBuilder = TraceBuilder(["end"]);
+NaturalExecutionTraceResult p7cNoDecision = p7cNoDecisionBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cNoDecision.Context.Completion == ExecutionTraceCompletion.EmptyComplete, "P7C no-decision natural complete");
+Check(HistoricalExecutionContextRules.TryValidate(p7cNoDecision.Context, out _), "P7C no-decision context valid");
+
+NaturalExecutionTraceBuilder p7cSkippedBuilder = TraceBuilder(["end"]);
+Check(p7cSkippedBuilder.Finish(ExecutionTraceEndReason.Skipped).Context.Completion == ExecutionTraceCompletion.Partial, "P7C skipped partial");
+NaturalExecutionTraceBuilder p7cInterruptedBuilder = TraceBuilder(["end"]);
+Check(p7cInterruptedBuilder.Finish(ExecutionTraceEndReason.Interrupted).Context.EndReason == ExecutionTraceEndReason.Interrupted, "P7C interrupted lifecycle");
+NaturalExecutionTraceBuilder p7cQuitBuilder = TraceBuilder(["end"]);
+Check(p7cQuitBuilder.Finish(ExecutionTraceEndReason.QuitToTitle).Context.EndReason == ExecutionTraceEndReason.QuitToTitle, "P7C quit lifecycle");
+NaturalExecutionTraceBuilder p7cFailureBuilder = TraceBuilder(["end"]);
+p7cFailureBuilder.MarkObserverFailure("injected-observer-failure");
+NaturalExecutionTraceResult p7cFailure = p7cFailureBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cFailure.Context is { Completion: ExecutionTraceCompletion.Partial, EndReason: ExecutionTraceEndReason.CaptureFailure }, "P7C observer failure partial");
+
+NaturalExecutionTraceBuilder p7cLimitBuilder = TraceBuilder(p7cForkRoot);
+for (int index = 0; index <= HistoricalExecutionContextRules.MaxTraceEntries; index++)
+{
+    CommandDispatchObservation? observation = p7cLimitBuilder.BeginCommand(
+        p7cForkRoot[0], 0, ["fork", "mailFlag", "branch"], "Fork", "native", true, true, true, false,
+        false, "Town", false, -1, p7cForkRoot);
+    if (observation is not null)
+        p7cLimitBuilder.EndCommand(observation, 1, p7cForkRoot, false, false, -1);
+}
+NaturalExecutionTraceResult p7cLimit = p7cLimitBuilder.Finish(ExecutionTraceEndReason.NaturalComplete);
+Check(p7cLimit.Context is { Completion: ExecutionTraceCompletion.Partial, EndReason: ExecutionTraceEndReason.TraceLimitExceeded }, "P7C trace overflow partial");
+Check(p7cLimit.Context.AutomaticDecisions.Count > 0
+    && p7cLimit.Context.AutomaticDecisions.Count <= HistoricalExecutionContextRules.MaxTraceEntries, "P7C trace entry hard cap");
+Check(p7cLimit.Diagnostic.ExecutionJsonBytes <= HistoricalExecutionContextRules.MaxExecutionJsonBytes, "P7C encoded trace byte cap");
+Check(HistoricalExecutionContextRules.TryValidate(p7cLimit.Context, out _), "P7C overflow context remains valid");
 
 Console.WriteLine("Stardew Gallery checks passed.");
 
@@ -1336,6 +1465,43 @@ static HistoricalExecutionContext CopyExecutionContext(
         automaticDecisions ?? source.AutomaticDecisions,
         playerChoices ?? source.PlayerChoices,
         issues ?? source.Issues);
+
+static NaturalExecutionTraceBuilder TraceBuilder(IReadOnlyList<string> commands)
+    => new(
+        new EventIdentity("Data/Events/Town", "trace"),
+        "trace/key",
+        FullHash('R'),
+        FullHash('7'),
+        commands,
+        "en",
+        "1.6.15.24356",
+        "1.0.0");
+
+static CommandDispatchObservation BeginTraceCommand(
+    NaturalExecutionTraceBuilder builder,
+    IReadOnlyList<string> commands,
+    int ordinal,
+    string[] arguments,
+    string commandName,
+    bool handlerResolved = true,
+    bool handlerIsNative = true,
+    bool nativeFork = false,
+    bool nativeSwitch = false)
+    => builder.BeginCommand(
+        commands[ordinal],
+        ordinal,
+        arguments,
+        commandName,
+        handlerIsNative ? "StardewValley.Event.DefaultCommands." + commandName : "Custom.Handler",
+        handlerResolved,
+        handlerIsNative,
+        nativeFork,
+        nativeSwitch,
+        false,
+        "Town",
+        false,
+        -1,
+        commands) ?? throw new Exception("P7C command observation did not start");
 
 static Dictionary<string, IReadOnlyDictionary<string, string>> Assets(Dictionary<string, Dictionary<string, string>> source)
 {

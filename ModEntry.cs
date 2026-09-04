@@ -37,8 +37,16 @@ internal sealed class ModEntry : Mod
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
         historicalAssets = new HistoricalReplayAssets(helper);
-        watchedHistory = new WatchedEventHistory(Monitor, () => Config.DebugDiagnostics);
+        watchedHistory = new WatchedEventHistory(Monitor, () => Config.DebugDiagnostics, ModManifest.Version.ToString());
         replay = new ReplayCoordinator(Monitor, helper, historicalAssets, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
+        try
+        {
+            ExecutionTraceObserver.Apply(helper, watchedHistory, () => replay.IsActive);
+        }
+        catch (Exception error)
+        {
+            Monitor.Log($"自然事件执行 trace observer 无法启用；事件仍会正常运行，但 occurrence 将降级为 ContentOnly：{error}", LogLevel.Error);
+        }
         try
         {
             ReplaySaveGuard.Apply(helper, Monitor, replay);
@@ -55,11 +63,11 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
+            watchedHistory.Clear(ExecutionTraceEndReason.QuitToTitle);
             DisposeSqliteSession();
             catalog.Invalidate();
             unlockAll = false;
             rollbackWarningShown = false;
-            watchedHistory.Clear();
             historicalAssets.Clear();
         };
         helper.Events.Content.AssetRequested += (_, e) => historicalAssets.OnAssetRequested(e);

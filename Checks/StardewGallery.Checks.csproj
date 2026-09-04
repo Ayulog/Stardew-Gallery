@@ -40,6 +40,7 @@
     <Compile Include="..\History\ObservedVariantSelector.cs" Link="History\ObservedVariantSelector.cs" />
     <Compile Include="..\History\HistoricalExecutionContextRules.cs" Link="History\HistoricalExecutionContextRules.cs" />
     <Compile Include="..\History\HistoricalExecutionContextCodec.cs" Link="History\HistoricalExecutionContextCodec.cs" />
+    <Compile Include="..\History\NaturalExecutionTrace.cs" Link="History\NaturalExecutionTrace.cs" />
     <Compile Include="..\EventKey.cs" Link="EventKey.cs" />
     <Compile Include="..\EventOwnership.cs" Link="EventOwnership.cs" />
     <Compile Include="..\EventFragments.cs" Link="EventFragments.cs" />

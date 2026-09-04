@@ -4,7 +4,7 @@ using StardewValley;
 
 namespace StardewGallery;
 
-internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiagnostics)
+internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiagnostics, string modVersion)
 {
     private readonly Dictionary<EventIdentity, Dictionary<ObservedVariantKey, WatchedEventSnapshot>> entries = [];
     private Event? observedEvent;
@@ -12,6 +12,9 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
     private LegacyHistoryStore? legacyStore;
     private HistoryRepository? repository;
     private bool sqliteDegraded;
+    private readonly NaturalExecutionTraceCapture executionTrace = new(modVersion);
+    private bool pendingExitObserved;
+    private bool pendingSkipped;
 
     internal void AttachPersistence(LegacyHistoryStore store, HistoryRepository? repo)
     {
@@ -32,6 +35,9 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
         entries.Clear();
         observedEvent = null;
         pendingSnapshot = null;
+        pendingExitObserved = false;
+        pendingSkipped = false;
+        executionTrace.Clear();
 
         IReadOnlyList<WatchedEventSnapshot> legacy = [];
         bool legacySucceeded = true;
@@ -83,11 +89,10 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
         }
     }
 
-    internal void Clear()
+    internal void Clear(ExecutionTraceEndReason reason = ExecutionTraceEndReason.ExternalTermination)
     {
+        AbandonPending(reason, persistPartial: true);
         entries.Clear();
-        observedEvent = null;
-        pendingSnapshot = null;
     }
 
     internal IReadOnlyList<WatchedEventSnapshot> Get(EventIdentity identity)
@@ -117,28 +122,100 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
         Event? current = Game1.CurrentEvent;
         if (replayActive)
         {
-            observedEvent = null;
-            pendingSnapshot = null;
+            AbandonPending(ExecutionTraceEndReason.ExternalTermination, persistPartial: false);
             return;
         }
         if (ReferenceEquals(current, observedEvent))
             return;
 
-        CommitPending();
+        FinalizeAndCommitPending();
         if (current is null)
-        {
-            observedEvent = null;
             return;
-        }
 
+        StartObservation(current);
+    }
+
+    internal void EnableExecutionTraceCapture() => executionTrace.Enable();
+
+    internal EventCommandObserverState? BeforeEventCommand(
+        Event current,
+        string[] arguments,
+        string commandName,
+        string handlerProvenance,
+        bool handlerResolved,
+        bool handlerIsNative,
+        bool nativeFork,
+        bool nativeSwitchEvent,
+        string locationName,
+        int previousAnswer)
+    {
+        if (!ReferenceEquals(current, Game1.CurrentEvent))
+            return null;
+        if (!ReferenceEquals(current, observedEvent))
+        {
+            FinalizeAndCommitPending();
+            StartObservation(current);
+        }
+        return executionTrace.BeforeCommand(
+            current,
+            arguments,
+            commandName,
+            handlerProvenance,
+            handlerResolved,
+            handlerIsNative,
+            nativeFork,
+            nativeSwitchEvent,
+            locationName,
+            previousAnswer);
+    }
+
+    internal void ObserveCommandReplacement(Event current, IReadOnlyList<string> commands)
+        => executionTrace.ObserveReplacement(current, commands);
+
+    internal void AfterEventCommand(Event current, EventCommandObserverState? state, int previousAnswer)
+        => executionTrace.AfterCommand(current, state, previousAnswer);
+
+    internal void AbandonEventCommand(Event current, EventCommandObserverState? state, string detailCode)
+        => executionTrace.AbandonCommand(current, state, detailCode);
+
+    internal EventAnswerObserverState? BeforeEventAnswer(Event current, string questionKey, int answerChoice, int previousAnswer)
+        => executionTrace.BeforeAnswer(current, questionKey, answerChoice, previousAnswer);
+
+    internal void AfterEventAnswer(Event current, EventAnswerObserverState? state, int previousAnswer)
+        => executionTrace.AfterAnswer(current, state, previousAnswer);
+
+    internal void MarkExecutionObserverFailure(Event current, string detailCode)
+        => executionTrace.MarkObserverFailure(current, detailCode);
+
+    internal void ObserveNaturalEventExit(Event current, bool skipped)
+    {
+        if (!ReferenceEquals(current, observedEvent))
+            return;
+        pendingExitObserved = true;
+        pendingSkipped = skipped;
+    }
+
+    private void StartObservation(Event current)
+    {
         observedEvent = current;
-        if (!TryCapture(current, out WatchedEventSnapshot? snapshot, out string? reason))
+        pendingExitObserved = false;
+        pendingSkipped = false;
+        if (!TryCapture(current, out WatchedEventSnapshot? snapshot, out string? reason) || snapshot is null)
         {
             if (debugDiagnostics() && reason is not null)
                 monitor.Log($"未记录自然事件版本：{reason}", LogLevel.Debug);
             return;
         }
         pendingSnapshot = snapshot;
+        try
+        {
+            executionTrace.Start(current, snapshot);
+        }
+        catch (Exception error)
+        {
+            if (debugDiagnostics())
+                monitor.Log($"自然事件 trace 启动失败：{error.Message}", LogLevel.Debug);
+        }
     }
 
     private bool TryCapture(Event current, out WatchedEventSnapshot? snapshot, out string? reason)
@@ -196,11 +273,68 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
         return true;
     }
 
-    private void CommitPending()
+    private void FinalizeAndCommitPending()
+    {
+        Event? previous = observedEvent;
+        if (previous is null)
+            return;
+        ExecutionTraceEndReason endReason = pendingExitObserved
+            ? pendingSkipped
+                ? ExecutionTraceEndReason.Skipped
+                : ExecutionTraceEndReason.NaturalComplete
+            : ExecutionTraceEndReason.Interrupted;
+        NaturalExecutionTraceResult? trace = null;
+        try
+        {
+            trace = executionTrace.Finish(previous, endReason);
+            if (trace is not null && debugDiagnostics())
+                GalleryDiagnostics.Write("historical-execution-latest.json", trace.Diagnostic, monitor);
+        }
+        catch (Exception error)
+        {
+            monitor.Log($"自然事件 trace 完成失败（不影响事件历史）：{error.Message}", LogLevel.Warn);
+        }
+        CommitPending(trace?.Context, !executionTrace.Enabled || pendingExitObserved || endReason == ExecutionTraceEndReason.Interrupted);
+        observedEvent = null;
+        pendingExitObserved = false;
+        pendingSkipped = false;
+    }
+
+    private void AbandonPending(ExecutionTraceEndReason reason, bool persistPartial)
+    {
+        Event? previous = observedEvent;
+        if (previous is not null)
+        {
+            try
+            {
+                NaturalExecutionTraceResult? trace = executionTrace.Finish(previous, reason);
+                if (trace is not null && debugDiagnostics())
+                    GalleryDiagnostics.Write("historical-execution-latest.json", trace.Diagnostic, monitor);
+                if (persistPartial)
+                    CommitPending(trace?.Context, completionObserved: true);
+            }
+            catch
+            {
+                // Abandon/cleanup must not affect title return or replay.
+            }
+        }
+        executionTrace.Clear();
+        observedEvent = null;
+        pendingSnapshot = null;
+        pendingExitObserved = false;
+        pendingSkipped = false;
+    }
+
+    private void CommitPending(HistoricalExecutionContext? context, bool completionObserved)
     {
         WatchedEventSnapshot? snapshot = pendingSnapshot;
         pendingSnapshot = null;
-        if (snapshot is null || !Game1.player.eventsSeen.Contains(snapshot.EventId))
+        if (snapshot is null || !completionObserved)
+            return;
+        bool markedSeen = Game1.player?.eventsSeen.Contains(snapshot.EventId) == true;
+        bool completedWithTrace = context?.EndReason == ExecutionTraceEndReason.NaturalComplete;
+        bool retainPartialOccurrence = context?.Completion == ExecutionTraceCompletion.Partial;
+        if (!markedSeen && !completedWithTrace && !retainPartialOccurrence)
             return;
 
         if (repository is not null && !sqliteDegraded)
@@ -208,7 +342,18 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
             try
             {
                 LegacyHistoryProjection projection = LegacyHistoryAdapter.From(snapshot);
-                repository.UpsertObservation(projection.Variant, projection.Observation);
+                HistoricalEventRecord record = new(
+                    projection.Variant.Key,
+                    DateTimeOffset.Now,
+                    snapshot.LocationName,
+                    snapshot.Locale);
+                NaturalOccurrenceWriteResult result = repository.AddNaturalOccurrence(
+                    projection.Variant,
+                    projection.Observation,
+                    record,
+                    context);
+                if (debugDiagnostics() && result.ContextStatus is ExecutionContextWriteStatus.Rejected or ExecutionContextWriteStatus.Failed)
+                    monitor.Log($"自然事件 occurrence 已保存，但 execution context 状态为 {result.ContextStatus}。", LogLevel.Debug);
             }
             catch (Exception error)
             {

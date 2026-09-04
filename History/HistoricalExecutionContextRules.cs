@@ -83,7 +83,7 @@ internal static class HistoricalExecutionContextRules
         {
             if (context.EndReason != ExecutionTraceEndReason.NaturalComplete || entryCount != 0
                 || context.Coverage.AutomaticDecisions != ExecutionTraceCoverage.Complete
-                || context.Coverage.PlayerChoices != ExecutionTraceCoverage.Complete
+                || context.Coverage.PlayerChoices == ExecutionTraceCoverage.Incomplete
                 || context.Coverage.OpaqueDecisions != OpaqueDecisionCoverage.NoneObserved
                 || context.Issues.Count != 0)
                 return Fail("invalid empty-complete context", out reason);
