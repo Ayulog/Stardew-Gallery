@@ -1,6 +1,6 @@
-# Stardew Gallery 1.0.0 Release Scope
+# Stardew Gallery 2.0.0 Release Scope
 
-## IN 1.0.0
+## IN 2.0.0
 
 - Current-state event gallery driven by the current installed content and resolved event index.
 - Readable condition explanation (friendship/hearts, seen events, mail, season, day, year, time).
@@ -15,7 +15,7 @@
 - Degraded/unknown handling for unparseable or unsupported conditions.
 - Automated core and persistence checks.
 
-## OUT OF 1.0.0
+## OUT OF 2.0.0
 
 - Historical content replay.
 - Historical automatic outcome replay.
@@ -30,7 +30,7 @@
 
 ## KNOWN LIMITATIONS
 
-- Runtime acceptance (R1–R10) not executed in this environment; manual testing pending.
+- Core runtime acceptance completed on Windows (current replay, supported preview injection/restore, save firewall, degraded conditions, current-content refresh, and interruption recovery).
 - Weather, relationship (dating/spouse/roommate), and world-state preview are analysis-only (not injected).
 - Single-player only; multiplayer not tested.
 - Opaque/custom conditions degrade to "view only" rather than being simulated.

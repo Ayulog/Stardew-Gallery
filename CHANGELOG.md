@@ -1,6 +1,6 @@
 # Changelog / 更新日志
 
-## 1.0.0 — Release / 正式版
+## 2.0.0 — Current-State Gallery / 当前状态画廊
 
 - Added the bilingual current-state event gallery and planning tool. / 加入中英双语“当前事件”图鉴与规划工具。
 - Current-state replay is canonical: replays always launch from currently resolved content; historical replay is no longer a product feature. / 当前状态回放成为主路径：回放一律从当前解析内容启动；历史回放不再作为产品功能。
