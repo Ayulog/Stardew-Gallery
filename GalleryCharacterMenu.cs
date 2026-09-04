@@ -13,6 +13,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 {
     private const int VisibleRows = 4;
     private const int BackComponentId = 1000;
+    private const int TooltipTextWidth = 600;
+    private const int TooltipMaxLines = 10;
     private readonly GalleryCharacter character;
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
@@ -205,7 +207,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
         if (hoverTooltip is not null)
-            IClickableMenu.drawHoverText(b, hoverTooltip, Game1.smallFont);
+            IClickableMenu.drawHoverText(b, WrapTooltip(hoverTooltip, Game1.smallFont, TooltipTextWidth, TooltipMaxLines), Game1.smallFont);
         drawMouse(b);
     }
 
@@ -288,6 +290,20 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         if (lines.Length <= maxLines)
             return wrapped;
         truncated = true;
+        return TruncateWrappedLines(lines, maxLines, font, width);
+    }
+
+    private static string WrapTooltip(string text, SpriteFont font, int width, int maxLines)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+        string wrapped = Game1.parseText(text, font, width);
+        string[] lines = wrapped.Split('\n');
+        return lines.Length <= maxLines ? wrapped : TruncateWrappedLines(lines, maxLines, font, width);
+    }
+
+    private static string TruncateWrappedLines(string[] lines, int maxLines, SpriteFont font, int width)
+    {
         string[] kept = lines[..maxLines];
         string last = kept[^1];
         int ellipsisWidth = (int)font.MeasureString("…").X;
