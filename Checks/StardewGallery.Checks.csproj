@@ -44,6 +44,7 @@
     <Compile Include="..\Preview\PreviewPlan.cs" Link="Preview\PreviewPlan.cs" />
     <Compile Include="..\Preview\PreviewPlanner.cs" Link="Preview\PreviewPlanner.cs" />
     <Compile Include="..\Preview\StateInjector.cs" Link="Preview\StateInjector.cs" />
+    <Compile Include="..\Preview\EventCardState.cs" Link="Preview\EventCardState.cs" />
     <Compile Include="..\History\HistoricalExecutionContextCodec.cs" Link="History\HistoricalExecutionContextCodec.cs" />
     <Compile Include="..\History\NaturalExecutionTrace.cs" Link="History\NaturalExecutionTrace.cs" />
     <Compile Include="..\EventKey.cs" Link="EventKey.cs" />

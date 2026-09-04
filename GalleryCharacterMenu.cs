@@ -111,23 +111,28 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             for (int row = 0; row < VisibleRows && scroll + row < events.Count; row++)
             {
                 Rectangle bounds = R(775, 140 + row * 170, 705, 155);
-                Rectangle replayButton = new(bounds.Right - 185, bounds.Bottom - 62, 155, 48);
-                Rectangle previewButton = new(bounds.Right - 360, bounds.Bottom - 62, 165, 48);
+                Rectangle primaryButton = new(bounds.Right - 185, bounds.Bottom - 62, 155, 48);
                 GalleryEvent entry = events[scroll + row];
                 EventConditionStatus status = Analyze(entry);
+                EventCardState card = EventCardStateResolver.Resolve(
+                    status.IsCurrentlyAvailable,
+                    Game1.player.eventsSeen.Contains(entry.EventId),
+                    isUnlocked());
+                if (!primaryButton.Contains(x, y))
+                    continue;
+                if (card.Unlocked)
+                {
+                    replay(entry, null, scroll);
+                    return;
+                }
                 bool canPreview = status.Capability is PreviewCapability.PreviewSupported or PreviewCapability.PreviewPartiallySupported;
-                if (previewButton.Contains(x, y) && canPreview && (Game1.player.eventsSeen.Contains(entry.EventId) || isUnlocked()))
+                if (!canPreview)
                 {
-                    PreviewState suggestion = planner.Plan(entry, RuntimeStateReader.Capture()).Suggestion;
-                    replay(entry, suggestion, scroll);
+                    Game1.addHUDMessage(new HUDMessage(i18n.Get("preview.not-available"), HUDMessage.error_type));
                     return;
                 }
-                if (replayButton.Contains(x, y) && (Game1.player.eventsSeen.Contains(entry.EventId) || isUnlocked() || status.Capability == PreviewCapability.DirectReplay))
-                {
-                    PreviewState? state = status.Capability == PreviewCapability.DirectReplay ? null : (canPreview ? planner.Plan(entry, RuntimeStateReader.Capture()).Suggestion : null);
-                    replay(entry, state, scroll);
-                    return;
-                }
+                replay(entry, planner.Plan(entry, RuntimeStateReader.Capture()).Suggestion, scroll);
+                return;
             }
         }
         base.receiveLeftClick(x, y, playSound);
@@ -253,25 +258,32 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         summary = Game1.parseText(summary, Game1.smallFont, row.Width - 235);
         summary = string.Join('\n', summary.Split('\n').Take(2));
         b.DrawString(Game1.smallFont, summary, new Vector2(row.X + 25, row.Y + 58), Game1.textColor);
-        bool seen = Game1.player.eventsSeen.Contains(entry.EventId);
-        string statusKey = status.IsCurrentlyAvailable ? "event.available"
-            : status.Capability == PreviewCapability.DirectReplay ? "event.available"
-            : status.Capability is PreviewCapability.PreviewSupported or PreviewCapability.PreviewPartiallySupported ? "event.preview" 
-            : status.Capability == PreviewCapability.AnalysisOnly ? "event.analyze"
-            : "event.locked";
-        Color statusColor = status.IsCurrentlyAvailable ? Color.Green
-            : status.Capability is PreviewCapability.PreviewSupported or PreviewCapability.PreviewPartiallySupported ? Color.Gold
-            : status.Capability == PreviewCapability.AnalysisOnly ? Color.Orange
-            : Color.DarkRed;
-        b.DrawString(Game1.smallFont, i18n.Get(statusKey), new Vector2(row.Right - 190, row.Y + 22), statusColor);
-        bool canPreview = status.Capability is PreviewCapability.PreviewSupported or PreviewCapability.PreviewPartiallySupported;
-        if (canPreview)
-            GalleryMenu.DrawButton(b, new Rectangle(row.Right - 360, row.Bottom - 62, 165, 48), i18n.Get("event.preview"));
-        GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 62, 155, 48), i18n.Get("event.replay"));
+        EventCardState card = EventCardStateResolver.Resolve(
+            status.IsCurrentlyAvailable,
+            Game1.player.eventsSeen.Contains(entry.EventId),
+            isUnlocked());
+        Color statusColor = card.Unlocked ? new Color(20, 110, 40) : new Color(150, 20, 20);
+        DrawStatusLabel(b, i18n.Get(card.StatusKey), new Vector2(row.Right - 190, row.Y + 22), statusColor);
+        GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 62, 155, 48), i18n.Get(card.ButtonKey));
     }
 
     private EventConditionStatus Analyze(GalleryEvent entry)
         => planner.Analyze(entry, RuntimeStateReader.Capture());
+
+    private static void DrawStatusLabel(SpriteBatch b, string text, Vector2 position, Color color)
+    {
+        Vector2 offset = new(Game1.smallFont.MeasureString(text).Y / 8f);
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0)
+                    continue;
+                b.DrawString(Game1.smallFont, text, position + new Vector2(dx, dy) * offset, Color.White);
+            }
+        }
+        b.DrawString(Game1.smallFont, text, position, color);
+    }
 
     private static void DrawHearts(SpriteBatch b, Rectangle bounds, int points, bool canBeRomanced)
     {
@@ -384,28 +396,14 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         for (int row = 0; row < visible; row++)
         {
             Rectangle bounds = R(775, 140 + row * 170, 705, 155);
-            GalleryEvent entry = events[scroll + row];
-            EventConditionStatus status = Analyze(entry);
-            bool canPreview = status.Capability is PreviewCapability.PreviewSupported or PreviewCapability.PreviewPartiallySupported;
-            ClickableComponent replayComponent = new(ToScreen(new Rectangle(bounds.Right - 185, bounds.Bottom - 62, 155, 48)), $"replay-{row}")
+            ClickableComponent actionComponent = new(ToScreen(new Rectangle(bounds.Right - 185, bounds.Bottom - 62, 155, 48)), $"action-{row}")
             {
                 myID = row,
-                leftNeighborID = canPreview ? 100 + row : BackComponentId,
+                leftNeighborID = BackComponentId,
                 upNeighborID = row > 0 ? row - 1 : BackComponentId,
                 downNeighborID = row + 1 < visible ? row + 1 : BackComponentId
             };
-            allClickableComponents.Add(replayComponent);
-            if (canPreview)
-            {
-                allClickableComponents.Add(new ClickableComponent(ToScreen(new Rectangle(bounds.Right - 360, bounds.Bottom - 62, 165, 48)), $"preview-{row}")
-                {
-                    myID = 100 + row,
-                    leftNeighborID = BackComponentId,
-                    rightNeighborID = row,
-                    upNeighborID = row > 0 ? 100 + row - 1 : BackComponentId,
-                    downNeighborID = row + 1 < visible ? 100 + row + 1 : BackComponentId
-                });
-            }
+            allClickableComponents.Add(actionComponent);
         }
         if (upperRightCloseButton is not null)
         {

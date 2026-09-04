@@ -1492,6 +1492,19 @@ GalleryEvent pvCurrent = TestEvent("130/A");
 EventPlayback pvPlayback = EventPlayback.ForCurrent(pvCurrent.Resolved);
 Check(pvPlayback.RootScript == pvCurrent.Resolved.ResolvedScript, "F1-13 replay uses current resolved script");
 
+// strict two-state event card model
+void CheckState(string label, bool currentlyAvailable, bool seenByPlayer, bool galleryUnlocked, bool expectedUnlocked)
+{
+    EventCardState state = EventCardStateResolver.Resolve(currentlyAvailable, seenByPlayer, galleryUnlocked);
+    Check(state.Unlocked == expectedUnlocked, label + " unlocked flag");
+    Check(state.Unlocked ? state.ButtonKey == "event.replay" : state.ButtonKey == "event.preview", label + " primary button");
+    Check(state.Unlocked ? state.StatusKey == "event.state-unlocked" : state.StatusKey == "event.state-locked", label + " status key");
+}
+CheckState("state-satisfied", currentlyAvailable: true, seenByPlayer: false, galleryUnlocked: false, expectedUnlocked: true);
+CheckState("state-seen", currentlyAvailable: false, seenByPlayer: true, galleryUnlocked: false, expectedUnlocked: true);
+CheckState("state-unlock-all", currentlyAvailable: false, seenByPlayer: false, galleryUnlocked: true, expectedUnlocked: true);
+CheckState("state-locked", currentlyAvailable: false, seenByPlayer: false, galleryUnlocked: false, expectedUnlocked: false);
+
 Console.WriteLine("Stardew Gallery checks passed.");
 
 static void Check(bool condition, string message = "", [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
