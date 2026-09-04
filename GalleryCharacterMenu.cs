@@ -36,6 +36,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly int preferredReplayComponentId;
     private bool pendingInitialSnap = true;
     private AnimatedSprite? previewSprite;
+    private string? hoverTooltip;
 
     internal GalleryCharacterMenu(GalleryCharacter character, GalleryCatalog catalog, ITranslationHelper i18n,
         Texture2D background, Texture2D scene, Func<bool> isUnlocked, Action back,
@@ -189,6 +190,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     {
         EnsureLayout();
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
+        hoverTooltip = null;
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         DrawPhoto(b);
         b.Draw(background, new Rectangle(xPositionOnScreen, yPositionOnScreen, width, height), Color.White);
@@ -202,6 +204,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         GalleryMenu.DrawButton(b, backBounds, i18n.Get("detail.back"));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
+        if (hoverTooltip is not null)
+            IClickableMenu.drawHoverText(b, hoverTooltip, Game1.smallFont);
         drawMouse(b);
     }
 
@@ -254,9 +258,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         GalleryMenu.DrawLeftFitted(b, $"{heart} · ID {entry.EventId}", new Rectangle(row.X + 25, row.Y + 10, row.Width - 245, 40));
         string location = Game1.getLocationFromName(entry.LocationName)?.DisplayName ?? entry.LocationName;
         EventConditionStatus status = Analyze(entry);
-        string summary = i18n.Get("event.location-conditions", new { location, conditions = FormatConditions(entry) });
-        summary = Game1.parseText(summary, Game1.smallFont, row.Width - 235);
-        summary = string.Join('\n', summary.Split('\n').Take(2));
+        string fullSummaries = i18n.Get("event.location-conditions", new { location, conditions = FormatConditions(entry) });
+        string summary = WrapAndTruncate(fullSummaries, Game1.smallFont, row.Width - 235, maxLines: 2, out bool truncated);
         b.DrawString(Game1.smallFont, summary, new Vector2(row.X + 25, row.Y + 58), Game1.textColor);
         EventCardState card = EventCardStateResolver.Resolve(
             status.IsCurrentlyAvailable,
@@ -265,6 +268,34 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         Color statusColor = card.Unlocked ? new Color(20, 110, 40) : new Color(150, 20, 20);
         DrawStatusLabel(b, i18n.Get(card.StatusKey), new Vector2(row.Right - 190, row.Y + 22), statusColor);
         GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 62, 155, 48), i18n.Get(card.ButtonKey));
+
+        if (truncated)
+        {
+            Rectangle summaryRegion = new(row.X + 25, row.Y + 58, row.Width - 235, 48);
+            (int hx, int hy) = GetMouseLogical();
+            if (summaryRegion.Contains(hx, hy))
+                hoverTooltip = fullSummaries;
+        }
+    }
+
+    private static string WrapAndTruncate(string text, SpriteFont font, int width, int maxLines, out bool truncated)
+    {
+        truncated = false;
+        if (string.IsNullOrEmpty(text))
+            return text;
+        string wrapped = Game1.parseText(text, font, width);
+        string[] lines = wrapped.Split('\n');
+        if (lines.Length <= maxLines)
+            return wrapped;
+        truncated = true;
+        string[] kept = lines[..maxLines];
+        string last = kept[^1];
+        int ellipsisWidth = (int)font.MeasureString("…").X;
+        while ((int)font.MeasureString(last).X + ellipsisWidth > width && last.Length > 0)
+            last = last[..^1];
+        string prefix = string.Join('\n', kept[..^1]);
+        string final = last + "…";
+        return prefix.Length > 0 ? prefix + "\n" + final : final;
     }
 
     private EventConditionStatus Analyze(GalleryEvent entry)
@@ -272,16 +303,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     private static void DrawStatusLabel(SpriteBatch b, string text, Vector2 position, Color color)
     {
-        Vector2 offset = new(Game1.smallFont.MeasureString(text).Y / 8f);
-        for (int dx = -1; dx <= 1; dx++)
-        {
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                if (dx == 0 && dy == 0)
-                    continue;
-                b.DrawString(Game1.smallFont, text, position + new Vector2(dx, dy) * offset, Color.White);
-            }
-        }
+        // Subtle 1px dark shadow for readability without a white outline/glow/badge.
+        Vector2 shadowOffset = new(1, 1);
+        b.DrawString(Game1.smallFont, text, position + shadowOffset, new Color(60, 40, 20) * 0.45f);
         b.DrawString(Game1.smallFont, text, position, color);
     }
 
@@ -431,6 +455,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     private (int X, int Y) ToLogical(int x, int y)
         => ((int)Math.Round((x - drawOffsetX) / menuScale), (int)Math.Round((y - drawOffsetY) / menuScale));
+
+    private (int X, int Y) GetMouseLogical()
+        => ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
 
     private static void DrawPageTitle(SpriteBatch b, string title, Rectangle bounds)
     {
