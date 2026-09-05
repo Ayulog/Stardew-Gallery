@@ -13,6 +13,9 @@ internal static class GalleryUiRules
     internal static int PreferredReplayRow(int selectedIndex, int scroll, int visibleRows)
         => selectedIndex >= scroll && selectedIndex < scroll + visibleRows ? selectedIndex - scroll : 0;
 
+    internal static bool ShouldCloseFromShortcut(bool shortcutPressed, bool searchSelected)
+        => shortcutPressed && !searchSelected;
+
     internal static (int ScrollRow, int VisibleSlot) ResolveReturnPosition(
         int characterIndex, int oldScrollRow, int columns, int visibleRows, int itemCount)
     {

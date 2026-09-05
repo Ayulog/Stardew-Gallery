@@ -110,7 +110,9 @@ internal sealed class ModEntry : Mod
             replay.CycleSpeed();
             return;
         }
-        if (galleryPressed && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu)
+        bool searchSelected = Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true };
+        if (GalleryUiRules.ShouldCloseFromShortcut(galleryPressed, searchSelected)
+            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu)
         {
             Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
             Game1.activeClickableMenu = null;

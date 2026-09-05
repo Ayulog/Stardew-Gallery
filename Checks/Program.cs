@@ -597,6 +597,8 @@ Check(GalleryUiRules.DisplayName("Lenny", false, false) == "???");
 Check(GalleryUiRules.DisplayName("Lenny", false, true) == "Lenny");
 Check(GalleryUiRules.PreferredReplayRow(7, 4, 4) == 3);
 Check(GalleryUiRules.PreferredReplayRow(8, 4, 4) == 0);
+Check(!GalleryUiRules.ShouldCloseFromShortcut(shortcutPressed: true, searchSelected: true), "typing the gallery shortcut into search must not close the gallery");
+Check(GalleryUiRules.ShouldCloseFromShortcut(shortcutPressed: true, searchSelected: false), "gallery shortcut still closes when search is not selected");
 
 (int scroll, int slot) returnPos0 = GalleryUiRules.ResolveReturnPosition(0, 0, 6, 3, 21);
 Check(returnPos0.scroll == 0 && returnPos0.slot == 0, "idx0 old0 -> scroll0 slot0");
