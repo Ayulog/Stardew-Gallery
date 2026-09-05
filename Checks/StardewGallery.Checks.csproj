@@ -45,6 +45,7 @@
     <Compile Include="..\Preview\PreviewPlanner.cs" Link="Preview\PreviewPlanner.cs" />
     <Compile Include="..\Preview\StateInjector.cs" Link="Preview\StateInjector.cs" />
     <Compile Include="..\Preview\EventCardState.cs" Link="Preview\EventCardState.cs" />
+    <Compile Include="..\Preview\ReplaySceneEnvironment.cs" Link="Preview\ReplaySceneEnvironment.cs" />
     <Compile Include="..\History\HistoricalExecutionContextCodec.cs" Link="History\HistoricalExecutionContextCodec.cs" />
     <Compile Include="..\History\NaturalExecutionTrace.cs" Link="History\NaturalExecutionTrace.cs" />
     <Compile Include="..\EventKey.cs" Link="EventKey.cs" />

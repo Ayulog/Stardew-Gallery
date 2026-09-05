@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.0.1 — Replay Environment / 回放演出环境
+
+- Events are unlocked for replay only after being seen, or while Unlock All is enabled. / 事件仅在已观看或开启“一键解锁全部”后可回放。
+- Removed the player-facing Preview action; unlocked events now use one Replay path. / 移除玩家界面的“预览”操作；已解锁事件统一使用单一回放路径。
+- Replay now applies explicit season, time, and supported vanilla weather requirements at the target location, then restores the original environment. / 回放会在目标地点应用事件明确要求的季节、时间及受支持的原版天气，并在结束后恢复原环境。
+- Environment setup failures no longer block an otherwise playable event and are logged as warnings; launch and restore failures remain errors. / 演出环境设置失败不再阻止可播放事件，并记录为警告；启动或恢复失败仍记录为错误。
+
 ## 2.0.0 — Current-State Gallery / 当前状态画廊
 
 - Added the bilingual current-state event gallery and planning tool. / 加入中英双语“当前事件”图鉴与规划工具。

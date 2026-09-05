@@ -4,7 +4,7 @@ using StardewValley;
 
 namespace StardewGallery;
 
-internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, HistoricalReplayAssets historicalAssets,
+internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, HistoricalReplayAssets historicalAssets, PreviewPlanner planner,
     Func<bool> autoAdvanceDialogue, Func<bool> debugDiagnostics)
 {
     private const int StartTimeoutTicks = 900;
@@ -24,6 +24,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
     private int dialogueAutoTicks;
     private Event? activeReplayEvent;
     private PreviewInjectionScope? previewScope;
+    private ReplaySceneEnvironmentScope? environmentScope;
 
     internal bool IsActive => snapshot is not null || previewScope is not null;
     internal int SpeedMultiplier => speedMultiplier;
@@ -58,7 +59,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             speedMultiplier = 1;
             WriteDiagnostics("requested");
             Game1.activeClickableMenu = null;
-            EventLaunchResult launch = eventLauncher.TryLaunch(playback);
+            EventLaunchResult launch = eventLauncher.TryLaunch(playback, location => PrepareEnvironment(entry, location));
             if (launch.Accepted)
             {
                 Trace($"事件回放已接受：地点={playback.LocationName}，事件={playback.EventId}。");
@@ -66,6 +67,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
                 return true;
             }
             error = MapLaunchFailure(launch.Failure, playback.LocationName);
+            monitor.Log($"回放无法启动：地点={playback.LocationName}，事件={playback.EventId}，原因={launch.Failure?.Detail ?? error}", LogLevel.Error);
         }
         catch (Exception ex)
         {
@@ -134,6 +136,25 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             EventLaunchFailureKind.SchedulingFailed => helper.Translation.Get("replay.not-started"),
             _ => helper.Translation.Get("replay.not-started")
         };
+    }
+
+    private void PrepareEnvironment(GalleryEvent entry, GameLocation location)
+    {
+        try
+        {
+            ReplaySceneEnvironment environment = planner.ResolveSceneEnvironment(
+                entry,
+                Game1.currentSeason,
+                Game1.timeOfDay,
+                location.GetWeather().Weather);
+            if (environment.Warning is not null)
+                monitor.Log($"回放演出环境不完整；事件仍会继续播放。{environment.Warning}", LogLevel.Warn);
+            environmentScope = ReplaySceneEnvironmentScope.Apply(location, environment, monitor);
+        }
+        catch (Exception error)
+        {
+            monitor.Log($"回放演出环境无法准备；事件仍会继续播放。\n{error}", LogLevel.Warn);
+        }
     }
 
     internal void Update()
@@ -206,7 +227,11 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         if (observed)
             quietTicks++;
         if (ReplayLifecycleRules.ShouldRestore(observed, quietTicks, ticks, StartTimeoutTicks))
+        {
+            if (!observed)
+                monitor.Log($"回放未在超时前实际启动：地点={targetLocationName}，事件={eventId}。", LogLevel.Error);
             Restore(observed ? null : helper.Translation.Get("replay.start-timeout").ToString());
+        }
     }
 
     private void Restore(string? message)
@@ -231,6 +256,15 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
 
     private void FinishRestore()
     {
+        try
+        {
+            environmentScope?.Restore();
+        }
+        catch (Exception error)
+        {
+            FailSafe(error);
+            return;
+        }
         Trace($"回放状态恢复完成：事件={eventId}。");
         string? completedBackup = backupPath;
         if (completedBackup is not null && !ReplayBackup.Delete(completedBackup))
@@ -263,6 +297,8 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
 
     private void Clear()
     {
+        environmentScope?.Dispose();
+        environmentScope = null;
         previewScope?.Dispose();
         previewScope = null;
         historicalAssets.Clear();

@@ -139,6 +139,9 @@ internal sealed class PreviewPlanner
             warnings);
     }
 
+    internal ReplaySceneEnvironment ResolveSceneEnvironment(GalleryEvent entry, string currentSeason, int currentTime, string currentWeather)
+        => ReplaySceneEnvironmentResolver.Resolve(parser.ParseRawKey(entry.EventKey).Conditions, currentSeason, currentTime, currentWeather);
+
     private PreviewCapability ComputeCapability(IReadOnlyList<ConditionExpression> conditions, CurrentStateSnapshot state)
     {
         bool anyUnknown = false;

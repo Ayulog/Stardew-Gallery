@@ -1493,17 +1493,32 @@ EventPlayback pvPlayback = EventPlayback.ForCurrent(pvCurrent.Resolved);
 Check(pvPlayback.RootScript == pvCurrent.Resolved.ResolvedScript, "F1-13 replay uses current resolved script");
 
 // strict two-state event card model
-void CheckState(string label, bool currentlyAvailable, bool seenByPlayer, bool galleryUnlocked, bool expectedUnlocked)
+void CheckState(string label, bool seenByPlayer, bool galleryUnlocked, bool expectedUnlocked)
 {
-    EventCardState state = EventCardStateResolver.Resolve(currentlyAvailable, seenByPlayer, galleryUnlocked);
+    EventCardState state = EventCardStateResolver.Resolve(seenByPlayer, galleryUnlocked);
     Check(state.Unlocked == expectedUnlocked, label + " unlocked flag");
-    Check(state.Unlocked ? state.ButtonKey == "event.replay" : state.ButtonKey == "event.preview", label + " primary button");
     Check(state.Unlocked ? state.StatusKey == "event.state-unlocked" : state.StatusKey == "event.state-locked", label + " status key");
 }
-CheckState("state-satisfied", currentlyAvailable: true, seenByPlayer: false, galleryUnlocked: false, expectedUnlocked: true);
-CheckState("state-seen", currentlyAvailable: false, seenByPlayer: true, galleryUnlocked: false, expectedUnlocked: true);
-CheckState("state-unlock-all", currentlyAvailable: false, seenByPlayer: false, galleryUnlocked: true, expectedUnlocked: true);
-CheckState("state-locked", currentlyAvailable: false, seenByPlayer: false, galleryUnlocked: false, expectedUnlocked: false);
+CheckState("state-seen", seenByPlayer: true, galleryUnlocked: false, expectedUnlocked: true);
+CheckState("state-unlock-all", seenByPlayer: false, galleryUnlocked: true, expectedUnlocked: true);
+CheckState("state-locked", seenByPlayer: false, galleryUnlocked: false, expectedUnlocked: false);
+
+ConditionParser sceneParser = new(key => key.Split('/', StringSplitOptions.RemoveEmptyEntries), FakeSplitArgs);
+ReplaySceneEnvironment scene = ReplaySceneEnvironmentResolver.Resolve(
+    sceneParser.ParseRawKey("200/SEASON summer fall/TIME 1800 2400/WEATHER rainy").Conditions,
+    "spring", 900, "Storm");
+Check(scene.Season == "summer", "2.0.1 scene picks first allowed season when current is disallowed");
+Check(scene.Time == 1800, "2.0.1 scene picks minimum time when current is outside range");
+Check(scene.Weather == "Storm", "2.0.1 rainy keeps current storm");
+ReplaySceneEnvironment keptScene = ReplaySceneEnvironmentResolver.Resolve(
+    sceneParser.ParseRawKey("201/SEASON summer fall/TIME 800 1200/WEATHER sunny").Conditions,
+    "fall", 900, "Rain");
+Check(keptScene.Season == "fall" && keptScene.Time == 900 && keptScene.Weather == "Sun", "2.0.1 scene keeps valid season/time and normalizes sun");
+ReplaySceneEnvironment safeScene = ReplaySceneEnvironmentResolver.Resolve(
+    sceneParser.ParseRawKey("202/!SEASON winter/!TIME 600 900/WEATHER CustomWeather").Conditions,
+    "spring", 1200, "Sun");
+Check(safeScene.Season is null && safeScene.Time is null && safeScene.Weather is null && safeScene.Warning is not null,
+    "2.0.1 negative requirements are ignored and custom weather warns");
 
 Console.WriteLine("Stardew Gallery checks passed.");
 

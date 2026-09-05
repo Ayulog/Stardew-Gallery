@@ -1,8 +1,8 @@
 {
   "Name": "Stardew Gallery",
   "Author": "sjt38",
-  "Version": "2.0.0",
-  "Description": "Browse the currently active NPC heart events, understand their requirements and progress gaps, and safely preview/replay supported events.",
+  "Version": "2.0.1",
+  "Description": "Browse current NPC heart events, understand their requirements, and safely replay unlocked events in their intended scene environment.",
   "UniqueID": "sjt38.StardewGallery",
   "EntryDll": "StardewGallery.dll",
   "MinimumApiVersion": "4.5.2",

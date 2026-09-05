@@ -23,7 +23,7 @@ internal sealed record EventLaunchResult(
 
 internal sealed class EventLauncher
 {
-    internal EventLaunchResult TryLaunch(EventPlayback playback)
+    internal EventLaunchResult TryLaunch(EventPlayback playback, Action<GameLocation>? prepareEnvironment = null)
     {
         if (string.IsNullOrWhiteSpace(playback.AssetName) || string.IsNullOrWhiteSpace(playback.EventId)
             || string.IsNullOrWhiteSpace(playback.RootScript) || string.IsNullOrWhiteSpace(playback.LocationName))
@@ -51,7 +51,11 @@ internal sealed class EventLauncher
             try
             {
                 LocationRequest request = Game1.getLocationRequest(location.Name);
-                request.OnLoad += () => Game1.currentLocation.currentEvent = replayEvent;
+                request.OnLoad += () =>
+                {
+                    prepareEnvironment?.Invoke(Game1.currentLocation);
+                    Game1.currentLocation.currentEvent = replayEvent;
+                };
                 int x = 8;
                 int y = 8;
                 Utility.getDefaultWarpLocation(request.Name, ref x, ref y);
@@ -70,6 +74,7 @@ internal sealed class EventLauncher
             Game1.globalFadeToBlack(() =>
             {
                 Game1.forceSnapOnNextViewportUpdate = true;
+                prepareEnvironment?.Invoke(Game1.currentLocation);
                 Game1.currentLocation.startEvent(replayEvent);
                 Game1.globalFadeToClear();
             });

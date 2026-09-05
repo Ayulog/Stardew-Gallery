@@ -20,8 +20,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D background;
     private readonly Texture2D scene;
     private readonly Action back;
-    private readonly Action<GalleryEvent, PreviewState?, int> replay;
-    private readonly PreviewPlanner planner;
+    private readonly Action<GalleryEvent, int> replay;
     private readonly Func<bool> isUnlocked;
     private readonly List<GalleryEvent> events;
     private int scroll;
@@ -42,8 +41,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     internal GalleryCharacterMenu(GalleryCharacter character, GalleryCatalog catalog, ITranslationHelper i18n,
         Texture2D background, Texture2D scene, Func<bool> isUnlocked, Action back,
-        PreviewPlanner planner,
-        Action<GalleryEvent, PreviewState?, int> replay,
+        Action<GalleryEvent, int> replay,
         int initialScroll = 0, string? initialFocusIdentity = null)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
@@ -53,7 +51,6 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         this.scene = scene;
         this.isUnlocked = isUnlocked;
         this.back = back;
-        this.planner = planner;
         this.replay = replay;
         events = catalog.Events
             .Where(entry => entry.Ownership.Owners.Any(owner => owner.Name == character.Name))
@@ -116,25 +113,12 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
                 Rectangle bounds = R(775, 140 + row * 170, 705, 155);
                 Rectangle primaryButton = new(bounds.Right - 185, bounds.Bottom - 62, 155, 48);
                 GalleryEvent entry = events[scroll + row];
-                EventConditionStatus status = Analyze(entry);
                 EventCardState card = EventCardStateResolver.Resolve(
-                    status.IsCurrentlyAvailable,
                     Game1.player.eventsSeen.Contains(entry.EventId),
                     isUnlocked());
-                if (!primaryButton.Contains(x, y))
+                if (!card.Unlocked || !primaryButton.Contains(x, y))
                     continue;
-                if (card.Unlocked)
-                {
-                    replay(entry, null, scroll);
-                    return;
-                }
-                bool canPreview = status.Capability is PreviewCapability.PreviewSupported or PreviewCapability.PreviewPartiallySupported;
-                if (!canPreview)
-                {
-                    Game1.addHUDMessage(new HUDMessage(i18n.Get("preview.not-available"), HUDMessage.error_type));
-                    return;
-                }
-                replay(entry, planner.Plan(entry, RuntimeStateReader.Capture()).Suggestion, scroll);
+                replay(entry, scroll);
                 return;
             }
         }
@@ -259,17 +243,16 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         string heart = owner.FriendshipPoints is int points ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) }) : i18n.Get("event.unspecified");
         GalleryMenu.DrawLeftFitted(b, $"{heart} · ID {entry.EventId}", new Rectangle(row.X + 25, row.Y + 10, row.Width - 245, 40));
         string location = Game1.getLocationFromName(entry.LocationName)?.DisplayName ?? entry.LocationName;
-        EventConditionStatus status = Analyze(entry);
         string fullSummaries = i18n.Get("event.location-conditions", new { location, conditions = FormatConditions(entry) });
         string summary = WrapAndTruncate(fullSummaries, Game1.smallFont, row.Width - 235, maxLines: 2, out bool truncated);
         b.DrawString(Game1.smallFont, summary, new Vector2(row.X + 25, row.Y + 58), Game1.textColor);
         EventCardState card = EventCardStateResolver.Resolve(
-            status.IsCurrentlyAvailable,
             Game1.player.eventsSeen.Contains(entry.EventId),
             isUnlocked());
         Color statusColor = card.Unlocked ? new Color(20, 110, 40) : new Color(150, 20, 20);
         DrawStatusLabel(b, i18n.Get(card.StatusKey), new Vector2(row.Right - 190, row.Y + 22), statusColor);
-        GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 62, 155, 48), i18n.Get(card.ButtonKey));
+        if (card.Unlocked)
+            GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 62, 155, 48), i18n.Get("event.replay"));
 
         if (truncated)
         {
@@ -313,9 +296,6 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         string final = last + "…";
         return prefix.Length > 0 ? prefix + "\n" + final : final;
     }
-
-    private EventConditionStatus Analyze(GalleryEvent entry)
-        => planner.Analyze(entry, RuntimeStateReader.Capture());
 
     private static void DrawStatusLabel(SpriteBatch b, string text, Vector2 position, Color color)
     {
@@ -436,6 +416,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         for (int row = 0; row < visible; row++)
         {
             Rectangle bounds = R(775, 140 + row * 170, 705, 155);
+            GalleryEvent entry = events[scroll + row];
+            if (!EventCardStateResolver.Resolve(Game1.player.eventsSeen.Contains(entry.EventId), isUnlocked()).Unlocked)
+                continue;
             ClickableComponent actionComponent = new(ToScreen(new Rectangle(bounds.Right - 185, bounds.Bottom - 62, 155, 48)), $"action-{row}")
             {
                 myID = row,
