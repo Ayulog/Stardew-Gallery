@@ -15,7 +15,8 @@ internal sealed record CurrentStateSnapshot(
     IReadOnlySet<string>? Dating,
     IReadOnlySet<string>? Spouse,
     bool? Roommate,
-    IReadOnlySet<string>? WorldState
+    IReadOnlySet<string>? WorldState,
+    bool? IsRaining = null
 )
 {
     internal ConditionEvaluationContext ToConditionContext()
@@ -34,7 +35,8 @@ internal sealed record CurrentStateSnapshot(
             Spouse,
             Roommate,
             DaysPlayed,
-            WorldState);
+            WorldState,
+            IsRaining);
 }
 
 /// <summary>
@@ -184,13 +186,13 @@ internal sealed class PreviewPlanner
         {
             switch (condition)
             {
-                case FriendshipCondition leaf:
+                case FriendshipCondition { Requirements.Count: 1 } leaf:
                     friendship ??= new Dictionary<string, int>(StringComparer.Ordinal);
-                    friendship[leaf.Npc] = leaf.Points;
+                    friendship[leaf.Requirements[0].Npc] = leaf.Requirements[0].Points;
                     break;
-                case SawEventCondition leaf:
+                case SawEventCondition { EventIds.Count: 1 } leaf:
                     seen ??= new HashSet<string>(StringComparer.Ordinal);
-                    seen.Add(leaf.EventId);
+                    seen.Add(leaf.EventIds[0]);
                     break;
                 case MailCondition leaf:
                     mail ??= new HashSet<string>(StringComparer.Ordinal);
@@ -203,10 +205,10 @@ internal sealed class PreviewPlanner
                     day = leaf.Days[0];
                     break;
                 case YearCondition { Negated: false } leaf:
-                    year = leaf.Min;
+                    year = leaf.DesiredYear;
                     break;
                 case TimeCondition { Negated: false } leaf:
-                    time = leaf.Min ?? 600;
+                    time = leaf.Min;
                     break;
             }
         }
@@ -227,11 +229,12 @@ internal sealed class PreviewPlanner
             return false;
         switch (condition)
         {
-            case FriendshipCondition leaf:
-                overridden = new PreviewOverride(PreviewOverrideKind.Friendship, leaf.Npc, leaf.Points, leaf.Npc);
+            case FriendshipCondition { Requirements.Count: 1 } leaf:
+                FriendshipRequirement friendship = leaf.Requirements[0];
+                overridden = new PreviewOverride(PreviewOverrideKind.Friendship, friendship.Npc, friendship.Points, friendship.Npc);
                 return true;
-            case SawEventCondition leaf:
-                overridden = new PreviewOverride(PreviewOverrideKind.EventSeen, leaf.EventId, null, leaf.EventId);
+            case SawEventCondition { EventIds.Count: 1 } leaf:
+                overridden = new PreviewOverride(PreviewOverrideKind.EventSeen, leaf.EventIds[0], null, leaf.EventIds[0]);
                 return true;
             case MailCondition leaf:
                 overridden = new PreviewOverride(PreviewOverrideKind.Mail, leaf.MailId, null, leaf.MailId);
@@ -243,10 +246,10 @@ internal sealed class PreviewPlanner
                 overridden = new PreviewOverride(PreviewOverrideKind.DayOfMonth, null, leaf.Days[0], null);
                 return true;
             case YearCondition leaf:
-                overridden = new PreviewOverride(PreviewOverrideKind.Year, null, leaf.Min, null);
+                overridden = new PreviewOverride(PreviewOverrideKind.Year, null, leaf.DesiredYear, null);
                 return true;
             case TimeCondition leaf:
-                overridden = new PreviewOverride(PreviewOverrideKind.Time, null, leaf.Min ?? 600, null);
+                overridden = new PreviewOverride(PreviewOverrideKind.Time, null, leaf.Min, null);
                 return true;
             default:
                 // Weather/relationship/world-state are analyze-only and not restorable.
@@ -277,8 +280,7 @@ internal sealed class PreviewPlanner
         return overrides;
     }
 
-    private static string Describe(ReadableCondition condition)
-        => condition.LocalizationKey is null ? condition.RawFallback ?? "" : condition.LocalizationKey;
+    private static string Describe(ConditionTextSpec condition) => condition.LocalizationKey;
 
     private static IReadOnlyDictionary<string, string> EmptyArguments()
         => new Dictionary<string, string>();

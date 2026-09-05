@@ -27,7 +27,7 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
             NativeQueryCondition leaf => EvaluateNativeQuery(leaf),
             OpaqueCondition => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Unsupported, FlatUnavailable),
             ConditionSet => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Invalid, FlatUnavailable),
-            _ => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Invalid, FlatUnavailable)
+            _ => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Unsupported, FlatUnavailable)
         };
         if (condition.Negated && baseResult.Knowledge == ConditionKnowledge.Known)
         {
@@ -48,9 +48,9 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     private static string? leafOverReason(ConditionExpression leaf)
         => leaf switch
         {
-            SawEventCondition c => "already-seen:" + c.EventId,
+            SawEventCondition c => "already-seen:" + string.Join(',', c.EventIds),
             MailCondition c => "already-mail:" + c.MailId,
-            FriendshipCondition c => "friendship-at-or-above:" + c.Npc,
+            FriendshipCondition c => "friendship-at-or-above:" + string.Join(',', c.Requirements.Select(value => value.Npc)),
             TimeCondition c => "time-inside-range",
             _ => null
         };
@@ -81,58 +81,66 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     {
         if (context.Year is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = leaf.Min == 1
+        bool matches = leaf.DesiredYear == 1
             ? context.Year.Value == 1
-            : context.Year.Value >= leaf.Min;
+            : context.Year.Value >= leaf.DesiredYear;
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
-                new ConditionGap(ConditionGapKind.NumericGap, Target: leaf.Min.ToString(), Current: context.Year.Value.ToString()));
+                new ConditionGap(ConditionGapKind.NumericGap, Target: leaf.DesiredYear.ToString(), Current: context.Year.Value.ToString()));
     }
 
     private ConditionEvaluation EvaluateTime(TimeCondition leaf, ConditionEvaluationContext context)
     {
         if (context.Time is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = (leaf.Min is null || context.Time.Value >= leaf.Min) && (leaf.Max is null || context.Time.Value <= leaf.Max);
+        bool matches = context.Time.Value >= leaf.Min && context.Time.Value <= leaf.Max;
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
                 new ConditionGap(ConditionGapKind.RequiredRange,
-                    Target: $"{leaf.Min ?? 600}..{leaf.Max ?? 2600}", Current: context.Time.Value.ToString()));
+                    Target: $"{leaf.Min}..{leaf.Max}", Current: context.Time.Value.ToString()));
     }
 
     private ConditionEvaluation EvaluateWeather(WeatherCondition leaf, ConditionEvaluationContext context)
     {
-        if (context.Weather is null)
+        if (leaf.Kind is WeatherKind.Rainy or WeatherKind.Sunny && context.IsRaining is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = context.Weather.Equals(leaf.Weather, StringComparison.OrdinalIgnoreCase);
+        if (leaf.Kind == WeatherKind.Custom && context.Weather is null)
+            return Unknown(leaf, ConditionKnowledge.MissingData);
+        bool matches = leaf.Kind switch
+        {
+            WeatherKind.Rainy => context.IsRaining!.Value,
+            WeatherKind.Sunny => !context.IsRaining!.Value,
+            _ => context.Weather!.Equals(leaf.WeatherId, StringComparison.Ordinal)
+        };
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
-                new ConditionGap(ConditionGapKind.MissingState, Target: leaf.Weather, Current: context.Weather));
+                new ConditionGap(ConditionGapKind.MissingState, Target: leaf.WeatherId, Current: context.Weather));
     }
 
     private ConditionEvaluation EvaluateFriendship(FriendshipCondition leaf, ConditionEvaluationContext context)
     {
-        if (context.Friendship is null || !context.Friendship.TryGetValue(leaf.Npc, out int current))
+        if (context.Friendship is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = current >= leaf.Points;
+        FriendshipRequirement? missing = leaf.Requirements.FirstOrDefault(requirement => !context.Friendship.TryGetValue(requirement.Npc, out int points) || points < requirement.Points);
+        bool matches = missing is null;
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
-                new ConditionGap(ConditionGapKind.NumericGap, Target: leaf.Points.ToString(), Current: current.ToString()));
+                new ConditionGap(ConditionGapKind.NumericGap, Target: missing!.Points.ToString(), Current: context.Friendship.GetValueOrDefault(missing.Npc).ToString(), Detail: missing.Npc));
     }
 
     private ConditionEvaluation EvaluateSawEvent(SawEventCondition leaf, ConditionEvaluationContext context)
     {
         if (context.EventsSeen is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = context.EventsSeen.Contains(leaf.EventId);
+        bool matches = leaf.EventIds.Any(context.EventsSeen.Contains);
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
-                new ConditionGap(ConditionGapKind.MissingState, Target: leaf.EventId));
+                new ConditionGap(ConditionGapKind.MissingState, Target: string.Join(' ', leaf.EventIds)));
     }
 
     private ConditionEvaluation EvaluateMail(MailCondition leaf, ConditionEvaluationContext context)
@@ -189,12 +197,12 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     {
         if (context.DaysPlayed is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = context.DaysPlayed.Value >= leaf.Min;
+        bool matches = context.DaysPlayed.Value > leaf.Threshold;
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
                 new ConditionGap(ConditionGapKind.NumericGap,
-                    Target: leaf.Min.ToString(), Current: context.DaysPlayed.Value.ToString()));
+                    Target: $">{leaf.Threshold}", Current: context.DaysPlayed.Value.ToString()));
     }
 
     private ConditionEvaluation EvaluateWorldState(WorldStateCondition leaf, ConditionEvaluationContext context)

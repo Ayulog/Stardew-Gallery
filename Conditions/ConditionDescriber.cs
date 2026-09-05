@@ -1,63 +1,113 @@
+using System.Globalization;
+
 namespace StardewGallery;
 
-internal sealed record ReadableCondition(
-    string? LocalizationKey,
-    IReadOnlyDictionary<string, string> Arguments,
-    string? RawFallback,
-    bool Negated
-);
+internal abstract record ConditionTextValue;
+internal sealed record PlainTextValue(string Value) : ConditionTextValue;
+internal sealed record NumberTextValue(double Value) : ConditionTextValue;
+internal sealed record NpcTextValue(string Name) : ConditionTextValue;
+internal sealed record ItemTextValue(string Id) : ConditionTextValue;
+internal sealed record TimeTextValue(int Value) : ConditionTextValue;
+internal sealed record TermTextValue(string Group, string Value) : ConditionTextValue;
+internal sealed record ListTextValue(IReadOnlyList<ConditionTextValue> Values) : ConditionTextValue;
+internal sealed record FriendshipRequirementsTextValue(IReadOnlyList<FriendshipRequirement> Values) : ConditionTextValue;
+internal sealed record ShippedRequirementsTextValue(IReadOnlyList<ShippedRequirement> Values) : ConditionTextValue;
+internal sealed record ConditionTextSpec(string LocalizationKey, IReadOnlyDictionary<string, ConditionTextValue> Arguments, string RawFallback, bool Negated, string? NaturalNegativeKey = null);
 
 internal static class ConditionDescriber
 {
-    private static readonly IReadOnlyDictionary<string, string> EmptyArguments =
-        new Dictionary<string, string>();
-
-    internal static ReadableCondition Describe(ConditionExpression condition)
+    internal static ConditionTextSpec Describe(ConditionExpression c) => c switch
     {
-        return condition switch
-        {
-            SeasonCondition leaf => Named(leaf, "condition.season",
-                ("seasons", string.Join(' ', leaf.Seasons))),
-            DayOfMonthCondition leaf => Named(leaf, "condition.day",
-                ("day", string.Join(',', leaf.Days))),
-            YearCondition leaf => Named(leaf, "condition.year",
-                ("year", leaf.Min.ToString())),
-            TimeCondition leaf => Named(leaf, "condition.time",
-                ("from", leaf.Min is null ? "?" : leaf.Min.Value.ToString()),
-                ("to", leaf.Max is null ? "?" : leaf.Max.Value.ToString())),
-            WeatherCondition leaf => Named(leaf, "condition.weather",
-                ("weather", leaf.Weather)),
-            FriendshipCondition leaf => Named(leaf, "condition.hearts",
-                ("npc", leaf.Npc),
-                ("points", leaf.Points.ToString()),
-                ("hearts", ((int)Math.Ceiling(leaf.Points / 250d)).ToString())),
-            SawEventCondition leaf => Named(leaf, "condition.seen",
-                ("id", leaf.EventId)),
-            MailCondition leaf => Named(leaf, "condition.mail",
-                ("id", leaf.MailId)),
-            DatingCondition leaf => Named(leaf, "condition.dating", ("npc", leaf.Npc)),
-            SpouseCondition leaf => Named(leaf, "condition.spouse", ("npc", leaf.Npc)),
-            RoommateCondition leaf => Named(leaf, "condition.roommate"),
-            DaysPlayedCondition leaf => Named(leaf, "condition.daysplayed",
-                ("min", leaf.Min.ToString())),
-            WorldStateCondition leaf => Named(leaf, "condition.world-state", ("id", leaf.Id)),
-            NativeQueryCondition leaf => Named(leaf, "condition.native-query", ("query", leaf.Query)),
-            OpaqueCondition leaf => Named(leaf, "condition.unsupported", ("raw", leaf.RawSegment)),
-            _ => RawFallback(condition)
-        };
+        SawEventCondition x => Named(x, "condition.seen", ("ids", List(x.EventIds.Select(Id)))),
+        MissingPetCondition x => Named(x, x.PetType is null ? "condition.missing-pet" : "condition.missing-pet-type", ("type", Text(x.PetType ?? ""))),
+        IsHostCondition x => Named(x, "condition.is-host"),
+        MailCondition x => Named(x, x.Scope switch { ConditionPlayerScope.HostPlayer => "condition.mail-host", ConditionPlayerScope.HostOrLocal => "condition.mail-host-or-local", _ => "condition.mail" }, ("id", Id(x.MailId))),
+        WorldStateCondition x => Named(x, "condition.world-state", ("id", Id(x.Id))),
+        EarnedMoneyCondition x => Named(x, "condition.earned-money", ("amount", Num(x.Minimum))),
+        HasMoneyCondition x => Named(x, "condition.has-money", ("amount", Num(x.Minimum))),
+        FreeInventorySlotsCondition x => Named(x, "condition.free-slots", ("count", Num(x.Minimum))),
+        CommunityCenterOrWarehouseDoneCondition x => Named(x, "condition.community-complete"),
+        DatingCondition x => Named(x, "condition.dating", ("npc", Npc(x.Npc))),
+        DaysPlayedCondition x => Named(x, "condition.daysplayed", ("min", Num(x.Threshold + 1))),
+        JojaBundlesDoneCondition x => Named(x, "condition.joja-complete"),
+        FriendshipCondition x => Named(x, "condition.friendship", ("requirements", new FriendshipRequirementsTextValue(x.Requirements))),
+        FestivalDayCondition x => Named(x, "condition.festival-day", negative: "condition.not-festival-day"),
+        RandomCondition x => Named(x, "condition.random", ("chance", Num(x.Probability * 100))),
+        ShippedCondition x => Named(x, "condition.shipped", ("requirements", new ShippedRequirementsTextValue(x.Requirements))),
+        SawSecretNoteCondition x => Named(x, "condition.secret-note", ("id", Num(x.NoteId))),
+        ChoseDialogueAnswersCondition x => Named(x, "condition.dialogue-answers", ("ids", List(x.AnswerIds.Select(Id)))),
+        GoldenWalnutsCondition x => Named(x, "condition.walnuts", ("count", Num(x.Minimum))),
+        InUpgradedHouseCondition x => Named(x, "condition.house-level", ("level", Num(x.MinimumLevel))),
+        TimeCondition x => Named(x, "condition.time", ("from", new TimeTextValue(x.Min)), ("to", new TimeTextValue(x.Max))),
+        WeatherCondition x => Named(x, "condition.weather", ("weather", Term("weather", x.WeatherId))),
+        DayOfWeekCondition x => Named(x, "condition.weekday", ("days", List(x.Days.Select(d => Term("weekday", d.ToString()))))),
+        SpouseCondition x => Named(x, "condition.spouse", ("npc", Npc(x.Npc))),
+        RoommateCondition x => Named(x, "condition.roommate"),
+        NpcVisibleCondition x => Named(x, x.CurrentLocationOnly ? "condition.npc-visible-here" : "condition.npc-visible", ("npc", Npc(x.Npc))),
+        SeasonCondition x => Named(x, "condition.season", ("seasons", List(x.Seasons.Select(s => Term("season", s))))),
+        SpouseBedCondition x => Named(x, "condition.spouse-bed"),
+        ReachedMineBottomCondition x => Named(x, "condition.mine-bottom", ("count", Num(x.Minimum))),
+        YearCondition x => Named(x, x.DesiredYear == 1 ? "condition.year-one" : "condition.year", ("year", Num(x.DesiredYear))),
+        GenderCondition x => Named(x, "condition.gender", ("gender", Term("gender", x.Gender))),
+        HasItemCondition x => Named(x, "condition.has-item", ("item", new ItemTextValue(x.ItemId))),
+        TileCondition x => Named(x, "condition.tile", ("positions", List(x.Positions.Select(p => Text($"{p.X},{p.Y}"))))),
+        ActiveDialogueEventCondition x => Named(x, "condition.dialogue-event", ("id", Id(x.Id))),
+        DayOfMonthCondition x => Named(x, "condition.day", ("day", List(x.Days.Select(d => Num(d))))),
+        UpcomingFestivalCondition x => NamedNegative(x, "condition.upcoming-festival", "condition.no-upcoming-festival", ("days", Num(x.Days))),
+        NativeQueryCondition x => Named(x, "condition.native-query", ("query", Text(x.Query))),
+        SkillCondition x => Named(x, "condition.skill", ("skill", Term("skill", x.Skill)), ("level", Num(x.MinimumLevel))),
+        OpaqueCondition x => Named(x, x.Kind == OpaqueConditionKind.MalformedKnown ? "condition.malformed" : "condition.unsupported", ("raw", Text(x.RawSegment))),
+        _ => Named(c, "condition.unsupported", ("raw", Text(c.RawSegment)))
+    };
+
+    private static ConditionTextSpec Named(ConditionExpression c, string key, params (string Key, ConditionTextValue Value)[] args) => Named(c, key, args, null);
+    private static ConditionTextSpec NamedNegative(ConditionExpression c, string key, string negative, params (string Key, ConditionTextValue Value)[] args) => Named(c, key, args, negative);
+    private static ConditionTextSpec Named(ConditionExpression c, string key, (string Key, ConditionTextValue Value)[] args, string? negative)
+        => new(key, args.ToDictionary(x => x.Key, x => x.Value), c.RawSegment, c.Negated, negative);
+    private static ConditionTextSpec Named(ConditionExpression c, string key, string? negative = null)
+        => new(key, new Dictionary<string, ConditionTextValue>(), c.RawSegment, c.Negated, negative);
+    private static PlainTextValue Text(string value) => new(value);
+    private static PlainTextValue Id(string value) => new(value);
+    private static NumberTextValue Num(double value) => new(value);
+    private static NpcTextValue Npc(string value) => new(value);
+    private static TermTextValue Term(string group, string value) => new(group, value);
+    private static ListTextValue List(IEnumerable<ConditionTextValue> values) => new(values.ToList());
+}
+
+internal sealed record ConditionDisplayResolver(Func<string, string> Npc, Func<string, string> Item, Func<string, string, string> Term);
+
+internal static class ConditionTextFormatter
+{
+    internal static string Format(ConditionTextSpec spec, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver)
+    {
+        Dictionary<string, string> args = spec.Arguments.ToDictionary(pair => pair.Key, pair => FormatValue(pair.Value, resolver));
+        string key = spec.Negated && spec.NaturalNegativeKey is not null ? spec.NaturalNegativeKey : spec.LocalizationKey;
+        string text = translate(key, args);
+        return spec.Negated && spec.NaturalNegativeKey is null
+            ? translate("condition.not", new Dictionary<string, string> { ["condition"] = text })
+            : text;
     }
 
-    private static ReadableCondition Named(
-        ConditionExpression leaf,
-        string key,
-        params (string Key, string Value)[] arguments)
+    internal static string FormatGap(ConditionExpression condition, string value, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver) => condition switch
     {
-        Dictionary<string, string> map = new();
-        foreach ((string argumentKey, string value) in arguments)
-            map[argumentKey] = value;
-        return new ReadableCondition(key, map, leaf.RawSegment, leaf.Negated);
-    }
+        FriendshipCondition when int.TryParse(value, out int points) => translate("condition.hearts-value", new Dictionary<string, string> { ["hearts"] = (points / 250d).ToString("0.##", CultureInfo.CurrentCulture) }),
+        TimeCondition when int.TryParse(value, out int time) => FormatValue(new TimeTextValue(time), resolver),
+        SeasonCondition => string.Join(", ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(season => resolver.Term("season", season))),
+        WeatherCondition => resolver.Term("weather", value),
+        _ => value
+    };
 
-    private static ReadableCondition RawFallback(ConditionExpression leaf)
-        => new(null, EmptyArguments, leaf.RawSegment, leaf.Negated);
+    private static string FormatValue(ConditionTextValue value, ConditionDisplayResolver resolver) => value switch
+    {
+        PlainTextValue x => x.Value,
+        NumberTextValue x => x.Value.ToString("0.##", CultureInfo.CurrentCulture),
+        NpcTextValue x => resolver.Npc(x.Name),
+        ItemTextValue x => resolver.Item(x.Id),
+        TimeTextValue x => $"{x.Value / 100:00}:{x.Value % 100:00}",
+        TermTextValue x => resolver.Term(x.Group, x.Value),
+        ListTextValue x => string.Join(", ", x.Values.Select(item => FormatValue(item, resolver))),
+        FriendshipRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Npc(item.Npc)} ≥ {item.Points / 250d:0.##} ♥")),
+        ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Item(item.ItemId)} × {item.Count}")),
+        _ => ""
+    };
 }

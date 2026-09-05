@@ -324,52 +324,34 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private string FormatConditions(GalleryEvent entry, CurrentStateSnapshot currentState)
     {
         List<string> result = [];
+        ConditionDisplayResolver resolver = new(
+            NPC.GetDisplayName,
+            id => ItemRegistry.GetDataOrErrorItem(id).DisplayName,
+            Translate);
         foreach (ConditionExpression condition in conditionParser.ParseRawKey(entry.EventKey).Conditions)
         {
-            ReadableCondition readable = ConditionDescriber.Describe(condition);
-            Dictionary<string, string> arguments = readable.Arguments.ToDictionary(pair => pair.Key, pair => pair.Value);
-            if (arguments.TryGetValue("npc", out string? npc))
-                arguments["npc"] = NPC.GetDisplayName(npc);
-            if (arguments.TryGetValue("seasons", out string? seasons))
-                arguments["seasons"] = string.Join(", ", seasons.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(value => Translate("season", value)));
-            if (arguments.TryGetValue("weather", out string? weather))
-                arguments["weather"] = Translate("weather", weather);
-            if (arguments.TryGetValue("from", out string? from))
-                arguments["from"] = FormatTime(from);
-            if (arguments.TryGetValue("to", out string? to))
-                arguments["to"] = FormatTime(to);
-
-            string summary = readable.LocalizationKey is null
-                ? i18n.Get("condition.unsupported", new { raw = readable.RawFallback ?? condition.RawSegment })
-                : i18n.Get(readable.LocalizationKey, arguments);
-            if (readable.Negated)
-                summary = i18n.Get("condition.not", new { condition = summary });
+            ConditionTextSpec spec = ConditionDescriber.Describe(condition);
+            string summary = ConditionTextFormatter.Format(spec,
+                (key, arguments) => i18n.Get(key, arguments), resolver);
 
             ConditionEvaluation evaluation = conditionEvaluator.Evaluate(condition, currentState.ToConditionContext());
             if (evaluation.Truth == ConditionTruth.False && evaluation.Gap.Current is not null && evaluation.Gap.Target is not null)
             {
-                string current = DisplayGapValue(condition, evaluation.Gap.Current);
-                string target = DisplayGapValue(condition, evaluation.Gap.Target);
+                string current = ConditionTextFormatter.FormatGap(condition, evaluation.Gap.Current,
+                    (key, arguments) => i18n.Get(key, arguments), resolver);
+                string target = ConditionTextFormatter.FormatGap(condition, evaluation.Gap.Target,
+                    (key, arguments) => i18n.Get(key, arguments), resolver);
                 summary += i18n.Get("condition.gap", new { current, target });
             }
             string statusKey = evaluation.Knowledge != ConditionKnowledge.Known || evaluation.Truth == ConditionTruth.Unknown
                 ? "condition.status-unknown"
                 : evaluation.Truth == ConditionTruth.True ? "condition.status-met" : "condition.status-missing";
-            string text = condition is OpaqueCondition ? summary : i18n.Get(statusKey, new { condition = summary });
+            string text = i18n.Get(statusKey, new { condition = summary });
             if (!result.Contains(text, StringComparer.CurrentCulture))
                 result.Add(text);
         }
         return result.Count == 0 ? i18n.Get("condition.none") : string.Join(i18n.Get("condition.separator"), result);
     }
-
-    private string DisplayGapValue(ConditionExpression condition, string value) => condition switch
-    {
-        FriendshipCondition when int.TryParse(value, out int points) => i18n.Get("condition.hearts-value", new { hearts = points / 250d }),
-        TimeCondition => FormatTime(value),
-        SeasonCondition => string.Join(", ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(season => Translate("season", season))),
-        WeatherCondition => Translate("weather", value),
-        _ => value
-    };
 
     private string Translate(string group, string value)
     {

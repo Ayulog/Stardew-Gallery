@@ -24,14 +24,13 @@ internal static class ReplaySceneEnvironmentResolver
                         ?? value.Seasons[0];
                     break;
                 case TimeCondition { Negated: false } value:
-                    bool inside = (value.Min is null || currentTime >= value.Min)
-                        && (value.Max is null || currentTime <= value.Max);
-                    time = inside ? currentTime : value.Min ?? 600;
+                    bool inside = currentTime >= value.Min && currentTime <= value.Max;
+                    time = inside ? currentTime : value.Min;
                     break;
                 case WeatherCondition { Negated: false } value:
-                    weather = NormalizeWeather(value.Weather, currentWeather);
+                    weather = NormalizeWeather(value.WeatherId, currentWeather);
                     if (weather is null)
-                        warning = $"不支持自定义天气要求：{value.Weather}";
+                        warning = $"不支持自定义天气要求：{value.WeatherId}";
                     break;
             }
         }

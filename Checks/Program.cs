@@ -670,31 +670,32 @@ ConditionSet parserParsed = parser2.Parse(
 ]);
 Check(parserParsed.Conditions.Count == 19);
 ConditionSet negatedFriendship = parser2.Parse(["!Friendship Alex 1000"]);
-Check(negatedFriendship.Conditions[0] is FriendshipCondition { Points: 1000, Negated: true, Scope: ConditionPlayerScope.LocalPlayer });
+Check(negatedFriendship.Conditions[0] is FriendshipCondition { Requirements: [{ Points: 1000 }], Negated: true, Scope: ConditionPlayerScope.LocalPlayer });
 Check(parserParsed.Conditions[0] is SeasonCondition { Seasons.Count: 1 });
 Check(parserParsed.Conditions[1] is SeasonCondition { Negated: true });
 Check(parserParsed.Conditions[2] is DayOfMonthCondition { Days: [12] });
-Check(parserParsed.Conditions[3] is YearCondition { Min: 2 });
+Check(parserParsed.Conditions[3] is YearCondition { DesiredYear: 2 });
 Check(parserParsed.Conditions[4] is TimeCondition { Min: 1800, Max: 2200 });
-Check(parserParsed.Conditions[5] is WeatherCondition { Weather: "Sun" });
-Check(parserParsed.Conditions[6] is FriendshipCondition { Npc: "Haley", Points: 2500 });
-Check(parserParsed.Conditions[7] is SawEventCondition { EventId: "123" });
+Check(parserParsed.Conditions[5] is WeatherCondition { WeatherId: "Sun" });
+Check(parserParsed.Conditions[6] is FriendshipCondition { Requirements: [{ Npc: "Haley", Points: 2500 }] });
+Check(parserParsed.Conditions[7] is SawEventCondition { EventIds: ["123"] });
 Check(parserParsed.Conditions[8] is MailCondition { MailId: "mail1", Scope: ConditionPlayerScope.LocalPlayer });
 Check(parserParsed.Conditions[9] is MailCondition { MailId: "mail2", Scope: ConditionPlayerScope.HostPlayer });
 Check(parserParsed.Conditions[10] is MailCondition { MailId: "mail3", Scope: ConditionPlayerScope.HostOrLocal });
 Check(parserParsed.Conditions[11] is DatingCondition { Npc: "Emily" });
 Check(parserParsed.Conditions[12] is SpouseCondition { Npc: "Alex" });
 Check(parserParsed.Conditions[13] is RoommateCondition);
-Check(parserParsed.Conditions[14] is DaysPlayedCondition { Min: 15, Scope: ConditionPlayerScope.HostPlayer });
+Check(parserParsed.Conditions[14] is DaysPlayedCondition { Threshold: 15, Scope: ConditionPlayerScope.HostPlayer });
 Check(parserParsed.Conditions[15] is WorldStateCondition { Id: "flag" });
 Check(parserParsed.Conditions[16] is NativeQueryCondition { Query: "WEATHER Here Sun" });
 Check(parserParsed.Conditions[16].Source == ConditionSource.GameStateQuery);
 Check(parserParsed.Conditions[17] is OpaqueCondition);
 Check(parserParsed.Conditions[17].RawSegment == "UnknownToken token");
-Check(parserParsed.Conditions[18] is FriendshipCondition { Points: 1000, Negated: true });
+Check(parserParsed.Conditions[18] is FriendshipCondition { Requirements: [{ Points: 1000 }], Negated: true });
 
 ConditionSet malformed = parser2.Parse(["Season", "Time x", "Friendship Haley", "DayOfMonth 40", "DayOfMonth x"]);
-Check(malformed.Conditions.All(condition => condition is OpaqueCondition));
+Check(malformed.Conditions.Where((_, index) => index != 3).All(condition => condition is OpaqueCondition));
+Check(malformed.Conditions[3] is DayOfMonthCondition { Days: [40] }, "vanilla accepts any integer day declaration");
 Check(malformed.Conditions.All(condition => condition.RawSegment.Length > 0));
 Check(malformed.Conditions[0].RawSegment == "Season");
 Check(malformed.Conditions[1].RawSegment == "Time x");
@@ -711,7 +712,7 @@ ConditionEvaluationContext fullContext = new(
     HostOrLocalMail: new HashSet<string> { "either" },
     Dating: new HashSet<string> { "Emily" },
     Spouse: new HashSet<string> { "Alex" },
-    Roommate: true, DaysPlayed: 15, WorldState: new HashSet<string> { "flag" });
+    Roommate: true, DaysPlayed: 16, WorldState: new HashSet<string> { "flag" });
 foreach (ConditionExpression condition in conditions.Conditions)
 {
     ConditionEvaluation result = eval.Evaluate(condition, fullContext);
@@ -731,7 +732,7 @@ foreach (ConditionExpression condition in conditions.Conditions)
         case WeatherCondition { Negated: false }:
             Check(result.Truth == ConditionTruth.True && result.Knowledge == ConditionKnowledge.Known, "weather");
             break;
-        case FriendshipCondition { Npc: "Haley", Negated: false }:
+        case FriendshipCondition { Requirements: [{ Npc: "Haley" }], Negated: false }:
             Check(result.Truth == ConditionTruth.True && result.Knowledge == ConditionKnowledge.Known, "friendship haley");
             break;
         case SawEventCondition { Negated: false }:
@@ -767,7 +768,7 @@ foreach (ConditionExpression condition in conditions.Conditions)
         case OpaqueCondition { RawSegment: "UnknownToken raw" }:
             Check(result.Truth == ConditionTruth.Unknown && result.Knowledge == ConditionKnowledge.Unsupported, "opaque unknown");
             break;
-        case FriendshipCondition { Npc: "Hayley", Negated: true }:
+        case FriendshipCondition { Requirements: [{ Npc: "Hayley" }], Negated: true }:
             Check(result.Truth == ConditionTruth.False && result.Knowledge == ConditionKnowledge.Known, "negated hayley");
             break;
         case OpaqueCondition { RawSegment: "Season" }:
@@ -805,7 +806,7 @@ Check(timeGap.Gap.Kind == ConditionGapKind.RequiredRange);
 
 ConditionEvaluationContext contextMissingNpc = fullContext with { Friendship = new Dictionary<string, int>() };
 ConditionEvaluation friendshipMissing = eval.Evaluate(underrunSet.Conditions[0], contextMissingNpc);
-Check(friendshipMissing.Truth == ConditionTruth.Unknown && friendshipMissing.Knowledge == ConditionKnowledge.MissingData);
+Check(friendshipMissing.Truth == ConditionTruth.False && friendshipMissing.Knowledge == ConditionKnowledge.Known);
 
 ConditionSet seenSet = parser2.Parse(["SawEvent 123"]);
 ConditionEvaluationContext contextSeen = fullContext with { EventsSeen = new HashSet<string>() };
@@ -846,50 +847,48 @@ Check(negatedEval.Truth == ConditionTruth.False);
 ConditionEvaluationContext context999 = fullContext with { Friendship = new Dictionary<string, int> { ["Hayley"] = 999 } };
 Check(eval.Evaluate(negatedSet.Conditions[0], context999).Truth == ConditionTruth.True);
 
-ReadableCondition readable = ConditionDescriber.Describe(underrunSet.Conditions[0]);
-Check(readable.LocalizationKey == "condition.hearts");
-Check(readable.Arguments["npc"] == "Haley");
-Check(readable.Arguments["points"] == "2500");
-Check(readable.Arguments["hearts"] == "10");
-ReadableCondition opaqueReadable = ConditionDescriber.Describe(unknownSet.Conditions[0]);
+ConditionTextSpec readable = ConditionDescriber.Describe(underrunSet.Conditions[0]);
+Check(readable.LocalizationKey == "condition.friendship");
+Check(readable.Arguments["requirements"] is FriendshipRequirementsTextValue { Values.Count: 1 });
+ConditionTextSpec opaqueReadable = ConditionDescriber.Describe(unknownSet.Conditions[0]);
 Check(opaqueReadable.LocalizationKey == "condition.unsupported");
 Check(opaqueReadable.RawFallback == "SomethingElse value");
-Check(opaqueReadable.Arguments["raw"] == "SomethingElse value");
-ReadableCondition seasonReadable = ConditionDescriber.Describe(parser2.Parse(["Season Winter"]).Conditions[0]);
-Check(seasonReadable.LocalizationKey == "condition.season" && seasonReadable.Arguments["seasons"] == "Winter");
-ReadableCondition conditionReadable = ConditionDescriber.Describe(parser2.Parse(["SawEvent 123"]).Conditions[0]);
-Check(conditionReadable.LocalizationKey == "condition.seen" && conditionReadable.Arguments["id"] == "123");
+Check(opaqueReadable.Arguments["raw"] is PlainTextValue { Value: "SomethingElse value" });
+ConditionTextSpec seasonReadable = ConditionDescriber.Describe(parser2.Parse(["Season Winter"]).Conditions[0]);
+Check(seasonReadable.LocalizationKey == "condition.season" && seasonReadable.Arguments["seasons"] is ListTextValue { Values: [TermTextValue { Value: "Winter" }] });
+ConditionTextSpec conditionReadable = ConditionDescriber.Describe(parser2.Parse(["SawEvent 123"]).Conditions[0]);
+Check(conditionReadable.LocalizationKey == "condition.seen" && conditionReadable.Arguments["ids"] is ListTextValue { Values.Count: 1 });
 
 ConditionParser aliasParser = new(_ => [], FakeSplitArgs);
-Check(aliasParser.ParseSegment("f Haley 1000") is FriendshipCondition { Npc: "Haley", Points: 1000, Negated: false });
-Check(aliasParser.ParseSegment("e 123") is SawEventCondition { EventId: "123", Negated: false });
-Check(aliasParser.ParseSegment("k 123") is SawEventCondition { EventId: "123", Negated: true });
+Check(aliasParser.ParseSegment("f Haley 1000") is FriendshipCondition { Requirements: [{ Npc: "Haley", Points: 1000 }], Negated: false });
+Check(aliasParser.ParseSegment("e 123") is SawEventCondition { EventIds: ["123"], Negated: false });
+Check(aliasParser.ParseSegment("k 123") is SawEventCondition { EventIds: ["123"], Negated: true });
 Check(aliasParser.ParseSegment("n letter") is MailCondition { MailId: "letter", Negated: false, Scope: ConditionPlayerScope.LocalPlayer });
 Check(aliasParser.ParseSegment("l letter") is MailCondition { MailId: "letter", Negated: true, Scope: ConditionPlayerScope.LocalPlayer });
 Check(aliasParser.ParseSegment("t 1800 2200") is TimeCondition { Min: 1800, Max: 2200 });
-Check(aliasParser.ParseSegment("w Sun") is WeatherCondition { Weather: "Sun" });
-Check(aliasParser.ParseSegment("y 2") is YearCondition { Min: 2 });
+Check(aliasParser.ParseSegment("w Sun") is WeatherCondition { WeatherId: "Sun" });
+Check(aliasParser.ParseSegment("y 2") is YearCondition { DesiredYear: 2 });
 Check(aliasParser.ParseSegment("u 12") is DayOfMonthCondition { Days: [12] });
 Check(aliasParser.ParseSegment("z Winter") is SeasonCondition { Seasons: ["Winter"], Negated: true });
-Check(aliasParser.ParseSegment("j 15") is DaysPlayedCondition { Min: 15, Negated: false });
+Check(aliasParser.ParseSegment("j 15") is DaysPlayedCondition { Threshold: 15, Negated: false });
 Check(aliasParser.ParseSegment("D Emily") is DatingCondition { Npc: "Emily" });
 Check(aliasParser.ParseSegment("O Alex") is SpouseCondition { Npc: "Alex", Negated: false });
 Check(aliasParser.ParseSegment("o Alex") is SpouseCondition { Npc: "Alex", Negated: true });
 Check(aliasParser.ParseSegment("R") is RoommateCondition);
 Check(aliasParser.ParseSegment("G SEASON Spring") is NativeQueryCondition { Query: "SEASON Spring" });
 Check(aliasParser.ParseSegment("season spring") is SeasonCondition { Seasons: ["spring"] });
-Check(aliasParser.ParseSegment("friendship haley 1000") is FriendshipCondition { Npc: "haley", Points: 1000 });
-Check(aliasParser.ParseSegment("sawEvent 123") is SawEventCondition { EventId: "123" });
+Check(aliasParser.ParseSegment("friendship haley 1000") is FriendshipCondition { Requirements: [{ Npc: "haley", Points: 1000 }] });
+Check(aliasParser.ParseSegment("sawEvent 123") is SawEventCondition { EventIds: ["123"] });
 Check(aliasParser.ParseSegment("Spouse Alex") is SpouseCondition { Npc: "Alex", Negated: false });
 Check(aliasParser.ParseSegment("ROOMMATE") is RoommateCondition);
 Check(aliasParser.ParseSegment("localmall letter") is OpaqueCondition);
 Check(aliasParser.ParseSegment("Season") is OpaqueCondition);
 Check(aliasParser.ParseSegment("!f Alex 1000") is FriendshipCondition { Negated: true });
-Check(aliasParser.ParseSegment("!k 123") is SawEventCondition { EventId: "123", Negated: false });
-Check(aliasParser.ParseSegment("!!k 123") is SawEventCondition { EventId: "123", Negated: true });
+Check(aliasParser.ParseSegment("!k 123") is SawEventCondition { EventIds: ["123"], Negated: false });
+Check(aliasParser.ParseSegment("!!k 123") is SawEventCondition { EventIds: ["123"], Negated: true });
 Check(aliasParser.ParseSegment("F 123 1000") is OpaqueCondition);
-Check(aliasParser.ParseSegment("e 123 456") is OpaqueCondition);
-Check(aliasParser.ParseSegment("f Haley 2500 Abigail 1000") is OpaqueCondition);
+Check(aliasParser.ParseSegment("e 123 456") is SawEventCondition { EventIds.Count: 2 });
+Check(aliasParser.ParseSegment("f Haley 2500 Abigail 1000") is FriendshipCondition { Requirements.Count: 2 });
 
 int quoteSplitCalls = 0;
 ConditionParser quoteParser = new(_ => [], segment => { quoteSplitCalls++; return FakeSplitArgs(segment); });
@@ -914,8 +913,8 @@ Check(aliasParser.ParseSegment("WorldState a b") is OpaqueCondition, "WorldState
 
 Check(aliasParser.ParseSegment("NotSeason Winter") is SeasonCondition { Seasons: ["Winter"], Negated: true }, "NotSeason");
 Check(aliasParser.ParseSegment("!NotSeason Winter") is SeasonCondition { Seasons: ["Winter"], Negated: false }, "!NotSeason");
-Check(aliasParser.ParseSegment("NotSawEvent 123") is SawEventCondition { EventId: "123", Negated: true }, "NotSawEvent");
-Check(aliasParser.ParseSegment("!NotSawEvent 123") is SawEventCondition { EventId: "123", Negated: false }, "!NotSawEvent");
+Check(aliasParser.ParseSegment("NotSawEvent 123") is SawEventCondition { EventIds: ["123"], Negated: true }, "NotSawEvent");
+Check(aliasParser.ParseSegment("!NotSawEvent 123") is SawEventCondition { EventIds: ["123"], Negated: false }, "!NotSawEvent");
 Check(aliasParser.ParseSegment("NotLocalMail letter") is MailCondition { MailId: "letter", Negated: true, Scope: ConditionPlayerScope.LocalPlayer }, "NotLocalMail");
 Check(aliasParser.ParseSegment("!NotLocalMail letter") is MailCondition { MailId: "letter", Negated: false, Scope: ConditionPlayerScope.LocalPlayer }, "!NotLocalMail");
 Check(aliasParser.ParseSegment("NotSpouse Alex") is SpouseCondition { Npc: "Alex", Negated: true }, "NotSpouse");
@@ -926,7 +925,7 @@ Check(aliasParser.ParseSegment("NotRoommate") is RoommateCondition { Negated: tr
 Check(aliasParser.ParseSegment("!NotRoommate") is RoommateCondition { Negated: false }, "!NotRoommate");
 
 Check(aliasParser.ParseSegment("NotSeason") is OpaqueCondition, "NotSeason missing arg");
-Check(aliasParser.ParseSegment("NotSawEvent 1 2") is OpaqueCondition, "NotSawEvent extra arg");
+Check(aliasParser.ParseSegment("NotSawEvent 1 2") is SawEventCondition { EventIds.Count: 2, Negated: true }, "NotSawEvent supports any-of IDs");
 Check(aliasParser.ParseSegment("NotLocalMail a b") is OpaqueCondition, "NotLocalMail extra arg");
 Check(aliasParser.ParseSegment("NotSpouse A B") is OpaqueCondition, "NotSpouse extra arg");
 
@@ -943,9 +942,9 @@ Check(aliasParser.ParseSegment("Season Winter") is SeasonCondition { Negated: fa
 Check(aliasParser.ParseSegment("NotSeason Winter") is SeasonCondition { Negated: true }, "NotSeason == z parity");
 
 ConditionSet aliasSet = parser2.Parse(["f Haley 2500", "e 123", "k 456"]);
-Check(aliasSet.Conditions[0] is FriendshipCondition { Npc: "Haley", Points: 2500 });
-Check(aliasSet.Conditions[1] is SawEventCondition { EventId: "123", Negated: false });
-Check(aliasSet.Conditions[2] is SawEventCondition { EventId: "456", Negated: true });
+Check(aliasSet.Conditions[0] is FriendshipCondition { Requirements: [{ Npc: "Haley", Points: 2500 }] });
+Check(aliasSet.Conditions[1] is SawEventCondition { EventIds: ["123"], Negated: false });
+Check(aliasSet.Conditions[2] is SawEventCondition { EventIds: ["456"], Negated: true });
 
 ConditionSet negatedSeenSet = parser2.Parse(["!SawEvent 123"]);
 ConditionEvaluationContext alreadySeen = fullContext with { EventsSeen = new HashSet<string> { "123" } };
@@ -958,10 +957,10 @@ ConditionSet negatedMailSet = parser2.Parse(["!LocalMail letter"]);
 ConditionEvaluationContext alreadyMail = fullContext with { LocalMail = new HashSet<string> { "letter" } };
 Check(eval.Evaluate(negatedMailSet.Conditions[0], alreadyMail).Gap.Kind == ConditionGapKind.OverState);
 
-ReadableCondition negatedReadable = ConditionDescriber.Describe(negatedSeenSet.Conditions[0]);
+ConditionTextSpec negatedReadable = ConditionDescriber.Describe(negatedSeenSet.Conditions[0]);
 Check(negatedReadable.Negated == true);
-ReadableCondition daysReadable = ConditionDescriber.Describe(parser2.Parse(["DaysPlayed 15"]).Conditions[0]);
-Check(daysReadable.LocalizationKey == "condition.daysplayed" && daysReadable.Arguments["min"] == "15");
+ConditionTextSpec daysReadable = ConditionDescriber.Describe(parser2.Parse(["DaysPlayed 15"]).Conditions[0]);
+Check(daysReadable.LocalizationKey == "condition.daysplayed" && daysReadable.Arguments["min"] is NumberTextValue { Value: 16 });
 
 ConditionSet year1Set = parser2.Parse(["Year 1"]);
 Check(eval.Evaluate(year1Set.Conditions[0], fullContext with { Year = 1 }).Truth == ConditionTruth.True, "Year 1 + current 1");
@@ -971,16 +970,107 @@ Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 1 }).Truth
 Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 2 }).Truth == ConditionTruth.True, "Year 2 + current 2");
 Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 3 }).Truth == ConditionTruth.True, "Year 2 + current 3");
 
-ReadableCondition datingReadable = ConditionDescriber.Describe(parser2.Parse(["Dating Emily"]).Conditions[0]);
-Check(datingReadable.LocalizationKey == "condition.dating" && datingReadable.Arguments["npc"] == "Emily");
-ReadableCondition spouseReadable = ConditionDescriber.Describe(parser2.Parse(["Spouse Alex"]).Conditions[0]);
-Check(spouseReadable.LocalizationKey == "condition.spouse" && spouseReadable.Arguments["npc"] == "Alex");
-ReadableCondition roommateReadable = ConditionDescriber.Describe(parser2.Parse(["Roommate"]).Conditions[0]);
+ConditionTextSpec datingReadable = ConditionDescriber.Describe(parser2.Parse(["Dating Emily"]).Conditions[0]);
+Check(datingReadable.LocalizationKey == "condition.dating" && datingReadable.Arguments["npc"] is NpcTextValue { Name: "Emily" });
+ConditionTextSpec spouseReadable = ConditionDescriber.Describe(parser2.Parse(["Spouse Alex"]).Conditions[0]);
+Check(spouseReadable.LocalizationKey == "condition.spouse" && spouseReadable.Arguments["npc"] is NpcTextValue { Name: "Alex" });
+ConditionTextSpec roommateReadable = ConditionDescriber.Describe(parser2.Parse(["Roommate"]).Conditions[0]);
 Check(roommateReadable.LocalizationKey == "condition.roommate");
-ReadableCondition worldReadable = ConditionDescriber.Describe(parser2.Parse(["WorldState flag"]).Conditions[0]);
-Check(worldReadable.LocalizationKey == "condition.world-state" && worldReadable.Arguments["id"] == "flag");
-ReadableCondition nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
-Check(nativeReadable.LocalizationKey == "condition.native-query" && nativeReadable.Arguments["query"] == "SEASON Spring");
+ConditionTextSpec worldReadable = ConditionDescriber.Describe(parser2.Parse(["WorldState flag"]).Conditions[0]);
+Check(worldReadable.LocalizationKey == "condition.world-state" && worldReadable.Arguments["id"] is PlainTextValue { Value: "flag" });
+ConditionTextSpec nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
+Check(nativeReadable.LocalizationKey == "condition.native-query" && nativeReadable.Arguments["query"] is PlainTextValue { Value: "SEASON Spring" });
+
+// ---------- 2.0.3 complete vanilla event-precondition domain ----------
+Dictionary<string, string> canonicalSamples = new(StringComparer.OrdinalIgnoreCase)
+{
+    ["SawEvent"] = "1 2", ["MissingPet"] = "Cat", ["IsHost"] = "", ["HostMail"] = "mail",
+    ["WorldState"] = "flag", ["HostOrLocalMail"] = "mail", ["EarnedMoney"] = "1000", ["HasMoney"] = "500",
+    ["FreeInventorySlots"] = "2", ["CommunityCenterOrWarehouseDone"] = "", ["Dating"] = "Leah", ["DaysPlayed"] = "10",
+    ["JojaBundlesDone"] = "", ["Friendship"] = "Leah 1000 Robin 500", ["FestivalDay"] = "", ["Random"] = "0.5",
+    ["Shipped"] = "24 2 188 1", ["SawSecretNote"] = "10", ["ChoseDialogueAnswers"] = "a b", ["LocalMail"] = "mail",
+    ["GoldenWalnuts"] = "20", ["InUpgradedHouse"] = "", ["Time"] = "600 1200", ["Weather"] = "rainy",
+    ["DayOfWeek"] = "Mon Fri", ["Spouse"] = "Leah", ["Roommate"] = "", ["NpcVisible"] = "Leah",
+    ["NpcVisibleHere"] = "Leah", ["Season"] = "spring winter", ["SpouseBed"] = "", ["ReachedMineBottom"] = "",
+    ["Year"] = "2", ["Gender"] = "male", ["HasItem"] = "24", ["Tile"] = "1 2 3 4",
+    ["ActiveDialogueEvent"] = "conversation", ["DayOfMonth"] = "1 15", ["UpcomingFestival"] = "7",
+    ["GameStateQuery"] = "SEASON Here spring", ["Skill"] = "Farming 5"
+};
+Check(ConditionParser.SupportedCanonicalNames.Count == 41, "all 41 canonical vanilla preconditions registered");
+Check(ConditionParser.SupportedAliases.Count == 47, "all 47 aliases for ordinary vanilla preconditions registered");
+Check(canonicalSamples.Count == 41, "canonical parser matrix has 41 samples");
+foreach ((string name, string arguments) in canonicalSamples)
+{
+    ConditionExpression parsed = aliasParser.ParseSegment(arguments.Length == 0 ? name : $"{name} {arguments}");
+    Check(parsed is not OpaqueCondition, "canonical parse: " + name);
+    Check(ConditionDescriber.Describe(parsed).LocalizationKey.Length > 0, "canonical describe: " + name);
+    Check(aliasParser.ParseSegment((arguments.Length == 0 ? name.ToUpperInvariant() : $"{name.ToUpperInvariant()} {arguments}")) is not OpaqueCondition, "canonical case-insensitive: " + name);
+}
+foreach ((string alias, _) in ConditionParser.SupportedAliases)
+{
+    string canonical = ConditionParser.SupportedAliases[alias].Name;
+    string arguments = canonicalSamples[canonical];
+    Check(aliasParser.ParseSegment(arguments.Length == 0 ? alias : $"{alias} {arguments}") is not OpaqueCondition, "alias parse: " + alias);
+}
+Check(aliasParser.ParseSegment("Friendship Leah 1000 Robin 500") is FriendshipCondition { Requirements.Count: 2 });
+Check(aliasParser.ParseSegment("Shipped 24 2 188 1") is ShippedCondition { Requirements.Count: 2 });
+Check(aliasParser.ParseSegment("SawEvent 1 2") is SawEventCondition { EventIds.Count: 2 });
+Check(aliasParser.ParseSegment("DayOfWeek Mon Fri") is DayOfWeekCondition { Days.Count: 2 });
+Check(aliasParser.ParseSegment("Tile 1 2 3 4") is TileCondition { Positions.Count: 2 });
+Check(aliasParser.ParseSegment("ChoseDialogueAnswers a b") is ChoseDialogueAnswersCondition { AnswerIds.Count: 2 });
+Check(aliasParser.ParseSegment("Skill Farming nope") is OpaqueCondition { Kind: OpaqueConditionKind.MalformedKnown, KnownConditionName: "Skill" });
+Check(aliasParser.ParseSegment("ThirdParty value") is OpaqueCondition { Kind: OpaqueConditionKind.UnknownType, KnownConditionName: null });
+Check(aliasParser.ParseSegment("!Hl mail") is MailCondition { Scope: ConditionPlayerScope.HostPlayer, Negated: false }, "explicit and alias negation XOR");
+ConditionDisplayResolver testResolver = new(name => $"NPC:{name}", id => $"ITEM:{id}", (group, value) => $"{group}:{value}");
+string formattedFriendship = ConditionTextFormatter.Format(
+    ConditionDescriber.Describe(aliasParser.ParseSegment("Friendship Leah 1000")),
+    (key, arguments) => $"{key}|{arguments.GetValueOrDefault("requirements")}", testResolver);
+Check(formattedFriendship.Contains("NPC:Leah") && formattedFriendship.Contains("4 ♥"), "typed friendship value resolves at formatter boundary");
+string formattedShipped = ConditionTextFormatter.Format(
+    ConditionDescriber.Describe(aliasParser.ParseSegment("Shipped 24 2")),
+    (key, arguments) => $"{key}|{arguments.GetValueOrDefault("requirements")}", testResolver);
+Check(formattedShipped.Contains("ITEM:24 × 2"), "typed item value resolves at formatter boundary");
+string formattedNegative = ConditionTextFormatter.Format(
+    ConditionDescriber.Describe(aliasParser.ParseSegment("!Friendship Leah 1000")),
+    (key, arguments) => $"{key}|{string.Join(',', arguments.Values)}", testResolver);
+Check(formattedNegative.StartsWith("condition.not|condition.friendship|"), "group negation remains exact");
+
+ConditionEvaluationContext collectionContext = fullContext with
+{
+    Friendship = new Dictionary<string, int> { ["Leah"] = 1000, ["Robin"] = 499 },
+    EventsSeen = new HashSet<string> { "2" }
+};
+Check(eval.Evaluate(aliasParser.ParseSegment("Friendship Leah 1000 Robin 500"), collectionContext).Truth == ConditionTruth.False, "friendship collection is all");
+Check(eval.Evaluate(aliasParser.ParseSegment("SawEvent 1 2"), collectionContext).Truth == ConditionTruth.True, "seen-event collection is any");
+Check(eval.Evaluate(aliasParser.ParseSegment("DaysPlayed 15"), fullContext with { DaysPlayed = 15 }).Truth == ConditionTruth.False, "days played is strict greater-than");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather rainy"), fullContext with { Weather = "GreenRain", IsRaining = true }).Truth == ConditionTruth.True, "rainy uses rain predicate");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather sunny"), fullContext with { Weather = "Sun", IsRaining = false }).Truth == ConditionTruth.True, "sunny uses inverse rain predicate");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather GreenRain"), fullContext with { Weather = "GreenRain", IsRaining = true }).Truth == ConditionTruth.True, "custom weather compares ID");
+
+System.Globalization.CultureInfo savedCulture = System.Globalization.CultureInfo.CurrentCulture;
+try
+{
+    System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+    Check(aliasParser.ParseSegment("Random 0.5") is RandomCondition { Probability: 0.5f }, "numbers parse invariantly");
+    Check(aliasParser.ParseSegment("Random 0,5") is OpaqueCondition, "localized decimal isn't accepted by vanilla syntax");
+}
+finally { System.Globalization.CultureInfo.CurrentCulture = savedCulture; }
+
+string i18nDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../i18n"));
+Dictionary<string, string> defaultLocale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(Path.Combine(i18nDirectory, "default.json")))!;
+string[] localeFiles = Directory.GetFiles(i18nDirectory, "*.json");
+Check(localeFiles.Length == 12, "all 12 official locale files present");
+foreach (string localeFile in localeFiles)
+{
+    Dictionary<string, string> locale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(localeFile))!;
+    Check(locale.Keys.OrderBy(key => key).SequenceEqual(defaultLocale.Keys.OrderBy(key => key)), "locale key parity: " + Path.GetFileName(localeFile));
+    foreach (string key in defaultLocale.Keys)
+    {
+        string[] expectedTokens = System.Text.RegularExpressions.Regex.Matches(defaultLocale[key], "{{[^}]+}}" ).Select(match => match.Value).OrderBy(token => token).ToArray();
+        string[] actualTokens = System.Text.RegularExpressions.Regex.Matches(locale[key], "{{[^}]+}}" ).Select(match => match.Value).OrderBy(token => token).ToArray();
+        Check(actualTokens.SequenceEqual(expectedTokens), $"locale token parity: {Path.GetFileName(localeFile)}:{key}");
+    }
+}
 
 Check(ReplayBackupRetention.Retain([]).Count == 0, "retention 0 stale keep 0");
 Check(ReplayBackupRetention.Retain(["A"]).SequenceEqual(["A"]), "retention 1 stale keep 1");
@@ -1412,7 +1502,7 @@ CurrentStateSnapshot pvState = new(
     Season: "spring", Weather: "sunny", DayOfMonth: 12, Year: 1, Time: 900, DaysPlayed: 20,
     Friendship: new Dictionary<string, int>(StringComparer.Ordinal) { ["Haley"] = 1500, ["Leah"] = 500 },
     EventsSeen: new HashSet<string>(StringComparer.Ordinal), LocalMail: new HashSet<string>(StringComparer.Ordinal),
-    HostMail: null, HostOrLocalMail: null, Dating: null, Spouse: null, Roommate: false, WorldState: null);
+    HostMail: null, HostOrLocalMail: null, Dating: null, Spouse: null, Roommate: false, WorldState: null, IsRaining: false);
 
 // satisfied event -> DirectReplay
 EventConditionStatus pvDirect = previewPlanner.Analyze(TestEvent("123"), pvState);

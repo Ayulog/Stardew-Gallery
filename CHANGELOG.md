@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.0.3 — Complete Event Preconditions / 完整事件条件
+
+- Added typed parsing and descriptions for all 41 vanilla event preconditions and their legacy aliases. / 为原版全部 41 种事件条件及旧别名加入类型化解析与说明。
+- Multi-value conditions now preserve their original all/any semantics, including friendship, seen events, dates, shipping, tiles, and dialogue answers. / 多值条件会保留原本的全满足或任一满足语义，包括好感、已看事件、日期、出货、坐标和对话答案。
+- Rainy and sunny conditions now use the game's rain predicate, while custom weather IDs remain exact. / 雨天和晴天条件改用游戏的降雨判定，自定义天气 ID 仍精确匹配。
+- Condition vocabulary is complete across all 12 supported languages, with game names resolved only at display time. / 12 种支持语言均补齐条件词汇，游戏名称只在显示阶段解析。
+
 ## 2.0.2 — Conditions & Localization / 条件与本地化
 
 - Event cards now use the existing ConditionIR parser instead of the legacy condition whitelist. / 事件卡片改用现有 ConditionIR 解析器，不再使用旧条件白名单。

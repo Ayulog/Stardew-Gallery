@@ -36,7 +36,8 @@ internal static class RuntimeStateReader
             Dating: dating,
             Spouse: string.IsNullOrEmpty(player.spouse) ? null : new HashSet<string>(StringComparer.Ordinal) { player.spouse },
             Roommate: player.hasRoommate(),
-            WorldState: Game1.worldStateIDs is null ? null : new HashSet<string>(Game1.worldStateIDs, StringComparer.Ordinal));
+            WorldState: Game1.worldStateIDs is null ? null : new HashSet<string>(Game1.worldStateIDs, StringComparer.Ordinal),
+            IsRaining: Game1.currentLocation?.IsRainingHere());
     }
 }
 

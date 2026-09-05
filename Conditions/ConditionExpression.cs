@@ -1,119 +1,48 @@
 namespace StardewGallery;
 
-internal abstract record ConditionExpression(
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-);
-
-internal sealed record ConditionSet(
-    IReadOnlyList<ConditionExpression> Conditions
-) : ConditionExpression(ConditionSource.Synthetic, "", false);
-
-internal sealed record SeasonCondition(
-    IReadOnlyList<string> Seasons,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record DayOfMonthCondition(
-    IReadOnlyList<int> Days,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record YearCondition(
-    int Min,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record TimeCondition(
-    int? Min,
-    int? Max,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record WeatherCondition(
-    string Weather,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record FriendshipCondition(
-    string Npc,
-    int Points,
-    ConditionPlayerScope Scope,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record SawEventCondition(
-    string EventId,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record MailCondition(
-    string MailId,
-    ConditionPlayerScope Scope,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record DatingCondition(
-    string Npc,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record SpouseCondition(
-    string Npc,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record RoommateCondition(
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record DaysPlayedCondition(
-    int Min,
-    ConditionPlayerScope Scope,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record WorldStateCondition(
-    string Id,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record NativeQueryCondition(
-    string Query,
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
-
-internal sealed record OpaqueCondition(
-    ConditionSource Source,
-    string RawSegment,
-    bool Negated
-) : ConditionExpression(Source, RawSegment, Negated);
+internal abstract record ConditionExpression(ConditionSource Source, string RawSegment, bool Negated);
+internal sealed record ConditionSet(IReadOnlyList<ConditionExpression> Conditions) : ConditionExpression(ConditionSource.Synthetic, "", false);
+internal sealed record FriendshipRequirement(string Npc, int Points);
+internal sealed record ShippedRequirement(string ItemId, int Count);
+internal sealed record TilePosition(int X, int Y);
+internal sealed record SawEventCondition(IReadOnlyList<string> EventIds, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record MissingPetCondition(string? PetType, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record IsHostCondition(ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record MailCondition(string MailId, ConditionPlayerScope Scope, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record WorldStateCondition(string Id, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record EarnedMoneyCondition(int Minimum, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record HasMoneyCondition(int Minimum, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record FreeInventorySlotsCondition(int Minimum, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record CommunityCenterOrWarehouseDoneCondition(ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record DatingCondition(string Npc, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record DaysPlayedCondition(int Threshold, ConditionPlayerScope Scope, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record JojaBundlesDoneCondition(ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record FriendshipCondition(IReadOnlyList<FriendshipRequirement> Requirements, ConditionPlayerScope Scope, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record FestivalDayCondition(ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record RandomCondition(float Probability, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record ShippedCondition(IReadOnlyList<ShippedRequirement> Requirements, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record SawSecretNoteCondition(int NoteId, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record ChoseDialogueAnswersCondition(IReadOnlyList<string> AnswerIds, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record GoldenWalnutsCondition(int Minimum, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record InUpgradedHouseCondition(int MinimumLevel, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record TimeCondition(int Min, int Max, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal enum WeatherKind { Rainy, Sunny, Custom }
+internal sealed record WeatherCondition(WeatherKind Kind, string WeatherId, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record DayOfWeekCondition(IReadOnlyList<DayOfWeek> Days, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record SpouseCondition(string Npc, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record RoommateCondition(ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record NpcVisibleCondition(string Npc, bool CurrentLocationOnly, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record SeasonCondition(IReadOnlyList<string> Seasons, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record SpouseBedCondition(ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record ReachedMineBottomCondition(int Minimum, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record YearCondition(int DesiredYear, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record GenderCondition(string Gender, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record HasItemCondition(string ItemId, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record TileCondition(IReadOnlyList<TilePosition> Positions, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record ActiveDialogueEventCondition(string Id, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record DayOfMonthCondition(IReadOnlyList<int> Days, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record UpcomingFestivalCondition(int Days, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record NativeQueryCondition(string Query, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record SkillCondition(string Skill, int MinimumLevel, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal enum OpaqueConditionKind { UnknownType, MalformedKnown }
+internal sealed record OpaqueCondition(OpaqueConditionKind Kind, string? KnownConditionName, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);

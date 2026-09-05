@@ -15,5 +15,6 @@ internal sealed record ConditionEvaluationContext(
     IReadOnlySet<string>? Spouse,
     bool? Roommate,
     int? DaysPlayed,
-    IReadOnlySet<string>? WorldState
+    IReadOnlySet<string>? WorldState,
+    bool? IsRaining = null
 );
