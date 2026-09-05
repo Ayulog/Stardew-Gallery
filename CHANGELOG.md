@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.0.2 — Condition Details / 条件详情
+
+- Event cards now use the existing ConditionIR parser instead of the legacy condition whitelist. / 事件卡片改用现有 ConditionIR 解析器，不再使用旧条件白名单。
+- Conditions now show met, missing, or unknown state, plus current/required values where available. / 条件会显示满足、缺失或无法判断状态，并在可用时显示当前值与要求值。
+- Unsupported mod conditions preserve their original text instead of displaying a generic “other condition” label. / 不支持的 Mod 条件会保留原文，不再笼统显示“其他条件”。
+
 ## 2.0.1 — Replay Environment / 回放演出环境
 
 - Events are unlocked for replay only after being seen, or while Unlock All is enabled. / 事件仅在已观看或开启“一键解锁全部”后可回放。

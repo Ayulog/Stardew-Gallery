@@ -35,14 +35,14 @@ internal static class ConditionDescriber
                 ("id", leaf.EventId)),
             MailCondition leaf => Named(leaf, "condition.mail",
                 ("id", leaf.MailId)),
-            DatingCondition leaf => RawFallback(leaf),
-            SpouseCondition leaf => RawFallback(leaf),
-            RoommateCondition leaf => RawFallback(leaf),
+            DatingCondition leaf => Named(leaf, "condition.dating", ("npc", leaf.Npc)),
+            SpouseCondition leaf => Named(leaf, "condition.spouse", ("npc", leaf.Npc)),
+            RoommateCondition leaf => Named(leaf, "condition.roommate"),
             DaysPlayedCondition leaf => Named(leaf, "condition.daysplayed",
                 ("min", leaf.Min.ToString())),
-            WorldStateCondition leaf => RawFallback(leaf),
-            NativeQueryCondition leaf => RawFallback(leaf),
-            OpaqueCondition leaf => RawFallback(leaf),
+            WorldStateCondition leaf => Named(leaf, "condition.world-state", ("id", leaf.Id)),
+            NativeQueryCondition leaf => Named(leaf, "condition.native-query", ("query", leaf.Query)),
+            OpaqueCondition leaf => Named(leaf, "condition.unsupported", ("raw", leaf.RawSegment)),
             _ => RawFallback(condition)
         };
     }

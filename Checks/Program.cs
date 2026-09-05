@@ -852,9 +852,9 @@ Check(readable.Arguments["npc"] == "Haley");
 Check(readable.Arguments["points"] == "2500");
 Check(readable.Arguments["hearts"] == "10");
 ReadableCondition opaqueReadable = ConditionDescriber.Describe(unknownSet.Conditions[0]);
-Check(opaqueReadable.LocalizationKey is null);
+Check(opaqueReadable.LocalizationKey == "condition.unsupported");
 Check(opaqueReadable.RawFallback == "SomethingElse value");
-Check(opaqueReadable.Arguments.Count == 0);
+Check(opaqueReadable.Arguments["raw"] == "SomethingElse value");
 ReadableCondition seasonReadable = ConditionDescriber.Describe(parser2.Parse(["Season Winter"]).Conditions[0]);
 Check(seasonReadable.LocalizationKey == "condition.season" && seasonReadable.Arguments["seasons"] == "Winter");
 ReadableCondition conditionReadable = ConditionDescriber.Describe(parser2.Parse(["SawEvent 123"]).Conditions[0]);
@@ -972,13 +972,15 @@ Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 2 }).Truth
 Check(eval.Evaluate(year2Set.Conditions[0], fullContext with { Year = 3 }).Truth == ConditionTruth.True, "Year 2 + current 3");
 
 ReadableCondition datingReadable = ConditionDescriber.Describe(parser2.Parse(["Dating Emily"]).Conditions[0]);
-Check(datingReadable.LocalizationKey is null, "Dating must not map to condition.present");
-Check(datingReadable.RawFallback == "Dating Emily");
+Check(datingReadable.LocalizationKey == "condition.dating" && datingReadable.Arguments["npc"] == "Emily");
 ReadableCondition spouseReadable = ConditionDescriber.Describe(parser2.Parse(["Spouse Alex"]).Conditions[0]);
-Check(spouseReadable.LocalizationKey is null, "Spouse must not map to condition.present");
-Check(spouseReadable.RawFallback == "Spouse Alex");
+Check(spouseReadable.LocalizationKey == "condition.spouse" && spouseReadable.Arguments["npc"] == "Alex");
 ReadableCondition roommateReadable = ConditionDescriber.Describe(parser2.Parse(["Roommate"]).Conditions[0]);
-Check(roommateReadable.LocalizationKey is null, "Roommate must be raw fallback");
+Check(roommateReadable.LocalizationKey == "condition.roommate");
+ReadableCondition worldReadable = ConditionDescriber.Describe(parser2.Parse(["WorldState flag"]).Conditions[0]);
+Check(worldReadable.LocalizationKey == "condition.world-state" && worldReadable.Arguments["id"] == "flag");
+ReadableCondition nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
+Check(nativeReadable.LocalizationKey == "condition.native-query" && nativeReadable.Arguments["query"] == "SEASON Spring");
 
 Check(ReplayBackupRetention.Retain([]).Count == 0, "retention 0 stale keep 0");
 Check(ReplayBackupRetention.Retain(["A"]).SequenceEqual(["A"]), "retention 1 stale keep 1");

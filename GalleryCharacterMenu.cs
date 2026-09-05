@@ -21,8 +21,11 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D scene;
     private readonly Action back;
     private readonly Action<GalleryEvent, int> replay;
+    private readonly ConditionParser conditionParser = ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
+    private readonly ConditionEvaluator conditionEvaluator = ConditionProduction.CreateEvaluator(null);
     private readonly Func<bool> isUnlocked;
     private readonly List<GalleryEvent> events;
+    private readonly Dictionary<EventIdentity, string> conditionSummaries;
     private int scroll;
     private bool dragging;
     private int dragOffset;
@@ -57,6 +60,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             .OrderBy(entry => entry.Ownership.Owners.First(owner => owner.Name == character.Name).FriendshipPoints ?? int.MaxValue)
             .ThenBy(entry => entry.EventId, StringComparer.Ordinal)
             .ToList();
+        CurrentStateSnapshot currentState = RuntimeStateReader.Capture();
+        conditionSummaries = events.ToDictionary(entry => entry.Resolved.Identity, entry => FormatConditions(entry, currentState));
         scroll = initialScroll;
         int focusIndex = initialFocusIdentity is null ? -1 : events.FindIndex(entry => entry.Identity == initialFocusIdentity);
         preferredReplayComponentId = GalleryUiRules.PreferredReplayRow(focusIndex, scroll, VisibleRows);
@@ -243,7 +248,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         string heart = owner.FriendshipPoints is int points ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) }) : i18n.Get("event.unspecified");
         GalleryMenu.DrawLeftFitted(b, $"{heart} · ID {entry.EventId}", new Rectangle(row.X + 25, row.Y + 10, row.Width - 245, 40));
         string location = Game1.getLocationFromName(entry.LocationName)?.DisplayName ?? entry.LocationName;
-        string fullSummaries = i18n.Get("event.location-conditions", new { location, conditions = FormatConditions(entry) });
+        string fullSummaries = i18n.Get("event.location-conditions", new { location, conditions = conditionSummaries[entry.Resolved.Identity] });
         string summary = WrapAndTruncate(fullSummaries, Game1.smallFont, row.Width - 235, maxLines: 2, out bool truncated);
         b.DrawString(Game1.smallFont, summary, new Vector2(row.X + 25, row.Y + 58), Game1.textColor);
         EventCardState card = EventCardStateResolver.Resolve(
@@ -316,32 +321,55 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             b.Draw(Game1.mouseCursors, new Vector2(x + i * size, y), new Rectangle(i < filled ? 211 : 218, 428, 7, 6), Color.White, 0f, Vector2.Zero, 4f, SpriteEffects.None, .88f);
     }
 
-    private string FormatConditions(GalleryEvent entry)
+    private string FormatConditions(GalleryEvent entry, CurrentStateSnapshot currentState)
     {
         List<string> result = [];
-        foreach (string condition in Event.SplitPreconditions(entry.EventKey).Skip(1))
+        foreach (ConditionExpression condition in conditionParser.ParseRawKey(entry.EventKey).Conditions)
         {
-            string[] tokens = condition.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length == 0)
-                continue;
-            string text = tokens[0] switch
+            ReadableCondition readable = ConditionDescriber.Describe(condition);
+            Dictionary<string, string> arguments = readable.Arguments.ToDictionary(pair => pair.Key, pair => pair.Value);
+            if (arguments.TryGetValue("npc", out string? npc))
+                arguments["npc"] = NPC.GetDisplayName(npc);
+            if (arguments.TryGetValue("seasons", out string? seasons))
+                arguments["seasons"] = string.Join(", ", seasons.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(value => Translate("season", value)));
+            if (arguments.TryGetValue("weather", out string? weather))
+                arguments["weather"] = Translate("weather", weather);
+            if (arguments.TryGetValue("from", out string? from))
+                arguments["from"] = FormatTime(from);
+            if (arguments.TryGetValue("to", out string? to))
+                arguments["to"] = FormatTime(to);
+
+            string summary = readable.LocalizationKey is null
+                ? i18n.Get("condition.unsupported", new { raw = readable.RawFallback ?? condition.RawSegment })
+                : i18n.Get(readable.LocalizationKey, arguments);
+            if (readable.Negated)
+                summary = i18n.Get("condition.not", new { condition = summary });
+
+            ConditionEvaluation evaluation = conditionEvaluator.Evaluate(condition, currentState.ToConditionContext());
+            if (evaluation.Truth == ConditionTruth.False && evaluation.Gap.Current is not null && evaluation.Gap.Target is not null)
             {
-                "f" when tokens.Length >= 3 && int.TryParse(tokens[2], out int points) => i18n.Get("condition.hearts", new { npc = NPC.GetDisplayName(tokens[1]), hearts = (int)Math.Ceiling(points / 250d) }),
-                "e" when tokens.Length >= 2 => i18n.Get("condition.seen", new { id = tokens[1] }),
-                "t" when tokens.Length >= 3 => i18n.Get("condition.time", new { from = FormatTime(tokens[1]), to = FormatTime(tokens[2]) }),
-                "w" when tokens.Length >= 2 => i18n.Get("condition.weather", new { weather = Translate("weather", tokens[1]) }),
-                "z" when tokens.Length >= 2 => i18n.Get("condition.season-not", new { season = Translate("season", tokens[1]) }),
-                "y" when tokens.Length >= 2 => i18n.Get("condition.year", new { year = tokens[1] }),
-                "d" when tokens.Length >= 2 => i18n.Get("condition.day", new { day = tokens[1] }),
-                "p" when tokens.Length >= 2 => i18n.Get("condition.present", new { npc = NPC.GetDisplayName(tokens[1]) }),
-                "M" or "m" when tokens.Length >= 2 => i18n.Get("condition.mail", new { id = tokens[1] }),
-                _ => i18n.Get("condition.other")
-            };
+                string current = DisplayGapValue(condition, evaluation.Gap.Current);
+                string target = DisplayGapValue(condition, evaluation.Gap.Target);
+                summary += i18n.Get("condition.gap", new { current, target });
+            }
+            string statusKey = evaluation.Knowledge != ConditionKnowledge.Known || evaluation.Truth == ConditionTruth.Unknown
+                ? "condition.status-unknown"
+                : evaluation.Truth == ConditionTruth.True ? "condition.status-met" : "condition.status-missing";
+            string text = condition is OpaqueCondition ? summary : i18n.Get(statusKey, new { condition = summary });
             if (!result.Contains(text, StringComparer.CurrentCulture))
                 result.Add(text);
         }
-        return string.Join(i18n.Get("condition.separator"), result);
+        return result.Count == 0 ? i18n.Get("condition.none") : string.Join(i18n.Get("condition.separator"), result);
     }
+
+    private string DisplayGapValue(ConditionExpression condition, string value) => condition switch
+    {
+        FriendshipCondition when int.TryParse(value, out int points) => i18n.Get("condition.hearts-value", new { hearts = points / 250d }),
+        TimeCondition => FormatTime(value),
+        SeasonCondition => string.Join(", ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(season => Translate("season", season))),
+        WeatherCondition => Translate("weather", value),
+        _ => value
+    };
 
     private string Translate(string group, string value)
     {

@@ -1,7 +1,7 @@
 {
   "Name": "Stardew Gallery",
   "Author": "sjt38",
-  "Version": "2.0.1",
+  "Version": "2.0.2",
   "Description": "Browse current NPC heart events, understand their requirements, and safely replay unlocked events in their intended scene environment.",
   "UniqueID": "sjt38.StardewGallery",
   "EntryDll": "StardewGallery.dll",

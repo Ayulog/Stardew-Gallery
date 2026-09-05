@@ -8,6 +8,7 @@ internal static class RuntimeStateReader
     internal static CurrentStateSnapshot Capture()
     {
         Farmer player = Game1.player;
+        Farmer host = Game1.MasterPlayer;
         Dictionary<string, int> friendship = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string>? dating = null;
         foreach (string npc in player.friendshipData.Keys)
@@ -22,7 +23,7 @@ internal static class RuntimeStateReader
         }
         return new CurrentStateSnapshot(
             Season: Game1.currentSeason,
-            Weather: null,
+            Weather: Game1.currentLocation?.GetWeather().Weather,
             DayOfMonth: Game1.dayOfMonth,
             Year: Game1.year,
             Time: Game1.timeOfDay,
@@ -30,8 +31,8 @@ internal static class RuntimeStateReader
             Friendship: friendship,
             EventsSeen: player.eventsSeen is null ? null : player.eventsSeen.ToHashSet(StringComparer.OrdinalIgnoreCase),
             LocalMail: player.mailReceived is null ? null : player.mailReceived.ToHashSet(StringComparer.OrdinalIgnoreCase),
-            HostMail: null,
-            HostOrLocalMail: null,
+            HostMail: host.mailReceived?.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            HostOrLocalMail: player.mailReceived?.Concat(host.mailReceived ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase),
             Dating: dating,
             Spouse: string.IsNullOrEmpty(player.spouse) ? null : new HashSet<string>(StringComparer.Ordinal) { player.spouse },
             Roommate: player.hasRoommate(),
