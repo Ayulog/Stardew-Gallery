@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.0.5 — Current-State Accuracy / 当前状态准确性
+
+- Empty dating and spouse states are now known negatives instead of unknown data. / 没有约会对象或配偶时现会按已知否定判断，不再显示无法判断。
+- Each event's weather conditions are evaluated against its own target location. / 每条事件的天气条件现按其目标地点判断。
+- Character and spouse ownership refresh whenever the gallery catalog is requested, while parsed event assets remain cached. / 每次请求画廊目录都会刷新角色和配偶归属，同时继续缓存已解析事件资源。
+
 ## 2.0.4 — Safety Boundary & Replay Lifecycle / 安全边界与回放生命周期
 
 - Unified catalog and historical variant checks behind a conservative read-only probe that never executes Random, SendMail, Game State Query, malformed, or custom preconditions. / 目录与历史 variant 判定统一经过保守的只读探测，不执行随机、发信、游戏状态查询、错误语法或自定义条件。

@@ -10,20 +10,19 @@ internal static class RuntimeStateReader
         Farmer player = Game1.player;
         Farmer host = Game1.MasterPlayer;
         Dictionary<string, int> friendship = new(StringComparer.OrdinalIgnoreCase);
-        HashSet<string>? dating = null;
+        HashSet<string> dating = new(StringComparer.Ordinal);
         foreach (string npc in player.friendshipData.Keys)
         {
             Friendship? value = player.friendshipData[npc];
             friendship[npc] = value?.Points ?? 0;
             if (value?.Status == FriendshipStatus.Dating)
             {
-                dating ??= new HashSet<string>(StringComparer.Ordinal);
                 dating.Add(npc);
             }
         }
         return new CurrentStateSnapshot(
             Season: Game1.currentSeason,
-            Weather: Game1.currentLocation?.GetWeather().Weather,
+            Weather: null,
             DayOfMonth: Game1.dayOfMonth,
             Year: Game1.year,
             Time: Game1.timeOfDay,
@@ -34,11 +33,16 @@ internal static class RuntimeStateReader
             HostMail: host.mailReceived?.ToHashSet(StringComparer.OrdinalIgnoreCase),
             HostOrLocalMail: player.mailReceived?.Concat(host.mailReceived ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase),
             Dating: dating,
-            Spouse: string.IsNullOrEmpty(player.spouse) ? null : new HashSet<string>(StringComparer.Ordinal) { player.spouse },
+            Spouse: string.IsNullOrEmpty(player.spouse) ? new HashSet<string>(StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal) { player.spouse },
             Roommate: player.hasRoommate(),
             WorldState: Game1.worldStateIDs is null ? null : new HashSet<string>(Game1.worldStateIDs, StringComparer.Ordinal),
-            IsRaining: Game1.currentLocation?.IsRainingHere());
+            IsRaining: null);
     }
+
+    internal static CurrentStateSnapshot ForLocation(CurrentStateSnapshot shared, GameLocation? target)
+        => target is null
+            ? shared.ForLocation(null, null)
+            : shared.ForLocation(target.GetWeather().Weather, target.IsRainingHere());
 }
 
 /// <summary>

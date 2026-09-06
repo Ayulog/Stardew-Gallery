@@ -9,7 +9,6 @@ namespace StardewGallery;
 internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiagnostics)
 {
     private sealed record IdentityConflict(string Location, string EventId, string SelectedKey, IReadOnlyList<string> CandidateKeys);
-    private sealed record CacheSnapshot(ResolvedEventIndex ResolvedEvents, GalleryCatalog Gallery);
 
     private readonly IEventAssetSourceCatalog eventAssets = new EventAssetCatalog();
     private readonly ResolvedEventReader eventReader = new(
@@ -25,17 +24,14 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
         positions => ArgUtility.SplitBySpace(positions),
         () => Game1.player.spouse
     );
-    private CacheSnapshot? cache;
+    private ResolvedEventIndex? resolvedEvents;
 
-    internal void Invalidate() => cache = null;
+    internal void Invalidate() => resolvedEvents = null;
 
     internal GalleryCatalog Get()
     {
-        if (cache is not null)
-            return cache.Gallery;
-
         IReadOnlyList<GalleryCharacter> characters = ScanCharacters();
-        ResolvedEventIndex index = ResolvedEventIndex.ReadCurrent(eventAssets, eventReader);
+        ResolvedEventIndex index = resolvedEvents ??= ResolvedEventIndex.ReadCurrent(eventAssets, eventReader);
         GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents);
         IReadOnlyList<GalleryEvent> events = build.AnalyzedEvents;
         GalleryCatalog catalog = build.Catalog;
@@ -53,8 +49,6 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             $"画廊扫描完成：角色候选 {characters.Count}，正式角色 {catalog.Characters.Count}，当前事件 {events.Count}，正式收录 {catalog.Events.Count}，直接归属 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Direct)}，前置继承 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Inherited)}，对白推定 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Inferred)}，排除 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Excluded)}。",
             LogLevel.Info
         );
-        CacheSnapshot snapshot = new(index, catalog);
-        cache = snapshot;
         if (debugDiagnostics())
         {
             GalleryDiagnostics.Write("catalog-latest.json", new
@@ -81,7 +75,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             }, monitor);
             monitor.Log($"详细扫描诊断已写入 {Path.Combine(GalleryDiagnostics.DirectoryPath, "catalog-latest.json")}。", LogLevel.Info);
         }
-        return snapshot.Gallery;
+        return catalog;
     }
 
     private IReadOnlyList<GalleryCharacter> ScanCharacters()

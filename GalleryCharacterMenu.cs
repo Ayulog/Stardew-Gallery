@@ -60,8 +60,10 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             .OrderBy(entry => entry.Ownership.Owners.First(owner => owner.Name == character.Name).FriendshipPoints ?? int.MaxValue)
             .ThenBy(entry => entry.EventId, StringComparer.Ordinal)
             .ToList();
-        CurrentStateSnapshot currentState = RuntimeStateReader.Capture();
-        conditionSummaries = events.ToDictionary(entry => entry.Resolved.Identity, entry => FormatConditions(entry, currentState));
+        CurrentStateSnapshot sharedState = RuntimeStateReader.Capture();
+        conditionSummaries = events.ToDictionary(
+            entry => entry.Resolved.Identity,
+            entry => FormatConditions(entry, RuntimeStateReader.ForLocation(sharedState, Game1.getLocationFromName(entry.LocationName))));
         scroll = initialScroll;
         int focusIndex = initialFocusIdentity is null ? -1 : events.FindIndex(entry => entry.Identity == initialFocusIdentity);
         preferredReplayComponentId = GalleryUiRules.PreferredReplayRow(focusIndex, scroll, VisibleRows);

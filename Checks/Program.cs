@@ -836,6 +836,22 @@ ConditionEvaluationContext contextMail = fullContext with { LocalMail = new Hash
 Check(eval.Evaluate(mailSet.Conditions[0], contextMail).Truth == ConditionTruth.False);
 Check(eval.Evaluate(mailSet.Conditions[0], contextMail).Gap.Kind == ConditionGapKind.MissingState);
 
+ConditionExpression datingEmily = parser2.Parse(["Dating Emily"]).Conditions[0];
+ConditionExpression notDatingEmily = parser2.Parse(["!Dating Emily"]).Conditions[0];
+ConditionExpression spouseAlex = parser2.Parse(["Spouse Alex"]).Conditions[0];
+ConditionExpression notSpouseAlex = parser2.Parse(["!Spouse Alex"]).Conditions[0];
+ConditionEvaluationContext noRelationships = fullContext with
+{
+    Dating = new HashSet<string>(),
+    Spouse = new HashSet<string>()
+};
+Check(eval.Evaluate(datingEmily, noRelationships).Truth == ConditionTruth.False, "empty dating is known false");
+Check(eval.Evaluate(notDatingEmily, noRelationships).Truth == ConditionTruth.True, "empty dating satisfies negation");
+Check(eval.Evaluate(spouseAlex, noRelationships).Truth == ConditionTruth.False, "empty spouse is known false");
+Check(eval.Evaluate(notSpouseAlex, noRelationships).Truth == ConditionTruth.True, "empty spouse satisfies negation");
+Check(eval.Evaluate(datingEmily, noRelationships with { Dating = null }).Knowledge == ConditionKnowledge.MissingData, "null dating remains unknown");
+Check(eval.Evaluate(spouseAlex, noRelationships with { Spouse = null }).Knowledge == ConditionKnowledge.MissingData, "null spouse remains unknown");
+
 int nativeCalls = 0;
 ConditionEvaluator nativeEval = new(query => { nativeCalls++; return query == "SEASON Spring"; });
 ConditionSet nativeSet = parser2.Parse(["GameStateQuery SEASON Spring"]);
@@ -1064,6 +1080,23 @@ Check(eval.Evaluate(aliasParser.ParseSegment("DaysPlayed 15"), fullContext with 
 Check(eval.Evaluate(aliasParser.ParseSegment("Weather rainy"), fullContext with { Weather = "GreenRain", IsRaining = true }).Truth == ConditionTruth.True, "rainy uses rain predicate");
 Check(eval.Evaluate(aliasParser.ParseSegment("Weather sunny"), fullContext with { Weather = "Sun", IsRaining = false }).Truth == ConditionTruth.True, "sunny uses inverse rain predicate");
 Check(eval.Evaluate(aliasParser.ParseSegment("Weather GreenRain"), fullContext with { Weather = "GreenRain", IsRaining = true }).Truth == ConditionTruth.True, "custom weather compares ID");
+CurrentStateSnapshot sharedWeatherState = new(
+    Season: "spring", Weather: null, DayOfMonth: 1, Year: 1, Time: 600, DaysPlayed: 1,
+    Friendship: null, EventsSeen: null, LocalMail: null, HostMail: null, HostOrLocalMail: null,
+    Dating: new HashSet<string>(), Spouse: new HashSet<string>(), Roommate: false, WorldState: null, IsRaining: null);
+CurrentStateSnapshot rainyLocationState = sharedWeatherState.ForLocation("Storm", true);
+CurrentStateSnapshot sunnyLocationState = sharedWeatherState.ForLocation("Sun", false);
+CurrentStateSnapshot unresolvedLocationState = sharedWeatherState.ForLocation(null, null);
+Check(sharedWeatherState.Weather is null && sharedWeatherState.IsRaining is null, "shared weather stays unknown");
+Check(rainyLocationState.Weather == "Storm" && rainyLocationState.IsRaining == true, "location overlay uses target rain");
+Check(sunnyLocationState.Weather == "Sun" && sunnyLocationState.IsRaining == false, "location overlay uses target sun");
+Check(unresolvedLocationState.Weather is null && unresolvedLocationState.IsRaining is null, "unresolved location stays unknown");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather rainy"), rainyLocationState.ToConditionContext()).Truth == ConditionTruth.True, "rainy target evaluates true");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather sunny"), sunnyLocationState.ToConditionContext()).Truth == ConditionTruth.True, "sunny target evaluates true");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather sunny"), rainyLocationState.ToConditionContext()).Truth == ConditionTruth.False, "sunny target evaluates false while raining");
+Check(eval.Evaluate(aliasParser.ParseSegment("Weather Storm"), rainyLocationState.ToConditionContext()).Truth == ConditionTruth.True, "custom target weather evaluates true");
+ConditionEvaluation unresolvedRain = eval.Evaluate(aliasParser.ParseSegment("Weather rainy"), unresolvedLocationState.ToConditionContext());
+Check(unresolvedRain.Truth == ConditionTruth.Unknown && unresolvedRain.Knowledge == ConditionKnowledge.MissingData, "unresolved target weather stays unknown");
 
 System.Globalization.CultureInfo savedCulture = System.Globalization.CultureInfo.CurrentCulture;
 try

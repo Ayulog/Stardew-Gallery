@@ -19,6 +19,9 @@ internal sealed record CurrentStateSnapshot(
     bool? IsRaining = null
 )
 {
+    internal CurrentStateSnapshot ForLocation(string? weather, bool? isRaining)
+        => this with { Weather = weather, IsRaining = isRaining };
+
     internal ConditionEvaluationContext ToConditionContext()
         => new(
             Season,
