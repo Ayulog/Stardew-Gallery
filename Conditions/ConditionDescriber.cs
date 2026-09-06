@@ -94,6 +94,7 @@ internal static class ConditionTextFormatter
     internal static string FormatGap(ConditionExpression condition, string value, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver) => condition switch
     {
         FriendshipCondition when int.TryParse(value, out int points) => FormatFriendship(points, translate),
+        TimeCondition when TryParseTimeRange(value, out int from, out int to) => $"{resolver.Time(from)} – {resolver.Time(to)}",
         TimeCondition when int.TryParse(value, out int time) => resolver.Time(time),
         SeasonCondition => string.Join(", ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(season => resolver.Term("season", season))),
         WeatherCondition leaf when value == leaf.WeatherId && leaf.Kind != WeatherKind.Custom
@@ -101,6 +102,14 @@ internal static class ConditionTextFormatter
         WeatherCondition => value,
         _ => value
     };
+
+    private static bool TryParseTimeRange(string value, out int from, out int to)
+    {
+        from = 0;
+        to = 0;
+        string[] parts = value.Split("..", StringSplitOptions.None);
+        return parts.Length == 2 && int.TryParse(parts[0], out from) && int.TryParse(parts[1], out to);
+    }
 
     private static string ResolveItem(string id, ConditionDisplayResolver resolver)
     {

@@ -13,6 +13,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 {
     private const int VisibleRows = 4;
     private const int BackComponentId = 1000;
+    private const int DetailsComponentBase = 100;
     private const int TooltipTextWidth = 600;
     private const int TooltipMaxLines = 10;
     private readonly GalleryCharacter character;
@@ -21,11 +22,11 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D scene;
     private readonly Action back;
     private readonly Action<GalleryEvent, int> replay;
-    private readonly ConditionParser conditionParser = ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
-    private readonly ConditionEvaluator conditionEvaluator = ConditionProduction.CreateEvaluator(null);
+    private readonly Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details;
     private readonly Func<bool> isUnlocked;
     private readonly List<GalleryEvent> events;
     private readonly Dictionary<EventIdentity, string> conditionSummaries;
+    private readonly Dictionary<EventIdentity, IReadOnlyList<ConditionDisplayItem>> conditionItems;
     private int scroll;
     private bool dragging;
     private int dragOffset;
@@ -37,7 +38,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private float menuScale = 1f;
     private int drawOffsetX;
     private int drawOffsetY;
-    private readonly int preferredReplayComponentId;
+    private readonly int preferredComponentId;
     private bool pendingInitialSnap = true;
     private AnimatedSprite? previewSprite;
     private string? hoverTooltip;
@@ -45,6 +46,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     internal GalleryCharacterMenu(GalleryCharacter character, GalleryCatalog catalog, ITranslationHelper i18n,
         Texture2D background, Texture2D scene, Func<bool> isUnlocked, Action back,
         Action<GalleryEvent, int> replay,
+        Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details,
         int initialScroll = 0, string? initialFocusIdentity = null)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
@@ -55,18 +57,28 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         this.isUnlocked = isUnlocked;
         this.back = back;
         this.replay = replay;
+        this.details = details;
         events = catalog.Events
             .Where(entry => entry.Ownership.Owners.Any(owner => owner.Name == character.Name))
             .OrderBy(entry => entry.Ownership.Owners.First(owner => owner.Name == character.Name).FriendshipPoints ?? int.MaxValue)
             .ThenBy(entry => entry.EventId, StringComparer.Ordinal)
             .ToList();
         CurrentStateSnapshot sharedState = RuntimeStateReader.Capture();
-        conditionSummaries = events.ToDictionary(
+        ConditionPresentationBuilder presentation = new(
+            ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
+            ConditionProduction.CreateEvaluator(null),
+            (key, arguments) => i18n.Get(key, arguments),
+            new ConditionDisplayResolver(NPC.GetDisplayName, id => ItemRegistry.GetData(id)?.DisplayName, Translate, Game1.getTimeOfDayString));
+        conditionItems = events.ToDictionary(
             entry => entry.Resolved.Identity,
-            entry => FormatConditions(entry, RuntimeStateReader.ForLocation(sharedState, Game1.getLocationFromName(entry.LocationName))));
+            entry => presentation.Build(entry.EventKey, RuntimeStateReader.ForLocation(sharedState, Game1.getLocationFromName(entry.LocationName))));
+        conditionSummaries = conditionItems.ToDictionary(pair => pair.Key, pair => presentation.Compact(pair.Value));
         scroll = initialScroll;
         int focusIndex = initialFocusIdentity is null ? -1 : events.FindIndex(entry => entry.Identity == initialFocusIdentity);
-        preferredReplayComponentId = GalleryUiRules.PreferredReplayRow(focusIndex, scroll, VisibleRows);
+        int preferredRow = GalleryUiRules.PreferredReplayRow(focusIndex, scroll, VisibleRows);
+        bool replayAvailable = focusIndex >= 0 && EventCardStateResolver.Resolve(
+            Game1.player.eventsSeen.Contains(events[focusIndex].EventId), isUnlocked()).Unlocked;
+        preferredComponentId = replayAvailable ? preferredRow : DetailsComponentBase + preferredRow;
         RecalculateLayout();
         SnapForGamepad();
     }
@@ -118,12 +130,18 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             for (int row = 0; row < VisibleRows && scroll + row < events.Count; row++)
             {
                 Rectangle bounds = R(775, 140 + row * 170, 705, 155);
-                Rectangle primaryButton = new(bounds.Right - 185, bounds.Bottom - 62, 155, 48);
+                Rectangle detailsButton = new(bounds.Right - 185, bounds.Y + 58, 155, 40);
+                Rectangle replayButton = new(bounds.Right - 185, bounds.Bottom - 48, 155, 38);
                 GalleryEvent entry = events[scroll + row];
+                if (detailsButton.Contains(x, y))
+                {
+                    details(entry, scroll, conditionItems[entry.Resolved.Identity]);
+                    return;
+                }
                 EventCardState card = EventCardStateResolver.Resolve(
                     Game1.player.eventsSeen.Contains(entry.EventId),
                     isUnlocked());
-                if (!card.Unlocked || !primaryButton.Contains(x, y))
+                if (!card.Unlocked || !replayButton.Contains(x, y))
                     continue;
                 replay(entry, scroll);
                 return;
@@ -174,7 +192,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     public override void snapToDefaultClickableComponent()
     {
-        currentlySnappedComponent = allClickableComponents?.FirstOrDefault(component => component.myID == preferredReplayComponentId)
+        currentlySnappedComponent = allClickableComponents?.FirstOrDefault(component => component.myID == preferredComponentId)
+            ?? allClickableComponents?.FirstOrDefault(component => component.myID == DetailsComponentBase)
             ?? allClickableComponents?.FirstOrDefault(component => component.myID == BackComponentId);
         snapCursorToCurrentSnappedComponent();
     }
@@ -258,8 +277,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             isUnlocked());
         Color statusColor = card.Unlocked ? new Color(20, 110, 40) : new Color(150, 20, 20);
         DrawStatusLabel(b, i18n.Get(card.StatusKey), new Vector2(row.Right - 190, row.Y + 22), statusColor);
+        GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Y + 58, 155, 40), i18n.Get("event.details"));
         if (card.Unlocked)
-            GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 62, 155, 48), i18n.Get("event.replay"));
+            GalleryMenu.DrawButton(b, new Rectangle(row.Right - 185, row.Bottom - 48, 155, 38), i18n.Get("event.replay"));
 
         if (truncated)
         {
@@ -321,39 +341,6 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         int y = bounds.Center.Y - 12;
         for (int i = 0; i < capacity; i++)
             b.Draw(Game1.mouseCursors, new Vector2(x + i * size, y), new Rectangle(i < filled ? 211 : 218, 428, 7, 6), Color.White, 0f, Vector2.Zero, 4f, SpriteEffects.None, .88f);
-    }
-
-    private string FormatConditions(GalleryEvent entry, CurrentStateSnapshot currentState)
-    {
-        List<string> result = [];
-        ConditionDisplayResolver resolver = new(
-            NPC.GetDisplayName,
-            id => ItemRegistry.GetData(id)?.DisplayName,
-            Translate,
-            Game1.getTimeOfDayString);
-        foreach (ConditionExpression condition in conditionParser.ParseRawKey(entry.EventKey).Conditions)
-        {
-            ConditionTextSpec spec = ConditionDescriber.Describe(condition);
-            string summary = ConditionTextFormatter.Format(spec,
-                (key, arguments) => i18n.Get(key, arguments), resolver);
-
-            ConditionEvaluation evaluation = conditionEvaluator.Evaluate(condition, currentState.ToConditionContext());
-            if (evaluation.Truth == ConditionTruth.False && evaluation.Gap.Current is not null && evaluation.Gap.Target is not null)
-            {
-                string current = ConditionTextFormatter.FormatGap(condition, evaluation.Gap.Current,
-                    (key, arguments) => i18n.Get(key, arguments), resolver);
-                string target = ConditionTextFormatter.FormatGap(condition, evaluation.Gap.Target,
-                    (key, arguments) => i18n.Get(key, arguments), resolver);
-                summary += i18n.Get("condition.gap", new { current, target });
-            }
-            string statusKey = evaluation.Knowledge != ConditionKnowledge.Known || evaluation.Truth == ConditionTruth.Unknown
-                ? "condition.status-unknown"
-                : evaluation.Truth == ConditionTruth.True ? "condition.status-met" : "condition.status-missing";
-            string text = i18n.Get(statusKey, new { condition = summary });
-            if (!result.Contains(text, StringComparer.CurrentCulture))
-                result.Add(text);
-        }
-        return result.Count == 0 ? i18n.Get("condition.none") : string.Join(i18n.Get("condition.separator"), result);
     }
 
     private string Translate(string group, string value)
@@ -422,29 +409,38 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         ClickableComponent backComponent = new(ToScreen(backBounds), "back")
         {
             myID = BackComponentId,
-            rightNeighborID = visible > 0 ? 0 : -1,
-            upNeighborID = visible > 0 ? visible - 1 : -1
+            rightNeighborID = visible > 0 ? DetailsComponentBase : -1,
+            upNeighborID = visible > 0 ? DetailsComponentBase + visible - 1 : -1
         };
         allClickableComponents.Add(backComponent);
         for (int row = 0; row < visible; row++)
         {
             Rectangle bounds = R(775, 140 + row * 170, 705, 155);
             GalleryEvent entry = events[scroll + row];
-            if (!EventCardStateResolver.Resolve(Game1.player.eventsSeen.Contains(entry.EventId), isUnlocked()).Unlocked)
+            bool replayAvailable = EventCardStateResolver.Resolve(Game1.player.eventsSeen.Contains(entry.EventId), isUnlocked()).Unlocked;
+            ClickableComponent detailsComponent = new(ToScreen(new Rectangle(bounds.Right - 185, bounds.Y + 58, 155, 40)), $"details-{row}")
+            {
+                myID = DetailsComponentBase + row,
+                leftNeighborID = BackComponentId,
+                rightNeighborID = replayAvailable ? row : -1,
+                upNeighborID = row > 0 ? DetailsComponentBase + row - 1 : BackComponentId,
+                downNeighborID = row + 1 < visible ? DetailsComponentBase + row + 1 : BackComponentId
+            };
+            allClickableComponents.Add(detailsComponent);
+            if (!replayAvailable)
                 continue;
-            ClickableComponent actionComponent = new(ToScreen(new Rectangle(bounds.Right - 185, bounds.Bottom - 62, 155, 48)), $"action-{row}")
+            allClickableComponents.Add(new ClickableComponent(ToScreen(new Rectangle(bounds.Right - 185, bounds.Bottom - 48, 155, 38)), $"replay-{row}")
             {
                 myID = row,
-                leftNeighborID = BackComponentId,
-                upNeighborID = row > 0 ? row - 1 : BackComponentId,
-                downNeighborID = row + 1 < visible ? row + 1 : BackComponentId
-            };
-            allClickableComponents.Add(actionComponent);
+                leftNeighborID = DetailsComponentBase + row,
+                upNeighborID = row > 0 ? DetailsComponentBase + row - 1 : DetailsComponentBase + row,
+                downNeighborID = row + 1 < visible ? DetailsComponentBase + row + 1 : BackComponentId
+            });
         }
         if (upperRightCloseButton is not null)
         {
-            upperRightCloseButton.leftNeighborID = visible > 0 ? 0 : BackComponentId;
-            upperRightCloseButton.downNeighborID = visible > 0 ? 0 : BackComponentId;
+            upperRightCloseButton.leftNeighborID = visible > 0 ? DetailsComponentBase : BackComponentId;
+            upperRightCloseButton.downNeighborID = visible > 0 ? DetailsComponentBase : BackComponentId;
             allClickableComponents.Add(new ClickableComponent(ToScreen(upperRightCloseButton.bounds), upperRightCloseButton.name)
             {
                 myID = upperRightCloseButton.myID,

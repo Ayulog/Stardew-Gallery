@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.1.0 — Event Detail Page / 事件详情页
+
+- Added a complete, scrollable detail page for every current event, including locked events. / 为每条当前事件加入完整可滚动的详情页，包括尚未解锁的事件。
+- Conditions retain declaration order and show met, missing, or unknown status with readable gaps, exact unknown reasons, source, and raw condition text. / 条件保留声明顺序，并展示满足、未满足或无法判断状态、可读缺口、准确原因、来源及原始文本。
+- Unlocked events can use the existing safe replay path from detail; locked events remain non-replayable. / 已解锁事件可从详情复用既有安全回放；未解锁事件仍不能回放。
+- Added complete event-detail localization for all 12 supported languages. / 为全部 12 种支持语言补齐事件详情文本。
+
 ## 2.0.6 — Stop Historical Collection / 停止历史采集
 
 - Disabled historical replay and natural-event collection at runtime; no new historical occurrences, contexts, legacy snapshots, or SQLite sessions are created. / 已在运行时停用历史回放与自然事件采集，不再创建新的历史 occurrence、context、legacy snapshot 或 SQLite 会话。

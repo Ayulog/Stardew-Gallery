@@ -221,7 +221,7 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     private ConditionEvaluation EvaluateNativeQuery(NativeQueryCondition leaf)
     {
         if (checkNativeQuery is null)
-            return Unknown(leaf, ConditionKnowledge.MissingData);
+            return Unknown(leaf, ConditionKnowledge.Unsupported);
         try
         {
             bool matches = checkNativeQuery(leaf.Query);

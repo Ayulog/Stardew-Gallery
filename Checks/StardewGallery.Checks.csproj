@@ -23,6 +23,7 @@
     <Compile Include="..\Conditions\ConditionEvaluator.cs" Link="Conditions\ConditionEvaluator.cs" />
     <Compile Include="..\Conditions\ConditionDescriber.cs" Link="Conditions\ConditionDescriber.cs" />
     <Compile Include="..\Conditions\ConditionProduction.cs" Link="Conditions\ConditionProduction.cs" />
+    <Compile Include="..\Conditions\ConditionPresentation.cs" Link="Conditions\ConditionPresentation.cs" />
     <Compile Include="..\Catalog\EventAssetSource.cs" Link="Catalog\EventAssetSource.cs" />
     <Compile Include="..\Catalog\ResolvedEventReader.cs" Link="Catalog\ResolvedEventReader.cs" />
     <Compile Include="..\Catalog\ResolvedEventIndex.cs" Link="Catalog\ResolvedEventIndex.cs" />

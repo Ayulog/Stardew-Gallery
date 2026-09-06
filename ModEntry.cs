@@ -94,7 +94,7 @@ internal sealed class ModEntry : Mod
         }
         bool searchSelected = Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true };
         if (GalleryUiRules.ShouldCloseFromShortcut(galleryPressed, searchSelected)
-            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu)
+            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu)
         {
             Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
             Game1.activeClickableMenu = null;
@@ -111,6 +111,12 @@ internal sealed class ModEntry : Mod
         {
             Helper.Input.Suppress(e.Button);
             characterMenu.HandleControllerBack();
+            return;
+        }
+        if (e.Button == SButton.ControllerB && Game1.activeClickableMenu is GalleryEventDetailMenu eventMenu)
+        {
+            Helper.Input.Suppress(e.Button);
+            eventMenu.HandleControllerBack();
             return;
         }
         if (Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true } home)
@@ -225,7 +231,8 @@ internal sealed class ModEntry : Mod
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/CharacterScene-day-v2.png"),
                 () => unlockAll,
                 ToggleUnlock,
-                (character, entry, scroll) => RequestReplay(snapshot, character, entry, scroll));
+                (character, entry, scroll) => RequestReplay(snapshot, character, entry, scroll),
+                (character, entry, scroll, conditions) => OpenEventDetail(snapshot, character, entry, scroll, conditions));
             Game1.playSound("bigSelect");
         }
         catch (Exception error)
@@ -280,8 +287,29 @@ internal sealed class ModEntry : Mod
             () => unlockAll,
             OpenGallery,
             (entry, position) => RequestReplay(snapshot, character, entry, position),
+            (entry, position, conditions) => OpenEventDetail(snapshot, character, entry, position, conditions),
             scroll,
             focusIdentity);
+    }
+
+    private void OpenEventDetail(
+        GalleryCatalog snapshot,
+        GalleryCharacter character,
+        GalleryEvent entry,
+        int scroll,
+        IReadOnlyList<ConditionDisplayItem> conditions)
+    {
+        bool CanReplay() => EventCardStateResolver.Resolve(
+            Game1.player.eventsSeen.Contains(entry.EventId), unlockAll).Unlocked;
+        Game1.activeClickableMenu = new GalleryEventDetailMenu(
+            character,
+            entry,
+            conditions,
+            Helper.Translation,
+            Helper.ModContent.Load<Texture2D>("assets/GalleryDetail-alpha-v2.png"),
+            CanReplay,
+            () => OpenCharacter(snapshot, character, scroll, entry.Identity),
+            () => RequestReplay(snapshot, character, entry, scroll));
     }
 
     private void ToggleUnlock()

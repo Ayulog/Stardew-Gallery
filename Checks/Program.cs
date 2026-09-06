@@ -882,7 +882,7 @@ Check(throwingNative.Evaluate(nativeSet.Conditions[0], missingContext).Truth == 
 Check(throwingNative.Evaluate(nativeSet.Conditions[0], missingContext).Knowledge == ConditionKnowledge.Error);
 ConditionEvaluator noNative = new();
 Check(noNative.Evaluate(nativeSet.Conditions[0], missingContext).Truth == ConditionTruth.Unknown);
-Check(noNative.Evaluate(nativeSet.Conditions[0], missingContext).Knowledge == ConditionKnowledge.MissingData);
+Check(noNative.Evaluate(nativeSet.Conditions[0], missingContext).Knowledge == ConditionKnowledge.Unsupported);
 
 ConditionSet worldSet = parser2.Parse(["WorldState flag"]);
 ConditionEvaluation worldMissing = eval.Evaluate(worldSet.Conditions[0], missingContext);
@@ -1130,6 +1130,54 @@ string i18nDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "
 Check(aliasParser.ParseSegment("DayOfWeek Monday Friday") is DayOfWeekCondition { Days.Count: 2 }, "audit: full weekday names");
 Check(aliasParser.ParseSegment("Gender Banana") is OpaqueCondition, "audit: invalid gender");
 Dictionary<string, string> defaultLocale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(Path.Combine(i18nDirectory, "default.json")))!;
+string TranslatePresentation(string key, IReadOnlyDictionary<string, string> arguments)
+{
+    Check(defaultLocale.ContainsKey(key), "presentation localization key: " + key);
+    string template = defaultLocale[key];
+    foreach ((string token, string value) in arguments)
+        template = template.Replace("{{" + token + "}}", value);
+    return template;
+}
+ConditionParser presentationParser = new(
+    key => key.Split('/', StringSplitOptions.RemoveEmptyEntries),
+    FakeSplitArgs);
+ConditionPresentationBuilder presentationBuilder = new(
+    presentationParser,
+    new ConditionEvaluator(),
+    TranslatePresentation,
+    new ConditionDisplayResolver(name => "NPC:" + name, id => "ITEM:" + id, (group, value) => group + ":" + value, time => "GAME-TIME:" + time));
+CurrentStateSnapshot presentationState = sharedWeatherState with
+{
+    Season = "spring",
+    Time = 1400,
+    Friendship = new Dictionary<string, int> { ["Abigail"] = 1750 }
+};
+IReadOnlyList<ConditionDisplayItem> presentationItems = presentationBuilder.Build(
+    "1/Season spring/Friendship Abigail 2000/Friendship Abigail 2000/Time 1800 2200/Weather rainy/Random 0.5/SomeMod.Custom foo/Time bad/GameStateQuery WEATHER Here Sun/SendMail Letter/!Season winter",
+    presentationState);
+Check(presentationItems.Select(item => item.Expression.RawSegment).SequenceEqual(new[]
+{
+    "Season spring", "Friendship Abigail 2000", "Friendship Abigail 2000", "Time 1800 2200", "Weather rainy",
+    "Random 0.5", "SomeMod.Custom foo", "Time bad", "GameStateQuery WEATHER Here Sun", "SendMail Letter", "!Season winter"
+}), "presentation preserves declaration order and duplicates");
+Check(presentationItems[0].Evaluation is { Truth: ConditionTruth.True, Knowledge: ConditionKnowledge.Known }, "presentation known true");
+ConditionDisplayItem friendshipPresentation = presentationItems[1];
+Check(friendshipPresentation.Evaluation.Truth == ConditionTruth.False && friendshipPresentation.GapSubject == "NPC:Abigail", "presentation friendship gap subject");
+Check(friendshipPresentation.CurrentValue == "7 hearts" && friendshipPresentation.RequiredValue == "8 hearts", "presentation friendship values humanized");
+ConditionDisplayItem timePresentation = presentationItems[3];
+Check(timePresentation.CurrentValue == "GAME-TIME:1400" && timePresentation.RequiredValue == "GAME-TIME:1800 – GAME-TIME:2200", "presentation time range humanized");
+Check(presentationItems[4].Evaluation.Knowledge == ConditionKnowledge.MissingData, "presentation unresolved weather missing data");
+Check(presentationItems[5].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation random unsupported");
+Check(presentationItems[6].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation custom unsupported");
+Check(presentationItems[7].Evaluation.Knowledge == ConditionKnowledge.Invalid, "presentation malformed invalid");
+Check(presentationItems[8].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation GSQ without provider unsupported");
+Check(presentationItems[9].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation SendMail unsupported");
+Check(presentationItems[10].Expression is SeasonCondition { Negated: true, Source: ConditionSource.LegacyEventPrecondition }
+    && presentationItems[10].Expression.RawSegment == "!Season winter", "presentation retains raw source and negation");
+string compactPresentation = presentationBuilder.Compact(presentationItems);
+Check(compactPresentation.Split("Missing: Friendship", StringSplitOptions.None).Length == 2, "compact summary deduplicates repeated text");
+Check(presentationBuilder.Build("1", presentationState).Count == 0, "presentation no-condition items empty");
+Check(presentationBuilder.Compact([]) == defaultLocale["condition.none"], "presentation no-condition compact text");
 string AuditFormat(string input, Dictionary<string, string> language, ConditionDisplayResolver? resolver = null)
 {
     string TranslateAudit(string key, IReadOnlyDictionary<string, string> arguments)
