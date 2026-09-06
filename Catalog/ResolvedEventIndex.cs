@@ -2,10 +2,18 @@ namespace StardewGallery;
 
 internal sealed record ResolvedEventGroup(
     ResolvedEvent Current,
-    IReadOnlyList<ResolvedEvent> Candidates
+    IReadOnlyList<ResolvedEvent> Candidates,
+    ResolvedEventSelectionSource SelectionSource
 )
 {
     internal EventIdentity Identity => Current.Identity;
+}
+
+internal enum ResolvedEventSelectionSource
+{
+    NativeMatch,
+    IndeterminateFallback,
+    NoMatchFallback
 }
 
 internal sealed class ResolvedEventIndex
@@ -48,9 +56,6 @@ internal sealed class ResolvedEventIndex
     internal IReadOnlyList<ResolvedEvent> GetCandidates(EventIdentity identity)
         => TryGetGroup(identity, out ResolvedEventGroup group) ? group.Candidates : Array.Empty<ResolvedEvent>();
 
-    internal static bool MatchesCurrentState(string? preconditionResult)
-        => !string.IsNullOrEmpty(preconditionResult) && preconditionResult != "-1";
-
     internal static ResolvedEventIndex ReadCurrent(
         IEventAssetSourceCatalog assets,
         ResolvedEventReader reader)
@@ -82,19 +87,24 @@ internal sealed class ResolvedEventIndex
         foreach (EventIdentity identity in identityOrder)
         {
             List<ResolvedEventCandidate> matches = grouped[identity];
-            int selectedIndex = EventKey.SelectVariantIndex(matches.Count, index =>
+            int selectedIndex = 0;
+            ResolvedEventSelectionSource selectionSource = ResolvedEventSelectionSource.NoMatchFallback;
+            for (int index = 0; index < matches.Count; index++)
             {
-                try
+                NativePreconditionProbeStatus status = matches[index].ProbePrecondition().Status;
+                if (status == NativePreconditionProbeStatus.NotMatched)
+                    continue;
+                selectedIndex = index;
+                if (status == NativePreconditionProbeStatus.Matched)
                 {
-                    return MatchesCurrentState(matches[index].CheckPrecondition());
+                    selectionSource = ResolvedEventSelectionSource.NativeMatch;
+                    break;
                 }
-                catch
-                {
-                    return false;
-                }
-            });
+                selectionSource = ResolvedEventSelectionSource.IndeterminateFallback;
+                break;
+            }
             ResolvedEvent[] resolved = matches.Select(match => match.Resolved).ToArray();
-            groups.Add(new ResolvedEventGroup(resolved[selectedIndex], Array.AsReadOnly(resolved)));
+            groups.Add(new ResolvedEventGroup(resolved[selectedIndex], Array.AsReadOnly(resolved), selectionSource));
         }
         return new ResolvedEventIndex(groups);
     }

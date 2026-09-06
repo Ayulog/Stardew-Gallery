@@ -64,12 +64,12 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
+            replay.OnReturnedToTitle();
             watchedHistory.Clear(ExecutionTraceEndReason.QuitToTitle);
             DisposeSqliteSession();
             catalog.Invalidate();
             unlockAll = false;
             rollbackWarningShown = false;
-            historicalAssets.Clear();
         };
         helper.Events.Content.AssetRequested += (_, e) => historicalAssets.OnAssetRequested(e);
         helper.Events.Content.LocaleChanged += (_, _) => catalog.Invalidate();

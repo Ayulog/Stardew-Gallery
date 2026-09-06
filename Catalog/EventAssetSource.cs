@@ -11,7 +11,7 @@ internal sealed record EventAssetSource(
     string FragmentRootLocationName,
     IReadOnlyList<EventAssetDefinition> Definitions,
     Func<string, IReadOnlyDictionary<string, string>?> LoadLocationEvents,
-    Func<string, string?> CheckPrecondition
+    Func<string, NativePreconditionProbeResult> ProbePrecondition
 );
 
 internal interface IEventAssetSourceCatalog

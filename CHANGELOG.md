@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.0.4 — Safety Boundary & Replay Lifecycle / 安全边界与回放生命周期
+
+- Unified catalog and historical variant checks behind a conservative read-only probe that never executes Random, SendMail, Game State Query, malformed, or custom preconditions. / 目录与历史 variant 判定统一经过保守的只读探测，不执行随机、发信、游戏状态查询、错误语法或自定义条件。
+- Current variant selection stops at the first unsafe or failed candidate instead of incorrectly skipping to a later match. / 当前 variant 选择遇到首个无法安全判定或出错的候选即停止，不再错误跳到后续匹配项。
+- Replay update, cleanup, fail-safe recovery, and return-to-title teardown now guarantee internal state reset and release the save guard. / 回放更新、清理、故障恢复及返回标题流程现会确保内部状态重置并解除存档保护。
+- Fixed Preview scope regressions to exercise partial-apply failure and repeated disposal. / 修正 Preview scope 回归检查，使其真正覆盖部分应用失败与重复释放。
+
 ## 2.0.3 — Complete Event Preconditions / 完整事件条件
 
 - Audit corrections: fixed seen-event tokens, full weekday names, exact friendship points, rain descriptions, native time display, gender validation, malformed classification, and item-ID fallback. / 审计修正：已看事件占位符、完整星期名、好感点数精度、降雨文案、原版时间显示、性别校验、无效条件分类及物品 ID 回退。

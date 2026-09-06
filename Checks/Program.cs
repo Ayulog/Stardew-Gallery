@@ -217,29 +217,29 @@ Check(reLoad![0].Fingerprint == reLoad[1].Fingerprint && reLoad[0].EventKey != r
 
 Check(LegacyHistoryAdapter.From(conditionOnlyA).Variant.Key != LegacyHistoryAdapter.From(conditionOnlyB).Variant.Key, "adapter diff ObservedVariant even with same playback");
 
-Check(ObservedVariantSelector.TrySelect(["single"], _ => "0", out int sel0), "single candidate");
+Check(ObservedVariantSelector.TrySelect(["single"], _ => Matched(), out int sel0), "single candidate");
 Check(sel0 == 0, "single candidate index 0");
-Check(ObservedVariantSelector.TrySelect(["A", "B"], key => key == "B" ? "0" : "-1", out int sel1), "first false second true");
+Check(ObservedVariantSelector.TrySelect(["A", "B"], key => key == "B" ? Matched() : NotMatched(), out int sel1), "first false second true");
 Check(sel1 == 1, "second selected");
-Check(ObservedVariantSelector.TrySelect(["A", "B"], _ => "0", out int sel2), "both true");
+Check(ObservedVariantSelector.TrySelect(["A", "B"], _ => Matched(), out int sel2), "both true");
 Check(sel2 == 0, "first selected");
-Check(!ObservedVariantSelector.TrySelect(["A", "B"], key => throw new InvalidOperationException(key), out _), "both throw failure");
-Check(ObservedVariantSelector.TrySelect(["A", "B"], key => key == "B" ? "0" : throw new InvalidOperationException("A throws"), out int sel3), "first throws handled");
-Check(sel3 == 1, "second selected after first throws");
-Check(!ObservedVariantSelector.TrySelect(["A", "B"], _ => "-1", out _), "all false failure");
-Check(!ObservedVariantSelector.TrySelect([], _ => "0", out _), "empty candidates failure");
-Check(!ObservedVariantSelector.IsCurrentState(null), "null false");
-Check(!ObservedVariantSelector.IsCurrentState(""), "empty false");
-Check(!ObservedVariantSelector.IsCurrentState("-1"), "-1 false");
-Check(ObservedVariantSelector.IsCurrentState("0"), "0 true");
-Check(ObservedVariantSelector.IsCurrentState(" "), "whitespace true");
-Check(ObservedVariantSelector.IsCurrentState("matched"), "other nonempty true");
+int historyAfterUnsafeCalls = 0;
+Check(!ObservedVariantSelector.TrySelect(["A", "B", "C"], key => key switch
+{
+    "A" => NotMatched(),
+    "B" => NotSafelyEvaluated(),
+    _ => CountedMatch(() => historyAfterUnsafeCalls++)
+}, out _), "history stops at unsafe candidate");
+Check(historyAfterUnsafeCalls == 0, "history does not probe after unsafe candidate");
+Check(!ObservedVariantSelector.TrySelect(["A", "B"], key => key == "A" ? ProbeError() : Matched(), out _), "history error is indeterminate");
+Check(!ObservedVariantSelector.TrySelect(["A", "B"], _ => NotMatched(), out _), "all false failure");
+Check(!ObservedVariantSelector.TrySelect([], _ => Matched(), out _), "empty candidates failure");
 
 const string sameRootScript = "same";
 string candidateAKey = "123/Friendship Haley 1000";
 string candidateBKey = "123/Friendship Haley 2000";
 Check(ObservedVariantSelector.TrySelect([candidateAKey, candidateBKey],
-    key => key == candidateBKey ? "0" : "-1", out int selectedDefinitionIndex), "semantic fixture selects second");
+    key => key == candidateBKey ? Matched() : NotMatched(), out int selectedDefinitionIndex), "semantic fixture selects second");
 Check(selectedDefinitionIndex == 1, "semantic fixture second index");
 string selectedKey = selectedDefinitionIndex == 1 ? candidateBKey : candidateAKey;
 Check(selectedKey == candidateBKey, "semantic fixture selected B");
@@ -269,7 +269,7 @@ EventAssetSource filteredSource = new(
     key =>
     {
         filteredPreconditionKey = key;
-        return "0";
+        return Matched();
     }
 );
 IReadOnlyList<ResolvedEventCandidate> filteredCandidates = testReader.Read(filteredSource);
@@ -291,7 +291,7 @@ EventAssetSource missingFragmentSource = new(
     "MissingRoot",
     [new EventAssetDefinition("missing", "none|0 0|Actor 1 1 2|fork absent")],
     _ => new Dictionary<string, string>(),
-    _ => "0"
+    _ => Matched()
 );
 IReadOnlyList<ResolvedEventCandidate> missingFragmentCandidates = testReader.Read(missingFragmentSource);
 Check(missingFragmentCandidates.Count == 1);
@@ -315,7 +315,7 @@ EventAssetSource alphaSource = new(
     {
         Check(key == "alpha");
         pipelineCalls.Add("check:Alpha");
-        return "0";
+        return Matched();
     }
 );
 EventAssetSource betaSource = new(
@@ -333,7 +333,7 @@ EventAssetSource betaSource = new(
     {
         Check(key == "beta");
         pipelineCalls.Add("check:Beta");
-        return "0";
+        return Matched();
     }
 );
 ResolvedEventIndex visitedIndex = ResolvedEventIndex.ReadCurrent(
@@ -356,7 +356,7 @@ EventAssetSource failingSource = new(
     "FailureRoot",
     [new EventAssetDefinition("failure", "none|0 0|Actor 1 1 2|fork branch")],
     _ => throw new InvalidOperationException("expected fragment failure"),
-    _ => "0"
+    _ => Matched()
 );
 bool readerFailureEscaped = false;
 try
@@ -379,17 +379,17 @@ ResolvedEventIndex candidateIndex = ResolvedEventIndex.Build([
     Candidate("Data\\Events\\Town", "evt", "FirstLocation", "evt/first", "same", () =>
     {
         firstDuplicateCalls++;
-        return "-1";
+        return NotMatched();
     }),
     Candidate("data/events/town", "evt", "DuplicateLocation", "evt/first", "same", () =>
     {
         ignoredDuplicateCalls++;
-        return "0";
+        return Matched();
     }),
-    Candidate("DATA/events/TOWN", "evt", "SelectedLocation", "evt/first", "different", () => "0"),
-    Candidate("Data/Events/Town", "evt", "LaterLocation", "evt/second", "same", () => "0"),
-    Candidate("Data/Events/Beach", "evt", "BeachLocation", "evt/only", "beach", () => "0"),
-    Candidate("Data/Events/Town", "EVT", "CaseLocation", "EVT/only", "case", () => "0")
+    Candidate("DATA/events/TOWN", "evt", "SelectedLocation", "evt/first", "different", () => Matched()),
+    Candidate("Data/Events/Town", "evt", "LaterLocation", "evt/second", "same", () => Matched()),
+    Candidate("Data/Events/Beach", "evt", "BeachLocation", "evt/only", "beach", () => Matched()),
+    Candidate("Data/Events/Town", "EVT", "CaseLocation", "EVT/only", "case", () => Matched())
 ]);
 Check(candidateIndex.Groups.Count == 3);
 Check(candidateIndex.Groups.Select(group => group.Current.LocationName)
@@ -405,6 +405,7 @@ Check(townGroup.Candidates[0].ResolvedScript != townGroup.Candidates[1].Resolved
 Check(townGroup.Candidates[0].ResolvedScript == townGroup.Candidates[2].ResolvedScript);
 Check(townGroup.Candidates[0].RawEventKey != townGroup.Candidates[2].RawEventKey);
 Check(townGroup.Identity.StorageKey == "DATA/events/TOWN\u001fevt");
+Check(townGroup.SelectionSource == ResolvedEventSelectionSource.NativeMatch);
 Check(firstDuplicateCalls == 1 && ignoredDuplicateCalls == 0);
 Check(candidateIndex.TryGetCurrent(new EventIdentity("DATA/Events/Town", "evt"), out ResolvedEvent selectedCurrent));
 Check(selectedCurrent.LocationName == "SelectedLocation");
@@ -414,38 +415,55 @@ Check(candidateIndex.GetCandidates(new EventIdentity("Data/Events/Missing", "evt
 
 int skippedApplicableCalls = 0;
 ResolvedEventIndex multipleApplicable = ResolvedEventIndex.Build([
-    Candidate("Data/Events/Town", "multi", "FirstApplicable", "multi/a", "a", () => "0"),
+    Candidate("Data/Events/Town", "multi", "FirstApplicable", "multi/a", "a", () => Matched()),
     Candidate("Data/Events/Town", "multi", "SecondApplicable", "multi/b", "b", () =>
     {
         skippedApplicableCalls++;
-        return "0";
+        return Matched();
     })
 ]);
 Check(multipleApplicable.CurrentEvents.Single().LocationName == "FirstApplicable");
 Check(skippedApplicableCalls == 0);
+Check(multipleApplicable.Groups.Single().SelectionSource == ResolvedEventSelectionSource.NativeMatch);
 
 ResolvedEventIndex allFalse = ResolvedEventIndex.Build([
-    Candidate("Data/Events/Town", "none", "Fallback", "none/a", "a", () => "-1"),
-    Candidate("Data/Events/Town", "none", "NotSelected", "none/b", "b", () => "")
+    Candidate("Data/Events/Town", "none", "Fallback", "none/a", "a", () => NotMatched()),
+    Candidate("Data/Events/Town", "none", "NotSelected", "none/b", "b", () => NotMatched())
 ]);
 Check(allFalse.CurrentEvents.Single().LocationName == "Fallback");
+Check(allFalse.Groups.Single().SelectionSource == ResolvedEventSelectionSource.NoMatchFallback);
 
 int afterExceptionCalls = 0;
 ResolvedEventIndex exceptionThenMatch = ResolvedEventIndex.Build([
-    Candidate("Data/Events/Town", "exception", "Throws", "exception/a", "a", () => throw new InvalidOperationException("expected")),
+    Candidate("Data/Events/Town", "exception", "Throws", "exception/a", "a", () => ProbeError()),
     Candidate("Data/Events/Town", "exception", "AfterException", "exception/b", "b", () =>
     {
         afterExceptionCalls++;
-        return "matched";
+        return Matched();
     })
 ]);
-Check(exceptionThenMatch.CurrentEvents.Single().LocationName == "AfterException");
-Check(afterExceptionCalls == 1);
-Check(!ResolvedEventIndex.MatchesCurrentState(null));
-Check(!ResolvedEventIndex.MatchesCurrentState(""));
-Check(!ResolvedEventIndex.MatchesCurrentState("-1"));
-Check(ResolvedEventIndex.MatchesCurrentState("0"));
-Check(ResolvedEventIndex.MatchesCurrentState(" "));
+Check(exceptionThenMatch.CurrentEvents.Single().LocationName == "Throws");
+Check(afterExceptionCalls == 0);
+Check(exceptionThenMatch.Groups.Single().SelectionSource == ResolvedEventSelectionSource.IndeterminateFallback);
+
+int afterUnsafeCalls = 0;
+ResolvedEventIndex unsafeBeforeMatch = ResolvedEventIndex.Build([
+    Candidate("Data/Events/Town", "unsafe", "SafelyFalse", "unsafe/a", "a", () => NotMatched()),
+    Candidate("Data/Events/Town", "unsafe", "Indeterminate", "unsafe/b", "b", () => NotSafelyEvaluated()),
+    Candidate("Data/Events/Town", "unsafe", "LaterMatch", "unsafe/c", "c", () => CountedMatch(() => afterUnsafeCalls++))
+]);
+Check(unsafeBeforeMatch.CurrentEvents.Single().LocationName == "Indeterminate");
+Check(afterUnsafeCalls == 0);
+Check(unsafeBeforeMatch.Groups.Single().SelectionSource == ResolvedEventSelectionSource.IndeterminateFallback);
+
+int unsafeFirstNativeCalls = 0;
+ResolvedEventIndex unsafeFirst = ResolvedEventIndex.Build([
+    Candidate("Data/Events/Town", "unsafe-first", "UnsafeFirst", "unsafe-first/a", "a", () => NotSafelyEvaluated()),
+    Candidate("Data/Events/Town", "unsafe-first", "LaterMatch", "unsafe-first/b", "b", () => CountedMatch(() => unsafeFirstNativeCalls++))
+]);
+Check(unsafeFirst.CurrentEvents.Single().LocationName == "UnsafeFirst");
+Check(unsafeFirstNativeCalls == 0);
+Check(unsafeFirst.Groups.Single().SelectionSource == ResolvedEventSelectionSource.IndeterminateFallback);
 
 ResolvedEventReader galleryReader = new(
     (_, _) => true,
@@ -459,7 +477,7 @@ EventAssetSource nonSelectedSource = new(
     "Town",
     [new EventAssetDefinition("root/f Alissa 1000", "none|0 0|Alissa 1 1 2|speak Alissa hello")],
     _ => null,
-    _ => "-1"
+    _ => NotMatched()
 );
 EventAssetSource selectedSource = new(
     "data/events/town",
@@ -472,7 +490,7 @@ EventAssetSource selectedSource = new(
         new EventAssetDefinition("silent", "none|0 0|Alissa 1 1 2|pause 100")
     ],
     _ => new Dictionary<string, string> { ["branch"] = "speak Bert branch" },
-    _ => "0"
+    _ => Matched()
 );
 ResolvedEventIndex galleryIndex = ResolvedEventIndex.ReadCurrent(
     new FakeEventAssetSourceCatalog([nonSelectedSource, selectedSource]),
@@ -1097,12 +1115,29 @@ Check(aliasParser.ParseSegment("SendMail TestLetter") is LegacySendMailCondition
 Check(aliasParser.ParseSegment("x TestLetter true") is LegacySendMailCondition { InMailboxToday: true }, "audit: SendMail today");
 Check(aliasParser.ParseSegment("x TestLetter banana") is OpaqueCondition { Kind: OpaqueConditionKind.MalformedKnown }, "audit: SendMail invalid bool");
 Check(aliasParser.ParseSegment("Gender FEMALE") is GenderCondition, "audit: valid gender");
+NativePreconditionProbe nativeProbe = new(key => key.Split('/', StringSplitOptions.RemoveEmptyEntries), FakeSplitArgs);
 int readOnlyNativeCalls = 0;
 string? NativeCatalogCheck(string key) { readOnlyNativeCalls++; return "matched"; }
-foreach (string key in new[] { "TEST/SendMail TestLetter", "TEST/x TestLetter true", "TEST/!SendMail TestLetter", "TEST/SendMail" })
-    Check(parser2.CheckReadOnly(key, NativeCatalogCheck) is null, "audit: catalog blocks SendMail side effects");
-Check(readOnlyNativeCalls == 0, "audit: legacy mail never reaches native callback");
-Check(parser2.CheckReadOnly("TEST/Season spring", NativeCatalogCheck) == "matched" && readOnlyNativeCalls == 1, "audit: ordinary catalog check unchanged");
+Check(nativeProbe.Check("TEST/Season spring/!Time 600 1200", NativeCatalogCheck).Status == NativePreconditionProbeStatus.Matched
+    && readOnlyNativeCalls == 1, "2.0.4 safe vanilla calls native exactly once");
+Check(nativeProbe.Check("TEST", NativeCatalogCheck).Status == NativePreconditionProbeStatus.Matched
+    && readOnlyNativeCalls == 2, "2.0.4 key without preconditions may call native");
+foreach (string key in new[]
+{
+    "TEST/Random 0.5", "TEST/!r 0.5", "TEST/SendMail TestLetter", "TEST/x TestLetter true",
+    "TEST/GameStateQuery WEATHER Here Sun", "TEST/SomeMod.Custom foo", "TEST/Time bad", "TEST/!"
+})
+{
+    int before = readOnlyNativeCalls;
+    Check(nativeProbe.Check(key, NativeCatalogCheck).Status == NativePreconditionProbeStatus.NotSafelyEvaluated,
+        "2.0.4 unsafe probe blocked: " + key);
+    Check(readOnlyNativeCalls == before, "2.0.4 unsafe callback count zero: " + key);
+}
+Check(nativeProbe.Check("TEST/Season spring", _ => throw new InvalidOperationException("native failure")).Status
+    == NativePreconditionProbeStatus.Error, "2.0.4 native throw maps to error");
+foreach (string? nativeResult in new string?[] { null, "", "-1" })
+    Check(nativeProbe.Check("TEST/Season spring", _ => nativeResult).Status == NativePreconditionProbeStatus.NotMatched,
+        "2.0.4 native false mapping");
 string[] localeFiles = Directory.GetFiles(i18nDirectory, "*.json");
 Check(localeFiles.Length == 12, "all 12 official locale files present");
 foreach (string localeFile in localeFiles)
@@ -1617,15 +1652,21 @@ Check(pvFake.HasMail("m1") == false, "F1-10 mail restored");
 Check(pvFake.DayOfMonth is null && pvFake.Year is null, "F1-10 untouched slots unchanged");
 
 // idempotent restore: second dispose is a no-op
-using (PreviewInjectionScope pvScope2 = PreviewInjectionScope.Apply(pvFake, pvFullInject)) { }
-Check(pvFake.Season == "spring", "F1-11 idempotent restore");
+PreviewInjectionScope pvScope2 = PreviewInjectionScope.Apply(pvFake, pvFullInject);
+pvScope2.Dispose();
+int seasonSetsAfterFirstDispose = pvFake.SeasonSetCount;
+pvScope2.Dispose();
+Check(pvFake.Season == "spring" && pvFake.SeasonSetCount == seasonSetsAfterFirstDispose,
+    "F1-11 same scope second dispose is no-op");
 
 // capture failure must still return a scope that restores applied state
 ThrowingPreviewAccessor pvThrow = new();
 pvThrow.Season = "spring";
-PreviewState pvThrowState = new(Season: "summer", Friendship: new Dictionary<string, int> { ["Haley"] = 2500 });
+PreviewState pvThrowState = new(Season: "summer", Friendship: new Dictionary<string, int> { ["Haley"] = 2500 },
+    EventsSeen: new HashSet<string>(StringComparer.Ordinal) { "failure" });
 using (PreviewInjectionScope pvThrowScope = PreviewInjectionScope.Apply(pvThrow, pvThrowState))
 {
+    Check(pvThrow.EventSeenSetCalls == 1, "F1-14 throwing setter reached");
     Check(pvThrow.Season == "summer", "F1-14 applied before failure retained");
 }
 Check(pvThrow.Season == "spring", "F1-14 partial failure still restores applied state");
@@ -1690,7 +1731,7 @@ static ResolvedEventCandidate Candidate(
     string locationName,
     string rawEventKey,
     string script,
-    Func<string?> checkPrecondition)
+    Func<NativePreconditionProbeResult> probePrecondition)
 {
     ResolvedEvent resolved = new(
         new EventIdentity(assetName, eventId),
@@ -1701,8 +1742,14 @@ static ResolvedEventCandidate Candidate(
         EventHashes.RootDefinition(rawEventKey, script),
         EventHashes.RootScript(script)
     );
-    return new ResolvedEventCandidate(resolved, checkPrecondition);
+    return new ResolvedEventCandidate(resolved, probePrecondition);
 }
+
+static NativePreconditionProbeResult Matched() => new(NativePreconditionProbeStatus.Matched);
+static NativePreconditionProbeResult NotMatched() => new(NativePreconditionProbeStatus.NotMatched);
+static NativePreconditionProbeResult NotSafelyEvaluated() => new(NativePreconditionProbeStatus.NotSafelyEvaluated);
+static NativePreconditionProbeResult ProbeError() => new(NativePreconditionProbeStatus.Error);
+static NativePreconditionProbeResult CountedMatch(Action count) { count(); return Matched(); }
 
 static HashSet<string> Set(params string[] names) => new(names, StringComparer.Ordinal);
 
@@ -1839,7 +1886,9 @@ internal sealed class FakeEventAssetSourceCatalog(
 
 internal sealed class FakePreviewAccessor : IPreviewStateAccessor
 {
-    public string? Season { get; set; }
+    private string? season;
+    public int SeasonSetCount { get; private set; }
+    public string? Season { get => season; set { season = value; SeasonSetCount++; } }
     public int? DayOfMonth { get; set; }
     public int? Year { get; set; }
     public int? Time { get; set; }
@@ -1856,6 +1905,7 @@ internal sealed class FakePreviewAccessor : IPreviewStateAccessor
 
 internal sealed class ThrowingPreviewAccessor : IPreviewStateAccessor
 {
+    public int EventSeenSetCalls { get; private set; }
     public string? Season { get; set; }
     public int? DayOfMonth { get; set; }
     public int? Year { get; set; }
@@ -1863,8 +1913,11 @@ internal sealed class ThrowingPreviewAccessor : IPreviewStateAccessor
     public int? GetFriendship(string npc) => 0;
     public void SetFriendship(string npc, int points) { }
     public bool HasEventSeen(string id) => false;
-    public void SetEventSeen(string id, bool seen) => throw new InvalidOperationException(
-        "injected eventsSeen failure");
+    public void SetEventSeen(string id, bool seen)
+    {
+        EventSeenSetCalls++;
+        throw new InvalidOperationException("injected eventsSeen failure");
+    }
     public bool HasMail(string id) => false;
     public void SetMail(string id, bool present) => throw new InvalidOperationException(
         "injected mail failure");

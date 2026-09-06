@@ -51,14 +51,6 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
     internal static IReadOnlyDictionary<string, (string Name, bool Negated)> SupportedAliases => Aliases;
 
     internal ConditionSet ParseRawKey(string rawKey) => Parse(splitPreconditions(rawKey).Skip(1).ToArray());
-    internal string? CheckReadOnly(string rawKey, Func<string, string?> check)
-    {
-        // Native SendMail preconditions mutate mail and seen-event state, even during catalog selection.
-        if (ParseRawKey(rawKey).Conditions.Any(c => c is LegacySendMailCondition
-            or OpaqueCondition { KnownConditionName: "SendMail" }))
-            return null;
-        return check(rawKey);
-    }
     internal ConditionSet Parse(IReadOnlyList<string> rawSegments) => new(rawSegments.Select(ParseSegment).ToList());
 
     internal ConditionExpression ParseSegment(string rawSegment)

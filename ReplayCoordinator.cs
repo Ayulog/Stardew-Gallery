@@ -25,6 +25,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
     private Event? activeReplayEvent;
     private PreviewInjectionScope? previewScope;
     private ReplaySceneEnvironmentScope? environmentScope;
+    private bool failSafeRunning;
 
     internal bool IsActive => snapshot is not null || previewScope is not null;
     internal int SpeedMultiplier => speedMultiplier;
@@ -162,6 +163,20 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         if (snapshot is null)
             return;
 
+        try
+        {
+            UpdateCore();
+        }
+        catch (Exception error)
+        {
+            FailSafe(error);
+        }
+    }
+
+    private void UpdateCore()
+    {
+        ReplaySnapshot activeSnapshot = snapshot!;
+
         if (restoring)
         {
             bool transitionPending = Game1.locationRequest is not null;
@@ -170,12 +185,12 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
             {
                 if (ReplayLifecycleRules.CanApplyRestore(transitionPending, fading))
                 {
-                    snapshot.RestorePlayer();
+                    activeSnapshot.RestorePlayer();
                     restorePlayerApplied = true;
-                    bool alreadyThere = Game1.currentLocation?.NameOrUniqueName.Equals(snapshot.LocationName, StringComparison.OrdinalIgnoreCase) == true;
+                    bool alreadyThere = Game1.currentLocation?.NameOrUniqueName.Equals(activeSnapshot.LocationName, StringComparison.OrdinalIgnoreCase) == true;
                     if (!alreadyThere)
                     {
-                        Game1.warpFarmer(snapshot.LocationName, (int)snapshot.Tile.X, (int)snapshot.Tile.Y, false);
+                        Game1.warpFarmer(activeSnapshot.LocationName, (int)activeSnapshot.Tile.X, (int)activeSnapshot.Tile.Y, false);
                     }
                 }
                 if (++ticks >= StartTimeoutTicks)
@@ -183,11 +198,11 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
                 return;
             }
 
-            bool locationMatches = Game1.currentLocation?.NameOrUniqueName.Equals(snapshot.LocationName, StringComparison.OrdinalIgnoreCase) == true;
+            bool locationMatches = Game1.currentLocation?.NameOrUniqueName.Equals(activeSnapshot.LocationName, StringComparison.OrdinalIgnoreCase) == true;
             restoreStableTicks = locationMatches && !transitionPending && !fading ? restoreStableTicks + 1 : 0;
             if (ReplayLifecycleRules.CanFinishRestore(locationMatches, transitionPending, fading, restoreStableTicks))
             {
-                snapshot.RestorePositionAndPresentation();
+                activeSnapshot.RestorePositionAndPresentation();
                 FinishRestore();
             }
             else if (++ticks >= StartTimeoutTicks)
@@ -276,32 +291,63 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
 
     private void FailSafe(Exception error)
     {
-        monitor.Log($"内存恢复失败，将使用回放前备份并返回标题：事件={eventId}，备份={backupPath}。\n{error}", LogLevel.Error);
+        if (failSafeRunning)
+            return;
+        failSafeRunning = true;
+        string? failedBackup = backupPath;
+        string? failedEvent = eventId;
+        SafeLog($"内存恢复失败，将使用回放前备份并返回标题：事件={failedEvent}，备份={failedBackup}。\n{error}", LogLevel.Error);
         try
         {
-            if (backupPath is not null)
-                ReplayBackup.Restore(backupPath);
+            if (failedBackup is not null)
+                ReplayBackup.Restore(failedBackup);
         }
         catch (Exception backupError)
         {
-            monitor.Log($"备份覆盖失败：{backupError}", LogLevel.Error);
+            SafeLog($"备份覆盖失败：{backupError}", LogLevel.Error);
         }
         string? save = Constants.SaveFolderName;
-        Game1.activeClickableMenu = null;
+        try
+        {
+            Game1.activeClickableMenu = null;
+        }
+        catch (Exception menuError)
+        {
+            SafeLog($"清理回放菜单失败：{menuError}", LogLevel.Error);
+        }
         Clear();
-        if (save is not null)
-            SaveGame.Load(save);
-        else
-            Game1.exitToTitle = true;
+        try
+        {
+            if (save is not null)
+                SaveGame.Load(save);
+            else
+                Game1.exitToTitle = true;
+        }
+        catch (Exception reloadError)
+        {
+            SafeLog($"重新载入存档失败，将返回标题：{reloadError}", LogLevel.Error);
+            try
+            {
+                Game1.exitToTitle = true;
+            }
+            catch (Exception titleError)
+            {
+                SafeLog($"请求返回标题失败：{titleError}", LogLevel.Error);
+            }
+        }
+        finally
+        {
+            Clear();
+            failSafeRunning = false;
+        }
     }
 
-    private void Clear()
+    private void Clear(bool restoreScopes = true)
     {
-        environmentScope?.Dispose();
+        ReplaySceneEnvironmentScope? environment = environmentScope;
         environmentScope = null;
-        previewScope?.Dispose();
+        PreviewInjectionScope? preview = previewScope;
         previewScope = null;
-        historicalAssets.Clear();
         snapshot = null;
         reopen = null;
         backupPath = null;
@@ -316,6 +362,44 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         speedMultiplier = 1;
         dialogueAutoTicks = 0;
         activeReplayEvent = null;
+        try
+        {
+            if (restoreScopes)
+                environment?.Dispose();
+        }
+        catch (Exception error)
+        {
+            SafeLog($"清理回放演出环境失败：{error}", LogLevel.Warn);
+        }
+        try
+        {
+            if (restoreScopes)
+                preview?.Dispose();
+        }
+        catch (Exception error)
+        {
+            SafeLog($"清理回放预览状态失败：{error}", LogLevel.Warn);
+        }
+        try
+        {
+            historicalAssets.Clear();
+        }
+        catch (Exception error)
+        {
+            SafeLog($"清理历史回放资源失败：{error}", LogLevel.Warn);
+        }
+    }
+
+    internal void OnReturnedToTitle()
+    {
+        Clear(restoreScopes: false);
+        failSafeRunning = false;
+    }
+
+    private void SafeLog(string message, LogLevel level)
+    {
+        try { monitor.Log(message, level); }
+        catch { }
     }
 
     internal void CycleSpeed()

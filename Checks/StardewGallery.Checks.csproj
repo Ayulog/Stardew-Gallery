@@ -19,6 +19,7 @@
     <Compile Include="..\Conditions\ConditionEvaluation.cs" Link="Conditions\ConditionEvaluation.cs" />
     <Compile Include="..\Conditions\ConditionEvaluationContext.cs" Link="Conditions\ConditionEvaluationContext.cs" />
     <Compile Include="..\Conditions\ConditionParser.cs" Link="Conditions\ConditionParser.cs" />
+    <Compile Include="..\Conditions\NativePreconditionProbe.cs" Link="Conditions\NativePreconditionProbe.cs" />
     <Compile Include="..\Conditions\ConditionEvaluator.cs" Link="Conditions\ConditionEvaluator.cs" />
     <Compile Include="..\Conditions\ConditionDescriber.cs" Link="Conditions\ConditionDescriber.cs" />
     <Compile Include="..\Conditions\ConditionProduction.cs" Link="Conditions\ConditionProduction.cs" />

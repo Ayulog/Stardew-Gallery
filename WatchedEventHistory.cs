@@ -6,6 +6,7 @@ namespace StardewGallery;
 
 internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiagnostics, string modVersion)
 {
+    private readonly NativePreconditionProbe preconditionProbe = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
     private readonly Dictionary<EventIdentity, Dictionary<ObservedVariantKey, WatchedEventSnapshot>> entries = [];
     private Event? observedEvent;
     private WatchedEventSnapshot? pendingSnapshot;
@@ -249,7 +250,8 @@ internal sealed class WatchedEventHistory(IMonitor monitor, Func<bool> debugDiag
         {
             List<string> candidateRawKeys = matching.Select(pair => pair.Key).ToList();
             if (!ObservedVariantSelector.TrySelect(candidateRawKeys,
-                key => location.checkEventPrecondition(key, check_seen: false), out int selectedIndex))
+                key => preconditionProbe.Check(key, candidate => location.checkEventPrecondition(candidate, check_seen: false)),
+                out int selectedIndex))
             {
                 reason = $"地点={location.NameOrUniqueName}，事件={eventId} 存在多个相同脚本的候选，且无法根据当前状态确认实际定义。";
                 return false;

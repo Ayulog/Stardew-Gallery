@@ -2,7 +2,7 @@ namespace StardewGallery;
 
 internal sealed record ResolvedEventCandidate(
     ResolvedEvent Resolved,
-    Func<string?> CheckPrecondition
+    Func<NativePreconditionProbeResult> ProbePrecondition
 );
 
 internal sealed class ResolvedEventReader(
@@ -40,7 +40,7 @@ internal sealed class ResolvedEventReader(
                 RootDefinitionHash: EventHashes.RootDefinition(key, script),
                 RootScriptHash: EventHashes.RootScript(script)
             );
-            result.Add(new ResolvedEventCandidate(resolved, () => source.CheckPrecondition(key)));
+            result.Add(new ResolvedEventCandidate(resolved, () => source.ProbePrecondition(key)));
         }
         return result;
     }
