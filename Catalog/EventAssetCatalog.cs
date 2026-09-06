@@ -4,6 +4,7 @@ namespace StardewGallery;
 
 internal sealed class EventAssetCatalog : IEventAssetSourceCatalog
 {
+    private readonly ConditionParser parser = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
     public void VisitCurrent(Action<EventAssetSource> visit)
     {
         Utility.ForEachLocation(location =>
@@ -21,7 +22,7 @@ internal sealed class EventAssetCatalog : IEventAssetSourceCatalog
                 FragmentRootLocationName: location.Name,
                 Definitions: definitions,
                 LoadLocationEvents: name => LoadLocationEvents(name, location, events),
-                CheckPrecondition: key => location.checkEventPrecondition(key, check_seen: false)
+                CheckPrecondition: key => parser.CheckReadOnly(key, candidate => location.checkEventPrecondition(candidate, check_seen: false))
             ));
             return true;
         }, includeInteriors: true, includeGenerated: false);

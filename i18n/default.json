@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}} points",
+  "condition.raining": "It is raining",
+  "condition.not-raining": "It is not raining",
+  "condition.legacy-send-mail": "Legacy event action: send mail {{id}} (display only)",
   "log.loaded": "Stardew Gallery {{version}} loaded.",
   "log.config-invalid": "The config file couldn't be read; defaults will be used for this session. Details: {{error}}",
   "home.title": "Stardew Gallery",

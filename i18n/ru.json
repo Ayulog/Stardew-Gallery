@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}} очков",
+  "condition.raining": "Идёт дождь",
+  "condition.not-raining": "Дождя нет",
+  "condition.legacy-send-mail": "Устаревшее действие: отправить письмо {{id}} (только описание)",
   "log.loaded": "Stardew Gallery {{version}} загружен.",
   "log.config-invalid": "Не удалось прочитать файл настроек; в этом сеансе будут использованы значения по умолчанию. Подробности: {{error}}",
   "home.title": "Stardew Gallery",

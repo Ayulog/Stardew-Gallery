@@ -31,6 +31,24 @@ No configuration or stored-data changes. No new UI or coordinates; the existing 
 
 ## Acceptance
 
+### Audit corrections to 6949b42
+
+Keep 2.0.3 as an unreleased feature-branch candidate. Correct all nine review findings:
+SawEvent template arguments; abbreviated/full weekdays; display-only SendMail/x;
+exact friendship points unless divisible by 250; rain-predicate descriptions;
+native game time formatting; male/female validation; malformed syntax/known versus
+unsupported classification; and raw item-ID fallback.
+
+The catalog's native condition-check callback now skips SendMail to prevent mail
+and seen-event mutations during variant selection. This is the only catalog change;
+the entry remains available for description. The pure evaluator never executes it.
+
+Tests now render every canonical sample through every locale template, failing on
+missing keys or unresolved tokens. Added focused regressions for the nine findings
+and the native SendMail callback guard. S0–S12 in-game acceptance from the review
+remains pending; no test content pack has been installed.
+
+
 - Parser matrix covers 41 canonical names, all aliases, case handling, negative XOR, multi-value forms, optional defaults, malformed/unknown distinction, quoted Game State Query text, and invariant numbers.
 - Describer covers every typed node; all 12 locale files have identical keys and interpolation tokens.
 - Evaluator checks collection, days-played, year, and weather semantics.

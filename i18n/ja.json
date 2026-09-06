@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}}ポイント",
+  "condition.raining": "雨が降っている",
+  "condition.not-raining": "雨が降っていない",
+  "condition.legacy-send-mail": "旧式イベント動作：手紙{{id}}を送る（表示のみ）",
   "log.loaded": "Stardew Gallery {{version}} を読み込みました。",
   "log.config-invalid": "設定ファイルを読み込めませんでした。このセッションでは既定値を使用します。詳細: {{error}}",
   "home.title": "Stardew Gallery",

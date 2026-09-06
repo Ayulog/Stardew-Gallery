@@ -772,7 +772,7 @@ foreach (ConditionExpression condition in conditions.Conditions)
             Check(result.Truth == ConditionTruth.False && result.Knowledge == ConditionKnowledge.Known, "negated hayley");
             break;
         case OpaqueCondition { RawSegment: "Season" }:
-            Check(result.Truth == ConditionTruth.Unknown && result.Knowledge == ConditionKnowledge.Unsupported, "opaque season");
+            Check(result.Truth == ConditionTruth.Unknown && result.Knowledge == ConditionKnowledge.Invalid, "opaque season");
             break;
         default:
             throw new Exception("Unexpected condition type in loop: " + condition.GetType().Name);
@@ -857,7 +857,7 @@ Check(opaqueReadable.Arguments["raw"] is PlainTextValue { Value: "SomethingElse 
 ConditionTextSpec seasonReadable = ConditionDescriber.Describe(parser2.Parse(["Season Winter"]).Conditions[0]);
 Check(seasonReadable.LocalizationKey == "condition.season" && seasonReadable.Arguments["seasons"] is ListTextValue { Values: [TermTextValue { Value: "Winter" }] });
 ConditionTextSpec conditionReadable = ConditionDescriber.Describe(parser2.Parse(["SawEvent 123"]).Conditions[0]);
-Check(conditionReadable.LocalizationKey == "condition.seen" && conditionReadable.Arguments["ids"] is ListTextValue { Values.Count: 1 });
+Check(conditionReadable.LocalizationKey == "condition.seen" && conditionReadable.Arguments["id"] is ListTextValue { Values.Count: 1 });
 
 ConditionParser aliasParser = new(_ => [], FakeSplitArgs);
 Check(aliasParser.ParseSegment("f Haley 1000") is FriendshipCondition { Requirements: [{ Npc: "Haley", Points: 1000 }], Negated: false });
@@ -997,7 +997,7 @@ Dictionary<string, string> canonicalSamples = new(StringComparer.OrdinalIgnoreCa
     ["GameStateQuery"] = "SEASON Here spring", ["Skill"] = "Farming 5"
 };
 Check(ConditionParser.SupportedCanonicalNames.Count == 41, "all 41 canonical vanilla preconditions registered");
-Check(ConditionParser.SupportedAliases.Count == 47, "all 47 aliases for ordinary vanilla preconditions registered");
+Check(ConditionParser.SupportedAliases.Count == 48, "all 48 aliases including legacy SendMail registered");
 Check(canonicalSamples.Count == 41, "canonical parser matrix has 41 samples");
 foreach ((string name, string arguments) in canonicalSamples)
 {
@@ -1009,7 +1009,7 @@ foreach ((string name, string arguments) in canonicalSamples)
 foreach ((string alias, _) in ConditionParser.SupportedAliases)
 {
     string canonical = ConditionParser.SupportedAliases[alias].Name;
-    string arguments = canonicalSamples[canonical];
+    string arguments = canonical == "SendMail" ? "TestLetter" : canonicalSamples[canonical];
     Check(aliasParser.ParseSegment(arguments.Length == 0 ? alias : $"{alias} {arguments}") is not OpaqueCondition, "alias parse: " + alias);
 }
 Check(aliasParser.ParseSegment("Friendship Leah 1000 Robin 500") is FriendshipCondition { Requirements.Count: 2 });
@@ -1021,10 +1021,10 @@ Check(aliasParser.ParseSegment("ChoseDialogueAnswers a b") is ChoseDialogueAnswe
 Check(aliasParser.ParseSegment("Skill Farming nope") is OpaqueCondition { Kind: OpaqueConditionKind.MalformedKnown, KnownConditionName: "Skill" });
 Check(aliasParser.ParseSegment("ThirdParty value") is OpaqueCondition { Kind: OpaqueConditionKind.UnknownType, KnownConditionName: null });
 Check(aliasParser.ParseSegment("!Hl mail") is MailCondition { Scope: ConditionPlayerScope.HostPlayer, Negated: false }, "explicit and alias negation XOR");
-ConditionDisplayResolver testResolver = new(name => $"NPC:{name}", id => $"ITEM:{id}", (group, value) => $"{group}:{value}");
+ConditionDisplayResolver testResolver = new(name => $"NPC:{name}", id => $"ITEM:{id}", (group, value) => $"{group}:{value}", time => $"GAME-TIME:{time}");
 string formattedFriendship = ConditionTextFormatter.Format(
     ConditionDescriber.Describe(aliasParser.ParseSegment("Friendship Leah 1000")),
-    (key, arguments) => $"{key}|{arguments.GetValueOrDefault("requirements")}", testResolver);
+    (key, arguments) => key == "condition.hearts-value" ? arguments["hearts"] + " ♥" : $"{key}|{arguments.GetValueOrDefault("requirements")}", testResolver);
 Check(formattedFriendship.Contains("NPC:Leah") && formattedFriendship.Contains("4 ♥"), "typed friendship value resolves at formatter boundary");
 string formattedShipped = ConditionTextFormatter.Format(
     ConditionDescriber.Describe(aliasParser.ParseSegment("Shipped 24 2")),
@@ -1057,12 +1057,61 @@ try
 finally { System.Globalization.CultureInfo.CurrentCulture = savedCulture; }
 
 string i18nDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../i18n"));
+Check(aliasParser.ParseSegment("DayOfWeek Monday Friday") is DayOfWeekCondition { Days.Count: 2 }, "audit: full weekday names");
+Check(aliasParser.ParseSegment("Gender Banana") is OpaqueCondition, "audit: invalid gender");
 Dictionary<string, string> defaultLocale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(Path.Combine(i18nDirectory, "default.json")))!;
+string AuditFormat(string input, Dictionary<string, string> language, ConditionDisplayResolver? resolver = null)
+{
+    string TranslateAudit(string key, IReadOnlyDictionary<string, string> arguments)
+    {
+        Check(language.ContainsKey(key), "audit: missing localization key " + key);
+        string text = language[key];
+        foreach (var pair in arguments)
+            text = text.Replace("{{" + pair.Key + "}}", pair.Value);
+        Check(!text.Contains("{{"), "audit: unresolved formatter token " + key);
+        return text;
+    }
+    return ConditionTextFormatter.Format(ConditionDescriber.Describe(aliasParser.ParseSegment(input)), TranslateAudit, resolver ?? testResolver);
+}
+Check(AuditFormat("SawEvent A B", defaultLocale).Contains("A, B"), "audit: seen IDs reach final template");
+Check(AuditFormat("Friendship Abigail 250", defaultLocale).Contains("1 hearts"), "audit: whole heart");
+Check(AuditFormat("Friendship Abigail 251", defaultLocale).Contains("251 points"), "audit: exact fractional heart points");
+Check(AuditFormat("Weather rainy", defaultLocale) == "It is raining", "audit: rain predicate wording");
+Check(AuditFormat("Weather sunny", defaultLocale) == "It is not raining", "audit: non-rain predicate wording");
+Check(AuditFormat("!Weather sunny", defaultLocale) == "It is raining", "audit: negated non-rain");
+Check(AuditFormat("Weather GreenRain", defaultLocale).Contains("GreenRain"), "audit: custom weather raw ID");
+Check(AuditFormat("Time 600 2600", defaultLocale).Contains("GAME-TIME:2600"), "audit: native time delegate");
+Check(AuditFormat("HasItem Some.Invalid.Item", defaultLocale, testResolver with { Item = _ => null }).Contains("Some.Invalid.Item"), "audit: item raw fallback");
+foreach (string input in new[] { "", "!", "Time \"600" })
+    Check(eval.Evaluate(aliasParser.ParseSegment(input), fullContext).Knowledge == ConditionKnowledge.Invalid, "audit: malformed syntax invalid");
+Check(eval.Evaluate(aliasParser.ParseSegment("Time bad"), fullContext).Knowledge == ConditionKnowledge.Invalid, "audit: malformed known invalid");
+Check(eval.Evaluate(aliasParser.ParseSegment("SomeMod.Custom foo"), fullContext).Knowledge == ConditionKnowledge.Unsupported, "audit: custom unsupported");
+foreach (string input in new[] { "SendMail TestLetter", "x TestLetter true", "!SendMail TestLetter false" })
+{
+    ConditionExpression legacy = aliasParser.ParseSegment(input);
+    Check(legacy is LegacySendMailCondition, "audit: legacy SendMail typed");
+    Check(eval.Evaluate(legacy, fullContext).Knowledge == ConditionKnowledge.Unsupported, "audit: SendMail never evaluated");
+    Check(AuditFormat(input, defaultLocale).Contains("display only"), "audit: SendMail display only");
+}
+Check(aliasParser.ParseSegment("SendMail TestLetter") is LegacySendMailCondition { InMailboxToday: false }, "audit: SendMail default");
+Check(aliasParser.ParseSegment("x TestLetter true") is LegacySendMailCondition { InMailboxToday: true }, "audit: SendMail today");
+Check(aliasParser.ParseSegment("x TestLetter banana") is OpaqueCondition { Kind: OpaqueConditionKind.MalformedKnown }, "audit: SendMail invalid bool");
+Check(aliasParser.ParseSegment("Gender FEMALE") is GenderCondition, "audit: valid gender");
+int readOnlyNativeCalls = 0;
+string? NativeCatalogCheck(string key) { readOnlyNativeCalls++; return "matched"; }
+foreach (string key in new[] { "TEST/SendMail TestLetter", "TEST/x TestLetter true", "TEST/!SendMail TestLetter", "TEST/SendMail" })
+    Check(parser2.CheckReadOnly(key, NativeCatalogCheck) is null, "audit: catalog blocks SendMail side effects");
+Check(readOnlyNativeCalls == 0, "audit: legacy mail never reaches native callback");
+Check(parser2.CheckReadOnly("TEST/Season spring", NativeCatalogCheck) == "matched" && readOnlyNativeCalls == 1, "audit: ordinary catalog check unchanged");
 string[] localeFiles = Directory.GetFiles(i18nDirectory, "*.json");
 Check(localeFiles.Length == 12, "all 12 official locale files present");
 foreach (string localeFile in localeFiles)
 {
     Dictionary<string, string> locale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(localeFile))!;
+    foreach (var sample in canonicalSamples)
+        AuditFormat(sample.Key + " " + sample.Value, locale);
+    foreach (string input in new[] { "SendMail TestLetter", "Friendship Abigail 251", "Weather sunny", "!Weather rainy", "SomeMod.Custom foo", "Time bad" })
+        AuditFormat(input, locale);
     Check(locale.Keys.OrderBy(key => key).SequenceEqual(defaultLocale.Keys.OrderBy(key => key)), "locale key parity: " + Path.GetFileName(localeFile));
     foreach (string key in defaultLocale.Keys)
     {

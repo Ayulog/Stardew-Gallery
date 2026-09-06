@@ -18,7 +18,7 @@ internal static class ConditionDescriber
 {
     internal static ConditionTextSpec Describe(ConditionExpression c) => c switch
     {
-        SawEventCondition x => Named(x, "condition.seen", ("ids", List(x.EventIds.Select(Id)))),
+        SawEventCondition x => Named(x, "condition.seen", ("id", List(x.EventIds.Select(Id)))),
         MissingPetCondition x => Named(x, x.PetType is null ? "condition.missing-pet" : "condition.missing-pet-type", ("type", Text(x.PetType ?? ""))),
         IsHostCondition x => Named(x, "condition.is-host"),
         MailCondition x => Named(x, x.Scope switch { ConditionPlayerScope.HostPlayer => "condition.mail-host", ConditionPlayerScope.HostOrLocal => "condition.mail-host-or-local", _ => "condition.mail" }, ("id", Id(x.MailId))),
@@ -39,7 +39,9 @@ internal static class ConditionDescriber
         GoldenWalnutsCondition x => Named(x, "condition.walnuts", ("count", Num(x.Minimum))),
         InUpgradedHouseCondition x => Named(x, "condition.house-level", ("level", Num(x.MinimumLevel))),
         TimeCondition x => Named(x, "condition.time", ("from", new TimeTextValue(x.Min)), ("to", new TimeTextValue(x.Max))),
-        WeatherCondition x => Named(x, "condition.weather", ("weather", Term("weather", x.WeatherId))),
+        WeatherCondition { Kind: WeatherKind.Rainy } x => Named(x, "condition.raining", negative: "condition.not-raining"),
+        WeatherCondition { Kind: WeatherKind.Sunny } x => Named(x, "condition.not-raining", negative: "condition.raining"),
+        WeatherCondition x => Named(x, "condition.weather", ("weather", Text(x.WeatherId))),
         DayOfWeekCondition x => Named(x, "condition.weekday", ("days", List(x.Days.Select(d => Term("weekday", d.ToString()))))),
         SpouseCondition x => Named(x, "condition.spouse", ("npc", Npc(x.Npc))),
         RoommateCondition x => Named(x, "condition.roommate"),
@@ -56,7 +58,8 @@ internal static class ConditionDescriber
         UpcomingFestivalCondition x => NamedNegative(x, "condition.upcoming-festival", "condition.no-upcoming-festival", ("days", Num(x.Days))),
         NativeQueryCondition x => Named(x, "condition.native-query", ("query", Text(x.Query))),
         SkillCondition x => Named(x, "condition.skill", ("skill", Term("skill", x.Skill)), ("level", Num(x.MinimumLevel))),
-        OpaqueCondition x => Named(x, x.Kind == OpaqueConditionKind.MalformedKnown ? "condition.malformed" : "condition.unsupported", ("raw", Text(x.RawSegment))),
+        LegacySendMailCondition x => Named(x with { Negated = false }, "condition.legacy-send-mail", ("id", Id(x.MailId))),
+        OpaqueCondition x => Named(x with { Negated = false }, x.Kind != OpaqueConditionKind.UnknownType ? "condition.malformed" : "condition.unsupported", ("raw", Text(x.RawSegment))),
         _ => Named(c, "condition.unsupported", ("raw", Text(c.RawSegment)))
     };
 
@@ -74,13 +77,13 @@ internal static class ConditionDescriber
     private static ListTextValue List(IEnumerable<ConditionTextValue> values) => new(values.ToList());
 }
 
-internal sealed record ConditionDisplayResolver(Func<string, string> Npc, Func<string, string> Item, Func<string, string, string> Term);
+internal sealed record ConditionDisplayResolver(Func<string, string> Npc, Func<string, string?> Item, Func<string, string, string> Term, Func<int, string> Time);
 
 internal static class ConditionTextFormatter
 {
     internal static string Format(ConditionTextSpec spec, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver)
     {
-        Dictionary<string, string> args = spec.Arguments.ToDictionary(pair => pair.Key, pair => FormatValue(pair.Value, resolver));
+        Dictionary<string, string> args = spec.Arguments.ToDictionary(pair => pair.Key, pair => FormatValue(pair.Value, resolver, translate));
         string key = spec.Negated && spec.NaturalNegativeKey is not null ? spec.NaturalNegativeKey : spec.LocalizationKey;
         string text = translate(key, args);
         return spec.Negated && spec.NaturalNegativeKey is null
@@ -90,24 +93,37 @@ internal static class ConditionTextFormatter
 
     internal static string FormatGap(ConditionExpression condition, string value, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver) => condition switch
     {
-        FriendshipCondition when int.TryParse(value, out int points) => translate("condition.hearts-value", new Dictionary<string, string> { ["hearts"] = (points / 250d).ToString("0.##", CultureInfo.CurrentCulture) }),
-        TimeCondition when int.TryParse(value, out int time) => FormatValue(new TimeTextValue(time), resolver),
+        FriendshipCondition when int.TryParse(value, out int points) => FormatFriendship(points, translate),
+        TimeCondition when int.TryParse(value, out int time) => resolver.Time(time),
         SeasonCondition => string.Join(", ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(season => resolver.Term("season", season))),
-        WeatherCondition => resolver.Term("weather", value),
+        WeatherCondition leaf when value == leaf.WeatherId && leaf.Kind != WeatherKind.Custom
+            => translate(leaf.Kind == WeatherKind.Rainy ? "condition.raining" : "condition.not-raining", new Dictionary<string, string>()),
+        WeatherCondition => value,
         _ => value
     };
 
-    private static string FormatValue(ConditionTextValue value, ConditionDisplayResolver resolver) => value switch
+    private static string ResolveItem(string id, ConditionDisplayResolver resolver)
+    {
+        string? name = resolver.Item(id);
+        return string.IsNullOrWhiteSpace(name) ? id : name;
+    }
+
+    private static string FormatFriendship(int points, Func<string, IReadOnlyDictionary<string, string>, string> translate)
+        => points % 250 == 0
+            ? translate("condition.hearts-value", new Dictionary<string, string> { ["hearts"] = (points / 250).ToString(CultureInfo.CurrentCulture) })
+            : translate("condition.points-value", new Dictionary<string, string> { ["points"] = points.ToString(CultureInfo.CurrentCulture) });
+
+    private static string FormatValue(ConditionTextValue value, ConditionDisplayResolver resolver, Func<string, IReadOnlyDictionary<string, string>, string> translate) => value switch
     {
         PlainTextValue x => x.Value,
         NumberTextValue x => x.Value.ToString("0.##", CultureInfo.CurrentCulture),
         NpcTextValue x => resolver.Npc(x.Name),
-        ItemTextValue x => resolver.Item(x.Id),
-        TimeTextValue x => $"{x.Value / 100:00}:{x.Value % 100:00}",
+        ItemTextValue x => ResolveItem(x.Id, resolver),
+        TimeTextValue x => resolver.Time(x.Value),
         TermTextValue x => resolver.Term(x.Group, x.Value),
-        ListTextValue x => string.Join(", ", x.Values.Select(item => FormatValue(item, resolver))),
-        FriendshipRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Npc(item.Npc)} ≥ {item.Points / 250d:0.##} ♥")),
-        ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Item(item.ItemId)} × {item.Count}")),
+        ListTextValue x => string.Join(", ", x.Values.Select(item => FormatValue(item, resolver, translate))),
+        FriendshipRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Npc(item.Npc)} ≥ {FormatFriendship(item.Points, translate)}")),
+        ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{ResolveItem(item.ItemId, resolver)} × {item.Count}")),
         _ => ""
     };
 }

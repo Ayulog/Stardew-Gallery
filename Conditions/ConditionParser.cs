@@ -23,7 +23,7 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
             ["b"] = ("ReachedMineBottom", false), ["y"] = ("Year", false), ["g"] = ("Gender", false),
             ["i"] = ("HasItem", false), ["k"] = ("SawEvent", true), ["a"] = ("Tile", false),
             ["A"] = ("ActiveDialogueEvent", true), ["u"] = ("DayOfMonth", false), ["U"] = ("UpcomingFestival", true),
-            ["G"] = ("GameStateQuery", false)
+            ["G"] = ("GameStateQuery", false), ["x"] = ("SendMail", false)
         };
 
     private static readonly IReadOnlyDictionary<string, string> CanonicalNames = new[]
@@ -51,6 +51,14 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
     internal static IReadOnlyDictionary<string, (string Name, bool Negated)> SupportedAliases => Aliases;
 
     internal ConditionSet ParseRawKey(string rawKey) => Parse(splitPreconditions(rawKey).Skip(1).ToArray());
+    internal string? CheckReadOnly(string rawKey, Func<string, string?> check)
+    {
+        // Native SendMail preconditions mutate mail and seen-event state, even during catalog selection.
+        if (ParseRawKey(rawKey).Conditions.Any(c => c is LegacySendMailCondition
+            or OpaqueCondition { KnownConditionName: "SendMail" }))
+            return null;
+        return check(rawKey);
+    }
     internal ConditionSet Parse(IReadOnlyList<string> rawSegments) => new(rawSegments.Select(ParseSegment).ToList());
 
     internal ConditionExpression ParseSegment(string rawSegment)
@@ -62,9 +70,11 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
             negated = !negated;
             segment = segment[1..].TrimStart();
         }
-        string[] tokens = segment.Length == 0 ? [] : splitArguments(segment);
+        if (segment.Length == 0 || segment.Count(c => c == '"') % 2 != 0)
+            return new OpaqueCondition(OpaqueConditionKind.MalformedSyntax, null, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
+        string[] tokens = splitArguments(segment);
         if (tokens.Length == 0)
-            return Unknown(rawSegment, negated);
+            return new OpaqueCondition(OpaqueConditionKind.MalformedSyntax, null, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
 
         string head = tokens[0];
         string canonical;
@@ -75,17 +85,20 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
         }
         else if (NegativeCanonicalNames.TryGetValue(head, out canonical!))
             negated = !negated;
+        else if (head.Equals("SendMail", StringComparison.OrdinalIgnoreCase))
+            canonical = "SendMail";
         else if (!CanonicalNames.TryGetValue(head, out canonical!))
             return Unknown(rawSegment, negated);
 
         string[] args = tokens.Skip(1).ToArray();
         ConditionSource source = canonical == "GameStateQuery" ? ConditionSource.GameStateQuery : ConditionSource.LegacyEventPrecondition;
-        ConditionExpression? parsed = ParseCanonical(canonical, args, source, rawSegment, negated);
+        ConditionExpression? parsed = args.Any(string.IsNullOrWhiteSpace) ? null : ParseCanonical(canonical, args, source, rawSegment, negated);
         return parsed ?? new OpaqueCondition(OpaqueConditionKind.MalformedKnown, canonical, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
     }
 
     private static ConditionExpression? ParseCanonical(string name, string[] a, ConditionSource s, string raw, bool n) => name switch
     {
+        "SendMail" when a.Length == 1 || a.Length == 2 && bool.TryParse(a[1], out _) => new LegacySendMailCondition(a[0], a.Length == 2 && bool.Parse(a[1]), s, raw, n),
         "SawEvent" when a.Length > 0 => new SawEventCondition(a, s, raw, n),
         "MissingPet" when a.Length <= 1 => new MissingPetCondition(a.FirstOrDefault(), s, raw, n),
         "IsHost" when a.Length == 0 => new IsHostCondition(s, raw, n),
@@ -119,7 +132,7 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
         "SpouseBed" when a.Length == 0 => new SpouseBedCondition(s, raw, n),
         "ReachedMineBottom" when OptionalInt(a, 1, out int bottoms) => new ReachedMineBottomCondition(bottoms, s, raw, n),
         "Year" when Int(a, 0, out int year) => new YearCondition(year, s, raw, n),
-        "Gender" when a.Length == 1 => new GenderCondition(a[0], s, raw, n),
+        "Gender" when a.Length == 1 && (a[0].Equals("male", StringComparison.OrdinalIgnoreCase) || a[0].Equals("female", StringComparison.OrdinalIgnoreCase)) => new GenderCondition(a[0], s, raw, n),
         "HasItem" when a.Length == 1 => new HasItemCondition(a[0], s, raw, n),
         "Tile" when Tiles(a, out List<TilePosition>? tiles) => new TileCondition(tiles, s, raw, n),
         "ActiveDialogueEvent" when a.Length == 1 => new ActiveDialogueEventCondition(a[0], s, raw, n),
@@ -136,7 +149,7 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
     private static bool TryInt(string value, out int result) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result);
     private static int ParseInt(string value) => int.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture);
     private static bool Seasons(string[] a) => a.Length > 0 && a.All(value => value.Equals("spring", StringComparison.OrdinalIgnoreCase) || value.Equals("summer", StringComparison.OrdinalIgnoreCase) || value.Equals("fall", StringComparison.OrdinalIgnoreCase) || value.Equals("winter", StringComparison.OrdinalIgnoreCase));
-    private static bool Days(string[] a, out List<DayOfWeek> values) { values = []; string[] names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; foreach (string value in a) { int index = Array.FindIndex(names, name => name.Equals(value, StringComparison.OrdinalIgnoreCase)); if (index < 0) return false; values.Add((DayOfWeek)index); } return values.Count > 0; }
+    private static bool Days(string[] a, out List<DayOfWeek> values) { values = []; string[] names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; foreach (string value in a) { int index = Array.FindIndex(names, name => name.Equals(value, StringComparison.OrdinalIgnoreCase) || ((DayOfWeek)Array.IndexOf(names, name)).ToString().Equals(value, StringComparison.OrdinalIgnoreCase)); if (index < 0) return false; values.Add((DayOfWeek)index); } return values.Count > 0; }
     private static bool Tiles(string[] a, out List<TilePosition> values) { values = []; if (a.Length == 0 || a.Length % 2 != 0) return false; for (int i = 0; i < a.Length; i += 2) { if (!TryInt(a[i], out int x) || !TryInt(a[i + 1], out int y)) return false; values.Add(new(x, y)); } return true; }
     private static bool Pairs(string[] a, out List<FriendshipRequirement> values) { values = []; if (a.Length == 0 || a.Length % 2 != 0) return false; for (int i = 0; i < a.Length; i += 2) { if (!TryInt(a[i + 1], out int number)) return false; values.Add(new(a[i], number)); } return true; }
     private static bool Pairs(string[] a, out List<ShippedRequirement> values) { values = []; if (a.Length == 0 || a.Length % 2 != 0) return false; for (int i = 0; i < a.Length; i += 2) { if (!TryInt(a[i + 1], out int number)) return false; values.Add(new(a[i], number)); } return true; }

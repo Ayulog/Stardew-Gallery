@@ -326,8 +326,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         List<string> result = [];
         ConditionDisplayResolver resolver = new(
             NPC.GetDisplayName,
-            id => ItemRegistry.GetDataOrErrorItem(id).DisplayName,
-            Translate);
+            id => ItemRegistry.GetData(id)?.DisplayName,
+            Translate,
+            Game1.getTimeOfDayString);
         foreach (ConditionExpression condition in conditionParser.ParseRawKey(entry.EventKey).Conditions)
         {
             ConditionTextSpec spec = ConditionDescriber.Describe(condition);
@@ -360,7 +361,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         return translated == key ? value : translated;
     }
 
-    private static string FormatTime(string raw) => int.TryParse(raw, out int value) ? $"{value / 100:00}:{value % 100:00}" : raw;
+
 
     private string LocalizeSeason(string season)
     {

@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}} pont",
+  "condition.raining": "Esik az eső",
+  "condition.not-raining": "Nem esik az eső",
+  "condition.legacy-send-mail": "Régi eseményművelet: {{id}} levél küldése (csak megjelenítés)",
   "log.loaded": "A Stardew Gallery {{version}} betöltve.",
   "log.config-invalid": "A beállításfájl nem olvasható; ebben a munkamenetben az alapértékek lesznek használva. Részletek: {{error}}",
   "home.title": "Stardew Gallery",

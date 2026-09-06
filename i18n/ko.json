@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}}점",
+  "condition.raining": "비가 내림",
+  "condition.not-raining": "비가 내리지 않음",
+  "condition.legacy-send-mail": "구형 이벤트 동작: 편지 {{id}} 보내기 (표시만)",
   "log.loaded": "Stardew Gallery {{version}}을(를) 불러왔습니다.",
   "log.config-invalid": "설정 파일을 읽을 수 없어 이번 세션에서는 기본값을 사용합니다. 세부 정보: {{error}}",
   "home.title": "Stardew Gallery",

@@ -2,6 +2,9 @@
 
 ## 2.0.3 — Complete Event Preconditions / 完整事件条件
 
+- Audit corrections: fixed seen-event tokens, full weekday names, exact friendship points, rain descriptions, native time display, gender validation, malformed classification, and item-ID fallback. / 审计修正：已看事件占位符、完整星期名、好感点数精度、降雨文案、原版时间显示、性别校验、无效条件分类及物品 ID 回退。
+- Recognize legacy SendMail/x for display only; block its native callback during gallery catalog selection. / 旧版 SendMail/x 仅识别展示；画廊目录选择时阻止调用其原版副作用。
+
 - Added typed parsing and descriptions for all 41 vanilla event preconditions and their legacy aliases. / 为原版全部 41 种事件条件及旧别名加入类型化解析与说明。
 - Multi-value conditions now preserve their original all/any semantics, including friendship, seen events, dates, shipping, tiles, and dialogue answers. / 多值条件会保留原本的全满足或任一满足语义，包括好感、已看事件、日期、出货、坐标和对话答案。
 - Rainy and sunny conditions now use the game's rain predicate, while custom weather IDs remain exact. / 雨天和晴天条件改用游戏的降雨判定，自定义天气 ID 仍精确匹配。

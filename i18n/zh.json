@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}} 点",
+  "condition.raining": "正在下雨",
+  "condition.not-raining": "没有下雨",
+  "condition.legacy-send-mail": "旧版事件行为：发送邮件 {{id}}（仅展示）",
   "log.loaded": "星露谷画廊 {{version}} 已加载。",
   "log.config-invalid": "配置文件无法读取，本次运行将使用默认设置。详情：{{error}}",
   "home.title": "星露谷画廊",

@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}} puan",
+  "condition.raining": "Yağmur yağıyor",
+  "condition.not-raining": "Yağmur yağmıyor",
+  "condition.legacy-send-mail": "Eski olay eylemi: {{id}} postasını gönder (yalnızca gösterim)",
   "log.loaded": "Stardew Gallery {{version}} yüklendi.",
   "log.config-invalid": "Yapılandırma dosyası okunamadı; bu oturumda varsayılanlar kullanılacak. Ayrıntılar: {{error}}",
   "home.title": "Stardew Gallery",

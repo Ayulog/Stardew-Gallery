@@ -25,7 +25,9 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
             DaysPlayedCondition leaf => EvaluateDaysPlayed(leaf, context),
             WorldStateCondition leaf => EvaluateWorldState(leaf, context),
             NativeQueryCondition leaf => EvaluateNativeQuery(leaf),
-            OpaqueCondition => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Unsupported, FlatUnavailable),
+            OpaqueCondition leaf => new ConditionEvaluation(condition, ConditionTruth.Unknown,
+                leaf.Kind == OpaqueConditionKind.UnknownType ? ConditionKnowledge.Unsupported : ConditionKnowledge.Invalid, FlatUnavailable),
+            LegacySendMailCondition => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Unsupported, FlatUnavailable),
             ConditionSet => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Invalid, FlatUnavailable),
             _ => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Unsupported, FlatUnavailable)
         };

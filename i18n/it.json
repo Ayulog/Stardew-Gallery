@@ -1,4 +1,8 @@
 {
+  "condition.points-value": "{{points}} punti",
+  "condition.raining": "Sta piovendo",
+  "condition.not-raining": "Non sta piovendo",
+  "condition.legacy-send-mail": "Vecchia azione: inviare la lettera {{id}} (solo visualizzazione)",
   "log.loaded": "Stardew Gallery {{version}} caricato.",
   "log.config-invalid": "Impossibile leggere il file di configurazione; per questa sessione verranno usati i valori predefiniti. Dettagli: {{error}}",
   "home.title": "Stardew Gallery",
