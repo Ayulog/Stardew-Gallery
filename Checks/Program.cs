@@ -413,6 +413,25 @@ Check(!candidateIndex.TryGetGroup(new EventIdentity("Data/Events/Missing", "evt"
 Check(!candidateIndex.TryGetCurrent(new EventIdentity("Data/Events/Missing", "evt"), out _));
 Check(candidateIndex.GetCandidates(new EventIdentity("Data/Events/Missing", "evt")).Count == 0);
 
+int candidateLoadCount = 0;
+bool selectSecondVariant = false;
+ResolvedEventCandidateCache productionCandidateCache = new(() =>
+{
+    candidateLoadCount++;
+    return
+    [
+        Candidate("Data/Events/Town", "cached", "StateA", "cached/a", "a", () => selectSecondVariant ? NotMatched() : Matched()),
+        Candidate("Data/Events/Town", "cached", "StateB", "cached/b", "b", () => selectSecondVariant ? Matched() : NotMatched())
+    ];
+});
+Check(productionCandidateCache.GetCurrent().CurrentEvents.Single().LocationName == "StateA", "candidate cache selects current variant A");
+selectSecondVariant = true;
+Check(productionCandidateCache.GetCurrent().CurrentEvents.Single().LocationName == "StateB", "candidate cache refreshes current variant B");
+Check(candidateLoadCount == 1, "candidate definitions load once while selection rebuilds");
+productionCandidateCache.Invalidate();
+Check(productionCandidateCache.GetCurrent().CurrentEvents.Single().LocationName == "StateB", "candidate cache selects after invalidation");
+Check(candidateLoadCount == 2, "candidate definitions reload after invalidation");
+
 int skippedApplicableCalls = 0;
 ResolvedEventIndex multipleApplicable = ResolvedEventIndex.Build([
     Candidate("Data/Events/Town", "multi", "FirstApplicable", "multi/a", "a", () => Matched()),

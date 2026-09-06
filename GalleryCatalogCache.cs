@@ -24,14 +24,15 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
         positions => ArgUtility.SplitBySpace(positions),
         () => Game1.player.spouse
     );
-    private ResolvedEventIndex? resolvedEvents;
+    private ResolvedEventCandidateCache? eventCandidates;
 
-    internal void Invalidate() => resolvedEvents = null;
+    internal void Invalidate() => eventCandidates?.Invalidate();
 
     internal GalleryCatalog Get()
     {
+        ResolvedEventIndex index = (eventCandidates ??= new(
+            () => ResolvedEventIndex.ReadCurrentCandidates(eventAssets, eventReader))).GetCurrent();
         IReadOnlyList<GalleryCharacter> characters = ScanCharacters();
-        ResolvedEventIndex index = resolvedEvents ??= ResolvedEventIndex.ReadCurrent(eventAssets, eventReader);
         GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents);
         IReadOnlyList<GalleryEvent> events = build.AnalyzedEvents;
         GalleryCatalog catalog = build.Catalog;

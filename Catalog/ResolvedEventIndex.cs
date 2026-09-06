@@ -16,6 +16,16 @@ internal enum ResolvedEventSelectionSource
     NoMatchFallback
 }
 
+internal sealed class ResolvedEventCandidateCache(Func<IReadOnlyList<ResolvedEventCandidate>> loadCandidates)
+{
+    private IReadOnlyList<ResolvedEventCandidate>? candidates;
+
+    internal ResolvedEventIndex GetCurrent()
+        => ResolvedEventIndex.Build(candidates ??= loadCandidates());
+
+    internal void Invalidate() => candidates = null;
+}
+
 internal sealed class ResolvedEventIndex
 {
     private readonly IReadOnlyDictionary<EventIdentity, ResolvedEventGroup> byIdentity;
@@ -59,10 +69,15 @@ internal sealed class ResolvedEventIndex
     internal static ResolvedEventIndex ReadCurrent(
         IEventAssetSourceCatalog assets,
         ResolvedEventReader reader)
+        => Build(ReadCurrentCandidates(assets, reader));
+
+    internal static IReadOnlyList<ResolvedEventCandidate> ReadCurrentCandidates(
+        IEventAssetSourceCatalog assets,
+        ResolvedEventReader reader)
     {
         List<ResolvedEventCandidate> candidates = [];
         assets.VisitCurrent(source => candidates.AddRange(reader.Read(source)));
-        return Build(candidates);
+        return candidates;
     }
 
     internal static ResolvedEventIndex Build(IReadOnlyList<ResolvedEventCandidate> candidates)

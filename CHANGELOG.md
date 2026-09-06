@@ -4,7 +4,7 @@
 
 - Empty dating and spouse states are now known negatives instead of unknown data. / 没有约会对象或配偶时现会按已知否定判断，不再显示无法判断。
 - Each event's weather conditions are evaluated against its own target location. / 每条事件的天气条件现按其目标地点判断。
-- Character and spouse ownership refresh whenever the gallery catalog is requested, while parsed event assets remain cached. / 每次请求画廊目录都会刷新角色和配偶归属，同时继续缓存已解析事件资源。
+- Current variants, characters, and spouse ownership refresh whenever the gallery catalog is requested, while parsed event candidate definitions remain cached. / 每次请求画廊目录都会刷新 current variant、角色和配偶归属，同时继续缓存已解析的事件候选定义。
 
 ## 2.0.4 — Safety Boundary & Replay Lifecycle / 安全边界与回放生命周期
 
