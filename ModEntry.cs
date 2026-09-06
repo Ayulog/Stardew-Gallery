@@ -16,10 +16,6 @@ internal sealed class ModEntry : Mod
     private bool pendingOpen;
     private Texture2D tabIcon = null!;
     private ReplayCoordinator replay = null!;
-    private WatchedEventHistory watchedHistory = null!;
-    private HistoricalReplayAssets historicalAssets = null!;
-    private GalleryDatabase? sqliteDatabase;
-    private HistoryRepository? historyRepository;
     private bool rollbackWarningShown;
     private bool replayProtectionReady;
 
@@ -37,17 +33,7 @@ internal sealed class ModEntry : Mod
         }
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
-        historicalAssets = new HistoricalReplayAssets(helper);
-        watchedHistory = new WatchedEventHistory(Monitor, () => Config.DebugDiagnostics, ModManifest.Version.ToString());
-        replay = new ReplayCoordinator(Monitor, helper, historicalAssets, planner, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
-        try
-        {
-            ExecutionTraceObserver.Apply(helper, watchedHistory, () => replay.IsActive);
-        }
-        catch (Exception error)
-        {
-            Monitor.Log($"自然事件执行 trace observer 无法启用；事件仍会正常运行，但 occurrence 将降级为 ContentOnly：{error}", LogLevel.Error);
-        }
+        replay = new ReplayCoordinator(Monitor, helper, planner, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
         try
         {
             ReplaySaveGuard.Apply(helper, Monitor, replay);
@@ -59,19 +45,16 @@ internal sealed class ModEntry : Mod
             Monitor.Log($"回放存档保护无法启用，本次运行已禁用回放：{error}", LogLevel.Error);
         }
         tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-horizontal-v5.png");
-        helper.Events.GameLoop.SaveLoaded += (_, _) => { InitSqliteSession(); catalog.Invalidate(); rollbackWarningShown = false; watchedHistory.Load(); };
+        helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); rollbackWarningShown = false; };
         helper.Events.GameLoop.GameLaunched += (_, _) => RegisterGmcm();
         helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
             replay.OnReturnedToTitle();
-            watchedHistory.Clear(ExecutionTraceEndReason.QuitToTitle);
-            DisposeSqliteSession();
             catalog.Invalidate();
             unlockAll = false;
             rollbackWarningShown = false;
         };
-        helper.Events.Content.AssetRequested += (_, e) => historicalAssets.OnAssetRequested(e);
         helper.Events.Content.LocaleChanged += (_, _) => catalog.Invalidate();
         helper.Events.Content.AssetsInvalidated += (_, e) =>
         {
@@ -85,7 +68,6 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
             replay.Update();
-            watchedHistory.Update(replay.IsActive);
             if (!pendingOpen)
                 return;
             pendingOpen = false;
@@ -216,59 +198,6 @@ internal sealed class ModEntry : Mod
             component.bounds = bounds;
     }
 
-    private void InitSqliteSession()
-    {
-        DisposeSqliteSession();
-        try
-        {
-            if (!SqliteNativeBootstrap.TryInitialize(Helper.DirectoryPath, message => Monitor.Log(message, LogLevel.Error)))
-            {
-                Monitor.Log("SQLite native 运行时 bootstrap 失败，本次会话降级为 legacy 持久化。", LogLevel.Error);
-                historyRepository = null;
-                sqliteDatabase = null;
-                LegacyHistoryStore degradedStore = new(Helper);
-                watchedHistory.AttachPersistence(degradedStore, null);
-                return;
-            }
-
-            SaveProfileKey profile = new(
-                Game1.uniqueIDForThisGame,
-                Game1.player.UniqueMultiplayerID);
-            string path = Path.Combine(Constants.DataPath, "StardewGallery", "gallery.sqlite3");
-            GalleryDatabase database = new(path, message => Monitor.Log(message, LogLevel.Error));
-            if (!database.Open() || !database.EnsureSchema())
-            {
-                database.Dispose();
-                Monitor.Log("SQLite 不可用，本次会话降级为 legacy 持久化。", LogLevel.Debug);
-                historyRepository = null;
-                sqliteDatabase = null;
-                LegacyHistoryStore degradedStore = new(Helper);
-                watchedHistory.AttachPersistence(degradedStore, null);
-                return;
-            }
-            sqliteDatabase = database;
-            historyRepository = new HistoryRepository(database, profile, message => Monitor.Log(message, LogLevel.Error));
-            historyRepository.EnsureProfile(Constants.SaveFolderName, Game1.player.Name, DateTimeOffset.Now);
-            LegacyHistoryStore store = new(Helper);
-            watchedHistory.AttachPersistence(store, historyRepository);
-        }
-        catch (Exception error)
-        {
-            DisposeSqliteSession();
-            Monitor.Log($"SQLite 会话初始化失败，降级为 legacy：\n{error}", LogLevel.Error);
-            LegacyHistoryStore degradedStore = new(Helper);
-            watchedHistory.AttachPersistence(degradedStore, null);
-        }
-    }
-
-    private void DisposeSqliteSession()
-    {
-        watchedHistory.DetachPersistence();
-        historyRepository = null;
-        sqliteDatabase?.Dispose();
-        sqliteDatabase = null;
-    }
-
     private static bool IsControllerNavigation(SButton button) => button is
         SButton.DPadUp or SButton.DPadDown or SButton.DPadLeft or SButton.DPadRight
         or SButton.LeftThumbstickUp or SButton.LeftThumbstickDown or SButton.LeftThumbstickLeft or SButton.LeftThumbstickRight;
@@ -296,7 +225,6 @@ internal sealed class ModEntry : Mod
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/CharacterScene-day-v2.png"),
                 () => unlockAll,
                 ToggleUnlock,
-                watchedHistory.Get,
                 (character, entry, scroll) => RequestReplay(snapshot, character, entry, scroll));
             Game1.playSound("bigSelect");
         }

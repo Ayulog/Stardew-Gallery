@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.0.6 — Stop Historical Collection / 停止历史采集
+
+- Disabled historical replay and natural-event collection at runtime; no new historical occurrences, contexts, legacy snapshots, or SQLite sessions are created. / 已在运行时停用历史回放与自然事件采集，不再创建新的历史 occurrence、context、legacy snapshot 或 SQLite 会话。
+- Existing historical SQLite and legacy data are preserved untouched. / 已有历史 SQLite 与 legacy 数据保持原样，不读取、不迁移、不重写或删除。
+- Current Gallery replay, save protection, speed controls, and Unlock All persistence remain unchanged. / 当前画廊回放、存档保护、速度控制和“一键解锁全部”持久化保持不变。
+
 ## 2.0.5 — Current-State Accuracy / 当前状态准确性
 
 - Empty dating and spouse states are now known negatives instead of unknown data. / 没有约会对象或配偶时现会按已知否定判断，不再显示无法判断。

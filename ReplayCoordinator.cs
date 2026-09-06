@@ -4,7 +4,7 @@ using StardewValley;
 
 namespace StardewGallery;
 
-internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, HistoricalReplayAssets historicalAssets, PreviewPlanner planner,
+internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, PreviewPlanner planner,
     Func<bool> autoAdvanceDialogue, Func<bool> debugDiagnostics)
 {
     private const int StartTimeoutTicks = 900;
@@ -379,14 +379,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, His
         catch (Exception error)
         {
             SafeLog($"清理回放预览状态失败：{error}", LogLevel.Warn);
-        }
-        try
-        {
-            historicalAssets.Clear();
-        }
-        catch (Exception error)
-        {
-            SafeLog($"清理历史回放资源失败：{error}", LogLevel.Warn);
         }
     }
 
