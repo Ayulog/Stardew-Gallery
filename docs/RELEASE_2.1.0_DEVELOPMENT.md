@@ -11,7 +11,7 @@
 - Layer 2 每屏两列三行，超过六个事件按行连续滚动。卡片只显示心数门槛、Event ID、`详情 >`、默认缩略图；不显示地点、条件摘要或诊断 tooltip。
 - 所有事件都能打开详情。已解锁事件点击缩略图或 `▶` 进入既有 `RequestReplay → ReplayCoordinator`；锁定事件隐藏回放入口，不能绕过 Gallery unlock。
 - `EventThumbnailAsset.For(EventIdentity)` 是薄 provider 边界；2.1.0 对任意事件都返回 `assets/EventPlaceholder.png`，不扫描文件、不建缓存或 metadata。
-- Layer 3 条件保持声明顺序且不排序、不去重。每个条件一个可变高度 row：左侧显示要求，可靠时附当前值；右侧严格映射 Known True=`✓`、Known False=`✗`、Unknown=`?`。
+- Layer 3 条件保持声明顺序且不排序、不去重。每个条件一个可变高度 row：左侧显示要求，可靠时附当前值；多人好感缺口通过 `GapSubject` 标明当前值对应 NPC；右侧严格映射 Known True=原版 checked sprite、Known False=原版 close/cancel sprite、Unknown=`?`。
 - Unknown 包括 MissingData、Unsupported、Invalid、Error，只在第二行显示准确的轻量原因；普通条件不显示 Raw、Source、Knowledge、Gap 标签，底层结构化字段仍保留。
 - 长条件完整换行，状态图标在对应 row 垂直居中；条件区继续使用像素滚动和裁剪。
 
@@ -20,7 +20,7 @@
 - 画布继续使用 1672×941 和 `GalleryDetail-alpha-v2.png`。两层左页都由 `GalleryCharacterPanel` 绘制，人物图 `(240,120,380,270)`、姓名/心数及四条资料坐标和含义均沿用旧实现，共固定六行。
 - Layer 2 卡片从 `(755,140)` 开始，列距 365、行距 225，单卡 `345×205`；缩略图 `265×149`。滚动条 `(1508,180,24,600)`，返回按钮 `(360,842,280,52)`。
 - Layer 3 右页标题/心数与 ID/地点/缩略图位于顶部；条件区 `(755,365,720,420)`，滚动条 `(1508,365,24,420)`；已解锁回放 `(795,842,280,52)`，返回 `(1160,842,280,52)`。
-- Layer 2 支持滚轮、滚动条点击/拖动、DPad/左摇杆和缩放重排；焦点按 row-left、row-right 的视觉顺序，详情和回放使用基于事件索引的稳定 component ID。
+- Layer 2 支持滚轮、滚动条点击/拖动、DPad/左摇杆和缩放重排；焦点按 row-left、row-right 的视觉顺序，详情和回放使用基于事件索引的稳定 component ID。已解锁卡为 Details↓Replay、Replay↑Details；Replay 跨行保持 action family，目标锁定时回退 Details。
 - Layer 3 支持滚轮、滚动条点击/拖动、DPad/左摇杆。Escape、右键、Controller B 返回 Layer 2；Gallery 快捷键 G 关闭整个 Gallery。
 - 从详情返回或回放结束都恢复原角色、原 event scroll 和当前 Event focus；回放结束回 Layer 2，不回详情。
 
@@ -36,12 +36,12 @@
 ## 素材与兼容风险
 
 - `assets/EventPlaceholder.png` 为本项目生成的原创暖色像素画，无 NPC、Event 内容、文字、第三方素材或游戏原资产；最终为 640×360 PNG。
-- 状态使用游戏已有字体绘制符号与颜色，避免引入额外图标资源；Unknown 绝不降级成红叉。
+- True 使用 Stardew `OptionsCheckbox.sourceRectChecked`，False 使用 `Game1.mouseCursors` 的原版 close sprite `(337,494,12,12)`；Unknown 没有匹配的统一原版状态 sprite，保留字体问号。Unicode `✓/✗` 运行时依赖已移除，Unknown 绝不降级成红叉。
 - 不调用 Random、SendMail、GSQ 或自定义条件 callback。多人模式未实测；回放仍沿用既有多人禁用规则。
 - 超长翻译、不同 UI scale、手柄边界滚动和占位图视觉需进游戏实测。
 
 ## 验收
 
-- 自动：Layer 2 locked/unlocked action、2×3 顺序与无重叠、条件三态、Friendship/Time row、无 CurrentValue row、Unknown reason、共享 placeholder、12 locale key/token parity、既有 Condition/Replay/Persistence 回归。
+- 自动：Layer 2 locked/unlocked action、2×3 顺序与无重叠、条件三态、单/多人 Friendship 与 Time row、多人 `GapSubject`、无 CurrentValue row、Unknown reason、共享 placeholder、12 locale key/token parity、既有 Condition/Replay/Persistence 回归。
 - 运行 `Checks`、`PersistenceChecks`、Release build、`git diff --check b589a9b...HEAD`。
-- 实机 U21-1～U21-12：左页一致、2×3 与 >6 滚动、placeholder、锁定/解锁、逐条件 row、current、unknown、长文本、footer/navigation、返回位置与多语言；交付前均标记待实测。
+- 新增实机 C21-1～C21-3：纯手柄到达同卡 Replay/跨行混排、原版三态图标视觉、多人 Friendship subject；完成后再跑 U21-1～U21-12，交付前均标记待实测。

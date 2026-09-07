@@ -132,6 +132,7 @@
   "event-detail.description": "要求：{{description}}",
   "event-detail.current": "当前：{{current}}",
   "event-detail.current-inline": "{{condition}}（当前：{{current}}）",
+  "event-detail.current-subject-inline": "{{condition}}（{{subject}}当前：{{current}}）",
   "event-detail.required": "需要：{{required}}",
   "event-detail.gap-subject": "对应角色：{{subject}}",
   "event-detail.raw": "原始条件：{{raw}}",

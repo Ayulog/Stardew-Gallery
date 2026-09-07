@@ -1208,6 +1208,12 @@ string timeRow = ConditionRowPresentation.Text(timePresentation, TranslatePresen
 Check(friendshipRow.Contains("8 hearts") && friendshipRow.Contains("7 hearts"), "2.1 correction friendship requirement/current row");
 Check(timeRow.Contains("GAME-TIME:1800") && timeRow.Contains("GAME-TIME:2200") && timeRow.Contains("GAME-TIME:1400"),
     "2.1 correction time requirement/current row");
+ConditionDisplayItem multiFriendship = presentationBuilder.Build(
+    "1/Friendship Abigail 2000 Leah 1500",
+    presentationState with { Friendship = new Dictionary<string, int> { ["Abigail"] = 2000, ["Leah"] = 1000 } }).Single();
+string multiFriendshipRow = ConditionRowPresentation.Text(multiFriendship, TranslatePresentation);
+Check(multiFriendship.GapSubject == "NPC:Leah" && multiFriendshipRow.Contains("NPC:Leah current: 4 hearts")
+    && !multiFriendshipRow.Contains("(current:", StringComparison.Ordinal), "2.1 review correction multi-friendship current subject");
 string noCurrentRow = ConditionRowPresentation.Text(presentationItems[5], TranslatePresentation);
 Check(noCurrentRow == presentationItems[5].Description && !noCurrentRow.Contains("current", StringComparison.OrdinalIgnoreCase),
     "2.1 correction no empty current label");

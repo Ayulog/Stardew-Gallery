@@ -26,6 +26,13 @@ internal static class ConditionRowPresentation
     internal static string Text(ConditionDisplayItem item, Func<string, IReadOnlyDictionary<string, string>, string> translate)
         => item.CurrentValue is null
             ? item.Description
+            : item.GapSubject is not null && item.Expression is FriendshipCondition { Requirements.Count: > 1 }
+                ? translate("event-detail.current-subject-inline", new Dictionary<string, string>
+                {
+                    ["condition"] = item.Description,
+                    ["subject"] = item.GapSubject,
+                    ["current"] = item.CurrentValue
+                })
             : translate("event-detail.current-inline", new Dictionary<string, string>
             {
                 ["condition"] = item.Description,

@@ -85,6 +85,7 @@
   "event-detail.description": "要件：{{description}}",
   "event-detail.current": "現在：{{current}}",
   "event-detail.current-inline": "{{condition}}（現在：{{current}}）",
+  "event-detail.current-subject-inline": "{{condition}}（{{subject}}の現在：{{current}}）",
   "event-detail.required": "必要：{{required}}",
   "event-detail.gap-subject": "対象：{{subject}}",
   "event-detail.raw": "元の条件：{{raw}}",

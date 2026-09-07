@@ -85,6 +85,7 @@
   "event-detail.description": "Gereksinim: {{description}}",
   "event-detail.current": "Geçerli: {{current}}",
   "event-detail.current-inline": "{{condition}} (mevcut: {{current}})",
+  "event-detail.current-subject-inline": "{{condition}} ({{subject}} için mevcut: {{current}})",
   "event-detail.required": "Gerekli: {{required}}",
   "event-detail.gap-subject": "İlgili: {{subject}}",
   "event-detail.raw": "Ham koşul: {{raw}}",

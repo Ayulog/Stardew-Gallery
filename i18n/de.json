@@ -118,6 +118,7 @@
   "event-detail.description": "Anforderung: {{description}}",
   "event-detail.current": "Aktuell: {{current}}",
   "event-detail.current-inline": "{{condition}} (aktuell: {{current}})",
+  "event-detail.current-subject-inline": "{{condition}} ({{subject}} aktuell: {{current}})",
   "event-detail.required": "Erforderlich: {{required}}",
   "event-detail.gap-subject": "Betrifft: {{subject}}",
   "event-detail.raw": "Rohbedingung: {{raw}}",

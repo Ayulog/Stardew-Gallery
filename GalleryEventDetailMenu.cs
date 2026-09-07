@@ -247,14 +247,20 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private static void DrawStatus(SpriteBatch b, ConditionStatusIcon status, Rectangle bounds)
     {
-        (string glyph, Color color) = status switch
+        if (status == ConditionStatusIcon.Unknown)
         {
-            ConditionStatusIcon.Check => ("✓", new Color(20, 120, 45)),
-            ConditionStatusIcon.Cross => ("✗", new Color(170, 35, 35)),
-            _ => ("?", new Color(145, 100, 20))
-        };
-        Vector2 size = Game1.smallFont.MeasureString(glyph);
-        b.DrawString(Game1.smallFont, glyph, new Vector2(bounds.Center.X - size.X / 2, bounds.Center.Y - size.Y / 2), color);
+            const string glyph = "?";
+            Vector2 size = Game1.smallFont.MeasureString(glyph);
+            b.DrawString(Game1.smallFont, glyph, new Vector2(bounds.Center.X - size.X / 2, bounds.Center.Y - size.Y / 2), new Color(145, 100, 20));
+            return;
+        }
+        Rectangle source = status == ConditionStatusIcon.Check
+            ? OptionsCheckbox.sourceRectChecked
+            : new Rectangle(337, 494, 12, 12);
+        float scale = status == ConditionStatusIcon.Check ? 4f : 3f;
+        Vector2 sizePixels = new(source.Width * scale, source.Height * scale);
+        Color tint = status == ConditionStatusIcon.Check ? new Color(80, 170, 80) : new Color(210, 90, 90);
+        b.Draw(Game1.mouseCursors, new Vector2(bounds.Center.X - sizePixels.X / 2, bounds.Center.Y - sizePixels.Y / 2), source, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, .9f);
     }
 
     private static int DrawWrapped(SpriteBatch b, string text, int x, int y, int width, Color color)

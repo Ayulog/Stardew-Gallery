@@ -85,6 +85,7 @@
   "event-detail.description": "Requisito: {{description}}",
   "event-detail.current": "Atual: {{current}}",
   "event-detail.current-inline": "{{condition}} (atual: {{current}})",
+  "event-detail.current-subject-inline": "{{condition}} ({{subject}}, atual: {{current}})",
   "event-detail.required": "Necessário: {{required}}",
   "event-detail.gap-subject": "Aplica-se a: {{subject}}",
   "event-detail.raw": "Condição original: {{raw}}",

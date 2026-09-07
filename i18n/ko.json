@@ -85,6 +85,7 @@
   "event-detail.description": "요구 사항: {{description}}",
   "event-detail.current": "현재: {{current}}",
   "event-detail.current-inline": "{{condition}} (현재: {{current}})",
+  "event-detail.current-subject-inline": "{{condition}} ({{subject}} 현재: {{current}})",
   "event-detail.required": "필요: {{required}}",
   "event-detail.gap-subject": "대상: {{subject}}",
   "event-detail.raw": "원본 조건: {{raw}}",

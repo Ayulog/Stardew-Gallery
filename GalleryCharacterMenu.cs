@@ -230,6 +230,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         if (baseId < 0)
             return false;
         int index = id - baseId;
+        if ((direction > 0 && baseId == DetailsComponentBase && IsReplayAvailable(events[index]))
+            || (direction < 0 && baseId == ReplayComponentBase))
+            return false;
         int visibleRow = index / GalleryUiRules.EventColumns - scrollRow;
         if (direction > 0 && (visibleRow < GalleryUiRules.EventVisibleRows - 1 || scrollRow >= MaxScroll)
             || direction < 0 && (visibleRow > 0 || scrollRow <= 0))
@@ -308,7 +311,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
                 leftNeighborID = leftIndex >= 0 ? DetailsComponentBase + leftIndex : BackComponentId,
                 rightNeighborID = rightIndex >= 0 ? DetailsComponentBase + rightIndex : -1,
                 upNeighborID = upIndex >= 0 ? DetailsComponentBase + upIndex : -1,
-                downNeighborID = downIndex >= 0 ? DetailsComponentBase + downIndex : BackComponentId
+                downNeighborID = IsReplayAvailable(events[index])
+                    ? ReplayComponentBase + index
+                    : downIndex >= 0 ? DetailsComponentBase + downIndex : BackComponentId
             });
             if (!IsReplayAvailable(events[index]))
                 continue;
@@ -317,7 +322,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
                 myID = ReplayComponentBase + index,
                 leftNeighborID = leftIndex >= 0 ? ReplayOrDetails(leftIndex) : BackComponentId,
                 rightNeighborID = rightIndex >= 0 ? ReplayOrDetails(rightIndex) : -1,
-                upNeighborID = upIndex >= 0 ? ReplayOrDetails(upIndex) : DetailsComponentBase + index,
+                upNeighborID = DetailsComponentBase + index,
                 downNeighborID = downIndex >= 0 ? ReplayOrDetails(downIndex) : BackComponentId
             });
         }
