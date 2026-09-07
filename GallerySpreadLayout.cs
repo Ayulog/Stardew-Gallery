@@ -65,9 +65,9 @@ internal static class GallerySpreadLayout
     internal static (int X, int Y, int Width, int Height) ConditionHeadingBounds => (755, 310, 710, 40);
     internal static (int X, int Y, int Width, int Height) ConditionViewportBounds => (755, 365, 710, 420);
     internal static (int X, int Y, int Width, int Height) DetailScrollTrackBounds => (ScrollbarX, 365, 24, 420);
-    internal static (int X, int Y, int Width, int Height) FooterBounds => (755, FooterBaseline - 32, 710, 40);
-    internal static (int X, int Y, int Width, int Height) BackButtonBounds => (755, FooterBaseline - 32, 280, 40);
-    internal static (int X, int Y, int Width, int Height) ReplayButtonBounds => (1185, FooterBaseline - 32, 280, 40);
+    internal static (int X, int Y, int Width, int Height) FooterBounds => (755, 795, 710, 55);
+    internal static (int X, int Y, int Width, int Height) BackButtonBounds => (755, FooterBaseline - 44, 336, 48);
+    internal static (int X, int Y, int Width, int Height) ReplayButtonBounds => (1129, FooterBaseline - 44, 336, 48);
 
     // Atlas order is check, cross, question. Unknown must not use the cross.
     internal static (int X, int Y, int Width, int Height) ConditionCheckSource => (0, 0, IconSize, IconSize);
@@ -82,4 +82,6 @@ internal static class GalleryUiAssets
     internal const string EventDetail = "assets/GalleryEventDetail-v3.png";
     internal const string ConditionStatusIcons = "assets/ConditionStatusIcons.png";
     internal const string ReplayGlyph = "assets/ReplayGlyph.png";
+    internal const string EventSlotFrame = "assets/EventSlotFrameOverlay.png";
+    internal const string ScrollbarTrack = "assets/ScrollbarTrack.png";
 }

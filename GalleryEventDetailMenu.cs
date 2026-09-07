@@ -24,6 +24,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
     private readonly Texture2D statusIcons;
+    private readonly Texture2D scrollbarTrackTexture;
     private readonly GalleryCharacterPanel leftPanel;
     private readonly Func<bool> canReplay;
     private readonly Action back;
@@ -53,6 +54,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Texture2D scene,
         Texture2D thumbnail,
         Texture2D statusIcons,
+        Texture2D scrollbarTrackTexture,
         Func<bool> canReplay,
         Action back,
         Action replay)
@@ -65,6 +67,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.background = background;
         this.thumbnail = thumbnail;
         this.statusIcons = statusIcons;
+        this.scrollbarTrackTexture = scrollbarTrackTexture;
         this.canReplay = canReplay;
         this.back = back;
         this.replay = replay;
@@ -185,6 +188,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         leftPanel.DrawPhoto(b);
         b.Draw(thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
+        GalleryMenu.DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
         leftPanel.DrawInformation(b);
         DrawHeader(b);
         BeginContentClip(b);

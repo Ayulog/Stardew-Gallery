@@ -26,6 +26,8 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Texture2D scene;
     private readonly Texture2D eventThumbnail;
     private readonly Texture2D replayGlyph;
+    private readonly Texture2D slotFrame;
+    private readonly Texture2D scrollbarTrackTexture;
     private readonly Func<bool> isUnlocked;
     private readonly Action toggleUnlock;
     private readonly Action<GalleryCharacter, GalleryEvent, int> replay;
@@ -62,6 +64,8 @@ internal sealed class GalleryMenu : IClickableMenu
         Texture2D scene,
         Texture2D eventThumbnail,
         Texture2D replayGlyph,
+        Texture2D slotFrame,
+        Texture2D scrollbarTrackTexture,
         Func<bool> isUnlocked,
         Action toggleUnlock,
         Action<GalleryCharacter, GalleryEvent, int> replay,
@@ -78,6 +82,8 @@ internal sealed class GalleryMenu : IClickableMenu
         this.scene = scene;
         this.eventThumbnail = eventThumbnail;
         this.replayGlyph = replayGlyph;
+        this.slotFrame = slotFrame;
+        this.scrollbarTrackTexture = scrollbarTrackTexture;
         this.isUnlocked = isUnlocked;
         this.toggleUnlock = toggleUnlock;
         this.replay = replay;
@@ -180,8 +186,9 @@ internal sealed class GalleryMenu : IClickableMenu
             int returnScrollRow = scrollRow;
             string returnCharacterName = character.Name;
             Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail, replayGlyph,
+                slotFrame, scrollbarTrackTexture,
                 isUnlocked,
-                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, replayGlyph, isUnlocked, toggleUnlock, replay, details,
+                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
                     returnSearchText, returnScrollRow, returnCharacterName),
                 (entry, scroll) => replay(character, entry, scroll),
                 (entry, scroll, conditions) => details(character, entry, scroll, conditions));
@@ -282,6 +289,7 @@ internal sealed class GalleryMenu : IClickableMenu
             b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .7f);
         BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         b.Draw(background, new Rectangle(xPositionOnScreen, yPositionOnScreen, width, height), Color.White);
+        DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
         SpriteText.drawStringHorizontallyCenteredAt(b, i18n.Get("home.title"), xPositionOnScreen + width / 2, yPositionOnScreen + 40, maxWidth: 430);
         DrawButton(b, unlockBounds, i18n.Get(isUnlocked() ? "menu.restore-locks" : "menu.unlock-all"));
         search.Draw(b);
@@ -381,8 +389,9 @@ internal sealed class GalleryMenu : IClickableMenu
         int returnScrollRow = scrollRow;
         string returnCharacterName = character.Name;
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail, replayGlyph,
+            slotFrame, scrollbarTrackTexture,
             isUnlocked,
-            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, replayGlyph, isUnlocked, toggleUnlock, replay, details,
+            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
                 returnSearchText, returnScrollRow, returnCharacterName),
             (entry, scroll) => replay(character, entry, scroll),
             (entry, scroll, conditions) => details(character, entry, scroll, conditions));
@@ -534,6 +543,9 @@ internal sealed class GalleryMenu : IClickableMenu
 
     internal static void DrawScrollbar(SpriteBatch b, Rectangle thumb) =>
         b.Draw(Game1.mouseCursors, thumb, new Rectangle(435, 463, 6, 10), Color.White);
+
+    internal static void DrawScrollbarTrack(SpriteBatch b, Texture2D texture, Rectangle bounds) =>
+        b.Draw(texture, bounds, new Rectangle(0, 0, bounds.Width, bounds.Height), Color.White);
 
     internal static void DrawCentered(SpriteBatch b, string text, Rectangle bounds)
     {

@@ -102,6 +102,8 @@ internal static class GallerySpreadChecks
             (GalleryUiAssets.EventDetail, "assets/GalleryEventDetail-v3.png", 1672, 941),
             (GalleryUiAssets.ConditionStatusIcons, "assets/ConditionStatusIcons.png", 48, 16),
             (GalleryUiAssets.ReplayGlyph, "assets/ReplayGlyph.png", 16, 16),
+            (GalleryUiAssets.EventSlotFrame, "assets/EventSlotFrameOverlay.png", 345, 205),
+            (GalleryUiAssets.ScrollbarTrack, "assets/ScrollbarTrack.png", 24, 640),
             (EventThumbnailAsset.Placeholder, "assets/EventPlaceholder.png", 640, 360)
         ];
         foreach (var asset in assets)
@@ -123,7 +125,7 @@ internal static class GallerySpreadChecks
                 $"{asset.Actual}: expected {asset.Width}x{asset.Height}, got {width}x{height}.");
         }
 
-        Console.WriteLine("Gallery spread checks passed (six cards, detail regions, fixed left panel, atlas and five PNG headers).");
+        Console.WriteLine("Gallery spread checks passed (six cards, detail regions, fixed left panel, atlas and seven PNG headers).");
     }
 
     private static void Contains((int X, int Y, int Width, int Height) parent, (int X, int Y, int Width, int Height) child, string context)

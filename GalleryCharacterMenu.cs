@@ -17,6 +17,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
     private readonly Texture2D replayGlyph;
+    private readonly Texture2D slotFrame;
+    private readonly Texture2D scrollbarTrackTexture;
     private readonly Action back;
     private readonly Action<GalleryEvent, int> replay;
     private readonly Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details;
@@ -40,7 +42,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private EventCardFocus? lastCardFocus;
 
     internal GalleryCharacterMenu(GalleryCharacter character, GalleryCatalog catalog, ITranslationHelper i18n,
-        Texture2D background, Texture2D scene, Texture2D thumbnail, Texture2D replayGlyph, Func<bool> isUnlocked, Action back,
+        Texture2D background, Texture2D scene, Texture2D thumbnail, Texture2D replayGlyph, Texture2D slotFrame,
+        Texture2D scrollbarTrackTexture, Func<bool> isUnlocked, Action back,
         Action<GalleryEvent, int> replay,
         Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details,
         int initialScroll = 0, string? initialFocusIdentity = null)
@@ -51,6 +54,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         this.background = background;
         this.thumbnail = thumbnail;
         this.replayGlyph = replayGlyph;
+        this.slotFrame = slotFrame;
+        this.scrollbarTrackTexture = scrollbarTrackTexture;
         this.isUnlocked = isUnlocked;
         this.back = back;
         this.replay = replay;
@@ -124,7 +129,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         }
 
         int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = Math.Min(GalleryUiRules.EventColumns * GalleryUiRules.EventVisibleRows, events.Count - first);
+        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
         for (int slot = 0; slot < visible; slot++)
         {
             GalleryEvent entry = events[first + slot];
@@ -254,13 +259,14 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
-        DrawAlbumThumbnailsUnderlay(b);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
+        GalleryMenu.DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
+        DrawAlbumSlots(b);
         DrawPageTitle(b, i18n.Get("detail.title"), Bounds(GallerySpreadLayout.TitleBounds));
         leftPanel.DrawInformation(b);
 
         int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = Math.Min(GalleryUiRules.EventColumns * GalleryUiRules.EventVisibleRows, events.Count - first);
+        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
         for (int slot = 0; slot < visible; slot++)
             DrawEvent(b, events[first + slot], slot, first + slot);
         if (MaxScroll > 0)
@@ -271,13 +277,16 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         drawMouse(b);
     }
 
-    private void DrawAlbumThumbnailsUnderlay(SpriteBatch b)
+    private void DrawAlbumSlots(SpriteBatch b)
     {
         int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = Math.Min(GalleryUiRules.EventColumns * GalleryUiRules.EventVisibleRows, events.Count - first);
+        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
         for (int slot = 0; slot < visible; slot++)
+        {
             b.Draw(thumbnail, Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)), null,
                 IsReplayAvailable(events[first + slot]) ? Color.White : new Color(185, 180, 167), 0f, Vector2.Zero, SpriteEffects.None, .88f);
+            b.Draw(slotFrame, Bounds(GallerySpreadLayout.EventCardBounds(slot)), Color.White);
+        }
     }
 
     private void DrawEvent(SpriteBatch b, GalleryEvent entry, int slot, int index)
@@ -357,7 +366,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         int previousId = currentlySnappedComponent?.myID ?? -1;
         allClickableComponents = [new ClickableComponent(ToScreen(backBounds), "back") { myID = BackComponentId }];
         int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = Math.Min(GalleryUiRules.EventColumns * GalleryUiRules.EventVisibleRows, events.Count - first);
+        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
         for (int slot = 0; slot < visible; slot++)
         {
             int index = first + slot;

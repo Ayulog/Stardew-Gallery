@@ -34,9 +34,9 @@ Constants: `LogicalWidth = 1672`, `LogicalHeight = 941`, `LeftRowCount = 6`,
 | `ConditionHeadingBounds` | `(755, 310, 710, 40)` |
 | `ConditionViewportBounds` | `(755, 365, 710, 420)` |
 | `DetailScrollTrackBounds` | `(1508, 365, 24, 420)` |
-| `FooterBounds` | `(755, 810, 710, 40)` |
-| `BackButtonBounds` | `(755, 810, 280, 40)` |
-| `ReplayButtonBounds` | `(1185, 810, 280, 40)` |
+| `FooterBounds` | `(755, 795, 710, 55)` |
+| `BackButtonBounds` | `(755, 798, 336, 48)` |
+| `ReplayButtonBounds` | `(1129, 798, 336, 48)` |
 | `ConditionCheckSource` | `(0, 0, 16, 16)` |
 | `ConditionCrossSource` | `(16, 0, 16, 16)` |
 | `ConditionQuestionSource` | `(32, 0, 16, 16)` |
@@ -48,7 +48,7 @@ Page bounds describe usable paper, not the outside leather silhouette.
 Metadata contains its two text regions; the header contains metadata and thumbnail.
 These are layout regions, not nested drawn frames.
 
-The card grid ends at `(1465, 795)`, before the footer separator at Y=804.
+The card grid ends at `(1465, 795)`, touching the footer separator at Y=795.
 Both layers share the right-page footer and title. The detail condition viewport is
 710 pixels wide, aligned with the header/footer, and does not reach the scrollbar.
 The footer actions are deliberately moved inside the right page, not on the binding
@@ -63,9 +63,11 @@ are baked into either spread.
 | `EventDetail` | `assets/GalleryEventDetail-v3.png` | 1672 x 941 |
 | `ConditionStatusIcons` | `assets/ConditionStatusIcons.png` | 48 x 16 |
 | `ReplayGlyph` | `assets/ReplayGlyph.png` | 16 x 16 |
+| `EventSlotFrame` | `assets/EventSlotFrameOverlay.png` | 345 x 205 |
+| `ScrollbarTrack` | `assets/ScrollbarTrack.png` | 24 x 640 |
 | `EventThumbnailAsset.Placeholder` | `assets/EventPlaceholder.png` | 640 x 360 |
 
-The first four constants belong to `GalleryUiAssets`. The placeholder keeps the
+The first six constants belong to `GalleryUiAssets`. The placeholder keeps the
 existing `EventThumbnailAsset` path and `For` behavior unchanged.
 
 The spreads derive from the repository-owned `assets/GalleryDetail-alpha-v2.png`.
@@ -77,10 +79,12 @@ The six left-page information rows, title plaque, binding and outside edges rema
 The source asset and left-panel source file are not modified.
 
 The right-page parchment is reconstructed from a clean patch of that same owned
-image, mirror-tiled and feathered at the replacement boundary. Album cards use
-original small brown pixel corners, not full orange frames. Layer 3 instead has
-one compact thumbnail slot, header rules and an unframed blank condition area.
-Both have a thin footer rule and scrollbar guide; the interactive thumb is not baked in.
+image, mirror-tiled and feathered at the replacement boundary. The album base has
+no permanent card frames or thumbnail openings. Runtime draws one thumbnail and
+one transparent `EventSlotFrameOverlay` only for each real visible event. Layer 3
+keeps one compact thumbnail opening, header rules and an unframed blank condition
+area. All layers draw the shared opaque pale `ScrollbarTrack`; the interactive thumb
+is rendered separately.
 
 The hand-authored 16-pixel masks are original art, with transparent backgrounds and
 one-pixel brown edges. Atlas order is muted green check, muted red cross, ochre

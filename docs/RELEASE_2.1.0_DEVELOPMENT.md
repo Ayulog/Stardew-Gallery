@@ -142,7 +142,7 @@ Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `
 ## UI 融合与条件文案修正
 
 - 修正基线：`d850388e115028596d8c45d36dd9f102bb286e2d`；版本保持 `2.1.0`。
-- Layer 2/3 缩略图改为先画图片、再画带透明孔位的书页背景；孔位边框由背景收口，条件文字仍直接画在羊皮纸上。
+- Layer 3 缩略图保持图片先画、透明孔位书页后画；Layer 2 最终改为不透明相册底图后仅为真实 Event 绘制 thumbnail + 独立 frame，空 slot 完全保留羊皮纸。
 - Layer 2/3 返回与回放统一复用 `GalleryMenu.DrawButton`；三层滚动条统一复用 `GalleryMenu.DrawScrollbar` 和固定 40px thumb。
 - 右页纸张生成移除 RGB 偏移，并验证孔位透明比例、边框、左页 RGBA 与补纸边界连续性。
 - Condition 主文案只描述 requirement；Known True / Known False / Unknown 仍只由右侧图标表达。常见否定改为自然语言，天气、季节、时间、NPC 与地点等展示值在 UI 边界本地化。
@@ -152,3 +152,12 @@ Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `
 
 - Seen-event quick jump：从“已看过事件”条件跳到目录中对应 Event Detail；使用 navigation stack 保存来源 `EventIdentity`、角色/owner 与 detail scroll，Back 后原样恢复。
 - Search performance / fast locate：仅在 query/catalog 变化时搜索；为每个 catalog 建不可变索引，覆盖 NPC 内部名/显示名和 Event ID，并为未来直接定位 Event 预留结果目标；避免每帧重复扫描与拼接字符串。
+
+## Final UI Polish Delta
+
+- 基线：`4e125f6`；版本保持 `2.1.0`。
+- Footer 按钮从 280×40 放大为 336×48，Back/Replay renderer 与字号不变，condition viewport 不变。
+- 三层统一覆盖同一张 24×640 淡羊皮纸 track，thumb 均使用 `GalleryMenu.DrawScrollbar` 且固定 40px。
+- `GalleryEventAlbum-v3.png` 不再永久开六个孔或画空 frame；`VisibleEventCount` 限制当前页最多六个真实 slot，每个真实 slot 才绘制 thumbnail 与 `EventSlotFrameOverlay.png`。
+- Friendship current 统一按 points/250 显示最多一位小数的心数；requirement 也使用精确心数，避免同一行混用 points/hearts。
+- AST、parser、evaluator、其它 condition wording、Unknown、focus、replay、unlock、history、persistence 与 12 locale key 结构不变。

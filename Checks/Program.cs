@@ -1079,6 +1079,15 @@ string formattedFriendship = ConditionTextFormatter.Format(
     ConditionDescriber.Describe(aliasParser.ParseSegment("Friendship Leah 1000")),
     (key, arguments) => key == "condition.hearts-value" ? arguments["hearts"] + " ♥" : $"{key}|{arguments.GetValueOrDefault("requirements")}", testResolver);
 Check(formattedFriendship.Contains("NPC:Leah") && formattedFriendship.Contains("4 ♥"), "typed friendship value resolves at formatter boundary");
+System.Globalization.CultureInfo beforeHeartChecks = System.Globalization.CultureInfo.CurrentCulture;
+try
+{
+    System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+    string HeartNumber(int points) => ConditionTextFormatter.FormatFriendshipCurrent(points, (_, arguments) => arguments["hearts"]);
+    Check(HeartNumber(0) == "0" && HeartNumber(250) == "1" && HeartNumber(2600) == "10.4" && HeartNumber(2680) == "10.7",
+        "2.1 final friendship points-to-hearts formatting");
+}
+finally { System.Globalization.CultureInfo.CurrentCulture = beforeHeartChecks; }
 string formattedShipped = ConditionTextFormatter.Format(
     ConditionDescriber.Describe(aliasParser.ParseSegment("Shipped 24 2")),
     (key, arguments) => $"{key}|{arguments.GetValueOrDefault("requirements")}", testResolver);
@@ -1196,6 +1205,9 @@ Check(Enumerable.Range(0, 7).Select(GalleryUiRules.EventCardPosition).SequenceEq
 {
     (0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1), (3, 0)
 }), "2.1 correction two-column visual order");
+Check(GalleryUiRules.VisibleEventCount(4, 0) == 4 && GalleryUiRules.VisibleEventCount(5, 0) == 5
+    && GalleryUiRules.VisibleEventCount(6, 0) == 6 && GalleryUiRules.VisibleEventCount(9, 0) == 6
+    && GalleryUiRules.VisibleEventCount(9, 6) == 3, "2.1 final visible slot count");
 var cardBounds = Enumerable.Range(0, 6).Select(GalleryUiRules.EventCardBounds).ToList();
 Check(cardBounds.SelectMany((left, index) => cardBounds.Skip(index + 1).Select(right =>
     left.X < right.X + right.Width && left.X + left.Width > right.X
@@ -1217,11 +1229,16 @@ Check(friendshipRow.Contains("8 hearts") && friendshipRow.Contains("7 hearts"), 
 Check(timeRow.Contains("GAME-TIME:1800") && timeRow.Contains("GAME-TIME:2200") && timeRow.Contains("GAME-TIME:1400"),
     "2.1 correction time requirement/current row");
 ConditionDisplayItem multiFriendship = presentationBuilder.Build(
-    "1/Friendship Abigail 2000 Leah 1500",
-    presentationState with { Friendship = new Dictionary<string, int> { ["Abigail"] = 2000, ["Leah"] = 1000 } }).Single();
+    "1/Friendship Abigail 2000 Leah 3000",
+    presentationState with { Friendship = new Dictionary<string, int> { ["Abigail"] = 2000, ["Leah"] = 2680 } }).Single();
 string multiFriendshipRow = ConditionRowPresentation.Text(multiFriendship, TranslatePresentation);
-Check(multiFriendship.GapSubject == "NPC:Leah" && multiFriendshipRow.Contains("NPC:Leah current: 4 hearts")
+Check(multiFriendship.GapSubject == "NPC:Leah" && multiFriendshipRow.Contains("NPC:Leah current: 10.7 hearts")
     && !multiFriendshipRow.Contains("(current:", StringComparison.Ordinal), "2.1 review correction multi-friendship current subject");
+ConditionDisplayItem fractionalSingleFriendship = presentationBuilder.Build(
+    "1/Friendship Abigail 3000",
+    presentationState with { Friendship = new Dictionary<string, int> { ["Abigail"] = 2600 } }).Single();
+Check(ConditionRowPresentation.Text(fractionalSingleFriendship, TranslatePresentation).Contains("current: 10.4 hearts"),
+    "2.1 final single-friendship fractional current hearts");
 string noCurrentRow = ConditionRowPresentation.Text(presentationItems[5], TranslatePresentation);
 Check(noCurrentRow == presentationItems[5].Description && !noCurrentRow.Contains("current", StringComparison.OrdinalIgnoreCase),
     "2.1 correction no empty current label");
@@ -1242,7 +1259,7 @@ string AuditFormat(string input, Dictionary<string, string> language, ConditionD
 }
 Check(AuditFormat("SawEvent A B", defaultLocale).Contains("A, B"), "audit: seen IDs reach final template");
 Check(AuditFormat("Friendship Abigail 250", defaultLocale).Contains("1 hearts"), "audit: whole heart");
-Check(AuditFormat("Friendship Abigail 251", defaultLocale).Contains("251 points"), "audit: exact fractional heart points");
+Check(AuditFormat("Friendship Abigail 251", defaultLocale).Contains("1.004 hearts"), "audit: exact fractional heart threshold");
 Check(AuditFormat("Weather rainy", defaultLocale) == "It is raining", "audit: rain predicate wording");
 Check(AuditFormat("Weather sunny", defaultLocale) == "Weather: sunny", "audit: sunny predicate wording");
 Check(AuditFormat("!Weather sunny", defaultLocale) == "Weather: not sunny", "audit: negated sunny wording");

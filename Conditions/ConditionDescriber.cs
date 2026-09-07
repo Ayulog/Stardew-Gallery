@@ -95,9 +95,12 @@ internal static class ConditionTextFormatter
             : text;
     }
 
-    internal static string FormatGap(ConditionExpression condition, string value, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver) => condition switch
+    internal static string FormatGap(ConditionExpression condition, string value, Func<string, IReadOnlyDictionary<string, string>, string> translate,
+        ConditionDisplayResolver resolver, bool friendshipCurrent = false) => condition switch
     {
-        FriendshipCondition when int.TryParse(value, out int points) => FormatFriendship(points, translate),
+        FriendshipCondition when int.TryParse(value, out int points) => friendshipCurrent
+            ? FormatFriendshipCurrent(points, translate)
+            : FormatFriendship(points, translate),
         TimeCondition when TryParseTimeRange(value, out int from, out int to) => $"{resolver.Time(from)} – {resolver.Time(to)}",
         TimeCondition when int.TryParse(value, out int time) => resolver.Time(time),
         SeasonCondition => string.Join(", ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(season => resolver.Term("season", season))),
@@ -122,9 +125,16 @@ internal static class ConditionTextFormatter
     }
 
     private static string FormatFriendship(int points, Func<string, IReadOnlyDictionary<string, string>, string> translate)
-        => points % 250 == 0
-            ? translate("condition.hearts-value", new Dictionary<string, string> { ["hearts"] = (points / 250).ToString(CultureInfo.CurrentCulture) })
-            : translate("condition.points-value", new Dictionary<string, string> { ["points"] = points.ToString(CultureInfo.CurrentCulture) });
+        => translate("condition.hearts-value", new Dictionary<string, string>
+        {
+            ["hearts"] = (points / 250d).ToString("0.###", CultureInfo.CurrentCulture)
+        });
+
+    internal static string FormatFriendshipCurrent(int points, Func<string, IReadOnlyDictionary<string, string>, string> translate)
+        => translate("condition.hearts-value", new Dictionary<string, string>
+        {
+            ["hearts"] = (points / 250d).ToString("0.#", CultureInfo.CurrentCulture)
+        });
 
     private static string FormatValue(ConditionTextValue value, ConditionDisplayResolver resolver, Func<string, IReadOnlyDictionary<string, string>, string> translate) => value switch
     {

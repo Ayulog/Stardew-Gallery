@@ -84,14 +84,14 @@ internal sealed class ConditionPresentationBuilder(
     private string? CurrentValue(ConditionExpression expression, ConditionEvaluation evaluation, CurrentStateSnapshot state)
     {
         if (evaluation.Gap.Current is string gapCurrent)
-            return ConditionTextFormatter.FormatGap(expression, gapCurrent, translate, resolver);
+            return ConditionTextFormatter.FormatGap(expression, gapCurrent, translate, resolver, friendshipCurrent: expression is FriendshipCondition);
         return expression switch
         {
             SeasonCondition when evaluation.Truth == ConditionTruth.False && state.Season is not null => resolver.Term("season", state.Season),
             TimeCondition when evaluation.Truth == ConditionTruth.False && state.Time is int time => resolver.Time(time),
             FriendshipCondition { Requirements.Count: 1 } friendship
                 when state.Friendship?.TryGetValue(friendship.Requirements[0].Npc, out int points) == true
-                => ConditionTextFormatter.FormatGap(expression, points.ToString(), translate, resolver),
+                => ConditionTextFormatter.FormatGap(expression, points.ToString(), translate, resolver, friendshipCurrent: true),
             WeatherCondition { Kind: WeatherKind.Rainy or WeatherKind.Sunny } when evaluation.Truth == ConditionTruth.False && state.IsRaining is bool raining
                 => translate(raining ? "condition.raining" : "condition.not-raining", EmptyArguments()),
             WeatherCondition { Kind: WeatherKind.Custom } when evaluation.Truth == ConditionTruth.False && state.Weather is not null

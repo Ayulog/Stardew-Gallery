@@ -19,6 +19,9 @@ internal static class GalleryUiRules
     internal static (int X, int Y, int Width, int Height) EventCardBounds(int visibleIndex)
         => GallerySpreadLayout.EventCardBounds(visibleIndex);
 
+    internal static int VisibleEventCount(int total, int first)
+        => Math.Clamp(total - first, 0, EventColumns * EventVisibleRows);
+
     internal static EventCardInteraction EventCardInteraction(bool unlocked)
         => new(CanReplay: unlocked, CanViewDetails: true);
 

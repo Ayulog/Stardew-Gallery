@@ -22,14 +22,19 @@ public static class GallerySpreadAssetGenerator
         ValidateLayout();
         using var paper = MakePaper(source);
         using var album = (System.Drawing.Bitmap)paper.Clone();
-        for (int slot = 0; slot < GallerySpreadLayout.EventColumns * GallerySpreadLayout.EventVisibleRows; slot++)
-        {
-            Opening(album, GallerySpreadLayout.EventCardThumbnailBounds(slot));
-            Corners(album, GallerySpreadLayout.EventCardBounds(slot), 15);
-            Corners(album, GallerySpreadLayout.EventCardThumbnailBounds(slot), 10);
-        }
         Track(album, source, GallerySpreadLayout.AlbumScrollTrackBounds);
         Footer(album);
+
+        var card = GallerySpreadLayout.EventCardBounds(0);
+        var thumbnail = GallerySpreadLayout.EventCardThumbnailBounds(0);
+        using var slotFrame = new System.Drawing.Bitmap(card.Width, card.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        Corners(slotFrame, (0, 0, card.Width, card.Height), 15);
+        Corners(slotFrame, (thumbnail.X - card.X, thumbnail.Y - card.Y, thumbnail.Width, thumbnail.Height), 10);
+
+        using var scrollbarTrack = new System.Drawing.Bitmap(24, 640, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        for (int y = 0; y < scrollbarTrack.Height; y++)
+        for (int x = 0; x < scrollbarTrack.Width; x++)
+            scrollbarTrack.SetPixel(x, y, source.GetPixel(1534 + x, 146 + y));
 
         using var detail = (System.Drawing.Bitmap)paper.Clone();
         Opening(detail, GallerySpreadLayout.DetailThumbnailBounds);
@@ -71,8 +76,7 @@ public static class GallerySpreadAssetGenerator
 
         VerifyLeft(source, album);
         VerifyLeft(source, detail);
-        for (int slot = 0; slot < GallerySpreadLayout.EventColumns * GallerySpreadLayout.EventVisibleRows; slot++)
-            VerifyOpening(album, GallerySpreadLayout.EventCardThumbnailBounds(slot), "album thumbnail " + slot);
+        VerifyAlbumBase(album, paper);
         VerifyOpening(detail, GallerySpreadLayout.DetailThumbnailBounds, "detail thumbnail");
         VerifyPaperContinuity(paper);
         Require(detail.GetPixel(755, 590).ToArgb() == paper.GetPixel(755, 590).ToArgb(), "Detail contains an album corner.");
@@ -80,8 +84,10 @@ public static class GallerySpreadAssetGenerator
         Store(root, GalleryUiAssets.EventDetail, detail, verifyOnly);
         Store(root, GalleryUiAssets.ConditionStatusIcons, icons, verifyOnly);
         Store(root, GalleryUiAssets.ReplayGlyph, replay, verifyOnly);
+        Store(root, GalleryUiAssets.EventSlotFrame, slotFrame, verifyOnly);
+        Store(root, GalleryUiAssets.ScrollbarTrack, scrollbarTrack, verifyOnly);
         Store(root, "assets/EventPlaceholder.png", placeholder, verifyOnly);
-        System.Console.WriteLine("PASS: layout containment, six rows/cards, exact left-page RGBA, portrait alpha mask, separate detail art, opaque 640x360 scenic placeholder, five PNG round-trip pixels.");
+        System.Console.WriteLine("PASS: layout containment, six rows/cards, exact left-page RGBA, portrait alpha mask, empty album base, separate slot frame and shared track, seven PNG round-trip pixels.");
     }
 
     private static System.Drawing.Bitmap MakePlaceholder()
@@ -299,6 +305,21 @@ public static class GallerySpreadAssetGenerator
             name + " frame corners are missing.");
     }
 
+    private static void VerifyAlbumBase(System.Drawing.Bitmap album, System.Drawing.Bitmap paper)
+    {
+        for (int slot = 0; slot < GallerySpreadLayout.EventColumns * GallerySpreadLayout.EventVisibleRows; slot++)
+        {
+            var bounds = GallerySpreadLayout.EventCardThumbnailBounds(slot);
+            int transparent = 0;
+            for (int y = bounds.Y; y < bounds.Y + bounds.Height; y += 5)
+            for (int x = bounds.X; x < bounds.X + bounds.Width; x += 5)
+                if (album.GetPixel(x, y).A == 0) transparent++;
+            Require(transparent == 0, "Album base contains a permanent thumbnail opening at slot " + slot + ".");
+            Require(album.GetPixel(bounds.X, bounds.Y).ToArgb() == paper.GetPixel(bounds.X, bounds.Y).ToArgb(),
+                "Album base contains an empty slot frame at slot " + slot + ".");
+        }
+    }
+
     private static void VerifyPaperContinuity(System.Drawing.Bitmap paper)
     {
         long difference = 0;
@@ -317,7 +338,7 @@ public static class GallerySpreadAssetGenerator
     private static void Footer(System.Drawing.Bitmap image)
     {
         var footer = GallerySpreadLayout.FooterBounds;
-        Rule(image, footer.X, footer.Y - 6, footer.Width);
+        Rule(image, footer.X, footer.Y, footer.Width);
     }
 
     private static void Glyph(System.Drawing.Bitmap image, int offset, string[] mask, System.Drawing.Color fill)
