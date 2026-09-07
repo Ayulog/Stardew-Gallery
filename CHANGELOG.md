@@ -1,5 +1,10 @@
 # Changelog / 更新日志
 
+## 2.1.1 - Search Performance / 搜索性能
+
+- Reuse character search results until the query, catalog, or language comparison changes, avoiding repeated filtering, sorting, and result-list allocation on idle frames. / 搜索文本、目录或语言比较规则变化时才重算人物搜索结果，消除空闲帧的重复筛选、排序及结果列表分配。
+- Preserve NPC name and event ID matching, character order, locked-character access, and return positions. Enter uses the latest search text immediately. / 保持 NPC 名称与事件 ID 匹配、人物排序、锁定访问及返回位置；按回车时立即使用最新搜索文本。
+
 ## 2.1.0 — Event Album + Event Detail / 事件相册与详情
 
 - Reworked each character's event page into a two-column, three-row thumbnail album with continuous scrolling and a project-owned placeholder image. / 将角色事件页改为两列三行、可连续滚动的缩略图相册，并加入项目自有占位图。

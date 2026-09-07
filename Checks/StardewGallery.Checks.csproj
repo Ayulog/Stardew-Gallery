@@ -9,6 +9,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="GallerySearchChecks.cs" />
+    <Compile Include="..\GallerySearchFilter.cs" Link="GallerySearchFilter.cs" />
     <Compile Include="EventCardFocusChecks.cs" />
     <Compile Include="..\EventCardFocus.cs" Link="EventCardFocus.cs" />
     <Compile Include="GallerySpreadChecks.cs" />

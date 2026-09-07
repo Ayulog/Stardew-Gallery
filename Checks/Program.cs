@@ -2,6 +2,10 @@ using System.Text;
 using System.Text.Json;
 using StardewGallery;
 
+GallerySearchChecks.Run();
+if (args.Contains("--benchmark-search"))
+    GallerySearchChecks.Benchmark();
+
 Check(EventKey.TryGetId("75160185/f Alissa 500", out string id) && id == "75160185");
 Check(EventKey.TryGetId("mod.event/id/condition", out id) && id == "mod.event");
 Check(!EventKey.TryGetId(" /condition", out _));

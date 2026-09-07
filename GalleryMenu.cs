@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -33,6 +32,7 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Action<GalleryCharacter, GalleryEvent, int> replay;
     private readonly Action<GalleryCharacter, GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details;
     private readonly TextBox search;
+    private readonly GallerySearchFilter searchFilter = new();
     private List<GalleryCharacter> filtered = [];
     private int scrollRow;
     private bool dragging;
@@ -365,23 +365,18 @@ internal sealed class GalleryMenu : IClickableMenu
 
     private void RefreshFilter()
     {
-        string previous = string.Join('\u001f', filtered.Select(character => character.Name));
-        string query = search.Text.Trim();
-        filtered = catalog.Characters
-            .Where(character => query.Length == 0
-                || character.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
-                || character.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || catalog.Events.Any(entry => entry.EventId.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    && entry.Ownership.Owners.Any(owner => owner.Name == character.Name)))
-            .OrderBy(character => character.DisplayName, Comparer<string>.Create(CompareDisplayNames))
-            .ToList();
+        bool changed = searchFilter.Update(catalog, search.Text, i18n.Locale,
+            LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.zh);
+        filtered = searchFilter.Results;
+        if (!changed)
+            return;
         UpdateScrollbar();
-        if (previous != string.Join('\u001f', filtered.Select(character => character.Name)))
-            BuildClickableComponents();
+        BuildClickableComponents();
     }
 
     internal void OpenFirstMatch()
     {
+        RefreshFilter();
         GalleryCharacter? character = filtered.FirstOrDefault();
         if (character is null || !character.IsMet && !isUnlocked())
             return;
@@ -483,14 +478,6 @@ internal sealed class GalleryMenu : IClickableMenu
         currentlySnappedComponent = searchComponent;
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)
             snapCursorToCurrentSnappedComponent();
-    }
-
-    private static int CompareDisplayNames(string left, string right)
-    {
-        CultureInfo culture = LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.zh
-            ? CultureInfo.GetCultureInfo("zh-CN")
-            : CultureInfo.GetCultureInfo("en-US");
-        return culture.CompareInfo.Compare(left, right, CompareOptions.IgnoreCase | CompareOptions.IgnoreWidth);
     }
 
     private void EnsureLayout()
