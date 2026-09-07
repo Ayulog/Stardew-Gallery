@@ -229,6 +229,7 @@ internal sealed class ModEntry : Mod
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/GalleryHome.png"),
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/GalleryDetail-alpha-v2.png"),
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/CharacterScene-day-v2.png"),
+                Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>(EventThumbnailAsset.For()),
                 () => unlockAll,
                 ToggleUnlock,
                 (character, entry, scroll) => RequestReplay(snapshot, character, entry, scroll),
@@ -284,6 +285,7 @@ internal sealed class ModEntry : Mod
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, snapshot, Helper.Translation,
             Helper.ModContent.Load<Texture2D>("assets/GalleryDetail-alpha-v2.png"),
             Helper.ModContent.Load<Texture2D>("assets/CharacterScene-day-v2.png"),
+            Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For()),
             () => unlockAll,
             OpenGallery,
             (entry, position) => RequestReplay(snapshot, character, entry, position),
@@ -303,10 +305,13 @@ internal sealed class ModEntry : Mod
             Game1.player.eventsSeen.Contains(entry.EventId), unlockAll).Unlocked;
         Game1.activeClickableMenu = new GalleryEventDetailMenu(
             character,
+            snapshot,
             entry,
             conditions,
             Helper.Translation,
             Helper.ModContent.Load<Texture2D>("assets/GalleryDetail-alpha-v2.png"),
+            Helper.ModContent.Load<Texture2D>("assets/CharacterScene-day-v2.png"),
+            Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For(entry.Resolved.Identity)),
             CanReplay,
             () => OpenCharacter(snapshot, character, scroll, entry.Identity),
             () => RequestReplay(snapshot, character, entry, scroll));

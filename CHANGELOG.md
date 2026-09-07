@@ -1,11 +1,12 @@
 # Changelog / 更新日志
 
-## 2.1.0 — Event Detail Page / 事件详情页
+## 2.1.0 — Event Album + Event Detail / 事件相册与详情
 
-- Added a complete, scrollable detail page for every current event, including locked events. / 为每条当前事件加入完整可滚动的详情页，包括尚未解锁的事件。
-- Conditions retain declaration order and show met, missing, or unknown status with readable gaps, exact unknown reasons, source, and raw condition text. / 条件保留声明顺序，并展示满足、未满足或无法判断状态、可读缺口、准确原因、来源及原始文本。
-- Unlocked events can use the existing safe replay path from detail; locked events remain non-replayable. / 已解锁事件可从详情复用既有安全回放；未解锁事件仍不能回放。
-- Added complete event-detail localization for all 12 supported languages. / 为全部 12 种支持语言补齐事件详情文本。
+- Reworked each character's event page into a two-column, three-row thumbnail album with continuous scrolling and a project-owned placeholder image. / 将角色事件页改为两列三行、可连续滚动的缩略图相册，并加入项目自有占位图。
+- Kept the character panel identical between album and detail; event cards now show only heart threshold, event ID, thumbnail, replay, and a compact details action. / 相册与详情共用完全一致的角色左页；事件卡只显示心数门槛、事件 ID、缩略图、回放与精简详情入口。
+- Detail conditions now use one variable-height row each, showing readable requirement/current text and distinct green check, red cross, or unknown question mark states. / 详情条件改为逐条可变高度行，显示可读的要求/当前值，并明确区分绿色勾、红叉与未知问号。
+- Unknown rows keep a lightweight reason without exposing raw/source diagnostics in the main UI; unlocked replay and locked-event protection remain unchanged. / 未知条件仅显示轻量原因，不在主界面堆叠原始/来源诊断；已解锁回放与锁定保护保持不变。
+- Added complete album/detail localization for all 12 supported languages. / 为全部 12 种支持语言补齐相册与详情文本。
 
 ## 2.0.6 — Stop Historical Collection / 停止历史采集
 

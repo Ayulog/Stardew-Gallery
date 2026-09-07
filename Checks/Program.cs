@@ -1161,6 +1161,7 @@ Check(presentationItems.Select(item => item.Expression.RawSegment).SequenceEqual
     "Random 0.5", "SomeMod.Custom foo", "Time bad", "GameStateQuery WEATHER Here Sun", "SendMail Letter", "!Season winter"
 }), "presentation preserves declaration order and duplicates");
 Check(presentationItems[0].Evaluation is { Truth: ConditionTruth.True, Knowledge: ConditionKnowledge.Known }, "presentation known true");
+Check(presentationItems[0].CurrentValue == "season:spring", "presentation reliable met season current value");
 ConditionDisplayItem friendshipPresentation = presentationItems[1];
 Check(friendshipPresentation.Evaluation.Truth == ConditionTruth.False && friendshipPresentation.GapSubject == "NPC:Abigail", "presentation friendship gap subject");
 Check(friendshipPresentation.CurrentValue == "7 hearts" && friendshipPresentation.RequiredValue == "8 hearts", "presentation friendship values humanized");
@@ -1178,6 +1179,40 @@ string compactPresentation = presentationBuilder.Compact(presentationItems);
 Check(compactPresentation.Split("Missing: Friendship", StringSplitOptions.None).Length == 2, "compact summary deduplicates repeated text");
 Check(presentationBuilder.Build("1", presentationState).Count == 0, "presentation no-condition items empty");
 Check(presentationBuilder.Compact([]) == defaultLocale["condition.none"], "presentation no-condition compact text");
+
+EventCardInteraction unlockedCard = GalleryUiRules.EventCardInteraction(unlocked: true);
+EventCardInteraction lockedCard = GalleryUiRules.EventCardInteraction(unlocked: false);
+Check(unlockedCard is { CanReplay: true, CanViewDetails: true }, "2.1 correction unlocked card actions");
+Check(lockedCard is { CanReplay: false, CanViewDetails: true }, "2.1 correction locked card actions");
+Check(Enumerable.Range(0, 7).Select(GalleryUiRules.EventCardPosition).SequenceEqual(new[]
+{
+    (0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1), (3, 0)
+}), "2.1 correction two-column visual order");
+var cardBounds = Enumerable.Range(0, 6).Select(GalleryUiRules.EventCardBounds).ToList();
+Check(cardBounds.SelectMany((left, index) => cardBounds.Skip(index + 1).Select(right =>
+    left.X < right.X + right.Width && left.X + left.Width > right.X
+    && left.Y < right.Y + right.Height && left.Y + left.Height > right.Y)).All(overlap => !overlap),
+    "2.1 correction cards do not overlap");
+
+Check(ConditionRowPresentation.Status(presentationItems[0].Evaluation) == ConditionStatusIcon.Check, "2.1 correction known true icon");
+Check(ConditionRowPresentation.Status(friendshipPresentation.Evaluation) == ConditionStatusIcon.Cross, "2.1 correction known false icon");
+foreach (ConditionKnowledge knowledge in new[] { ConditionKnowledge.MissingData, ConditionKnowledge.Unsupported, ConditionKnowledge.Invalid, ConditionKnowledge.Error })
+{
+    ConditionEvaluation unknown = new(friendshipPresentation.Expression, ConditionTruth.Unknown, knowledge, new ConditionGap(ConditionGapKind.Unavailable));
+    ConditionDisplayItem item = friendshipPresentation with { Evaluation = unknown };
+    Check(ConditionRowPresentation.Status(unknown) == ConditionStatusIcon.Unknown, "2.1 correction unknown icon: " + knowledge);
+    Check(ConditionRowPresentation.UnknownReasonKey(item) is not null, "2.1 correction unknown reason: " + knowledge);
+}
+string friendshipRow = ConditionRowPresentation.Text(friendshipPresentation, TranslatePresentation);
+string timeRow = ConditionRowPresentation.Text(timePresentation, TranslatePresentation);
+Check(friendshipRow.Contains("8 hearts") && friendshipRow.Contains("7 hearts"), "2.1 correction friendship requirement/current row");
+Check(timeRow.Contains("GAME-TIME:1800") && timeRow.Contains("GAME-TIME:2200") && timeRow.Contains("GAME-TIME:1400"),
+    "2.1 correction time requirement/current row");
+string noCurrentRow = ConditionRowPresentation.Text(presentationItems[5], TranslatePresentation);
+Check(noCurrentRow == presentationItems[5].Description && !noCurrentRow.Contains("current", StringComparison.OrdinalIgnoreCase),
+    "2.1 correction no empty current label");
+Check(EventThumbnailAsset.For(TestIdentity("one")) == EventThumbnailAsset.For(TestIdentity("two"))
+    && EventThumbnailAsset.For(TestIdentity("one")) == "assets/EventPlaceholder.png", "2.1 correction shared placeholder provider");
 string AuditFormat(string input, Dictionary<string, string> language, ConditionDisplayResolver? resolver = null)
 {
     string TranslateAudit(string key, IReadOnlyDictionary<string, string> arguments)

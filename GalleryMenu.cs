@@ -24,6 +24,7 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Texture2D background;
     private readonly Texture2D detailBackground;
     private readonly Texture2D scene;
+    private readonly Texture2D eventThumbnail;
     private readonly Func<bool> isUnlocked;
     private readonly Action toggleUnlock;
     private readonly Action<GalleryCharacter, GalleryEvent, int> replay;
@@ -58,6 +59,7 @@ internal sealed class GalleryMenu : IClickableMenu
         Texture2D background,
         Texture2D detailBackground,
         Texture2D scene,
+        Texture2D eventThumbnail,
         Func<bool> isUnlocked,
         Action toggleUnlock,
         Action<GalleryCharacter, GalleryEvent, int> replay,
@@ -72,6 +74,7 @@ internal sealed class GalleryMenu : IClickableMenu
         this.background = background;
         this.detailBackground = detailBackground;
         this.scene = scene;
+        this.eventThumbnail = eventThumbnail;
         this.isUnlocked = isUnlocked;
         this.toggleUnlock = toggleUnlock;
         this.replay = replay;
@@ -173,9 +176,9 @@ internal sealed class GalleryMenu : IClickableMenu
             string returnSearchText = search.Text;
             int returnScrollRow = scrollRow;
             string returnCharacterName = character.Name;
-            Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene,
+            Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail,
                 isUnlocked,
-                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, replay, details,
+                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, isUnlocked, toggleUnlock, replay, details,
                     returnSearchText, returnScrollRow, returnCharacterName),
                 (entry, scroll) => replay(character, entry, scroll),
                 (entry, scroll, conditions) => details(character, entry, scroll, conditions));
@@ -374,9 +377,9 @@ internal sealed class GalleryMenu : IClickableMenu
         string returnSearchText = search.Text;
         int returnScrollRow = scrollRow;
         string returnCharacterName = character.Name;
-        Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene,
+        Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail,
             isUnlocked,
-            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, isUnlocked, toggleUnlock, replay, details,
+            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, isUnlocked, toggleUnlock, replay, details,
                 returnSearchText, returnScrollRow, returnCharacterName),
             (entry, scroll) => replay(character, entry, scroll),
             (entry, scroll, conditions) => details(character, entry, scroll, conditions));

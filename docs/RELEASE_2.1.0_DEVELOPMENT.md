@@ -1,42 +1,47 @@
-# Stardew Gallery 2.1.0 — Event Detail Page
+# Stardew Gallery 2.1.0 — Event Album + Event Detail
 
 ## 目标与边界
 
-本版为每条当前事件增加完整详情页，逐条展示原始声明顺序、当前分析结果、缺口、无法判断原因、来源与原始条件，并允许从详情安全回放已解锁事件。
+本版把角色事件页定型为缩略图相册，并提供逐条件详情：Layer 1 人物相册不改；Layer 2 左页保留人物大图与固定六行资料，右页显示 2×3 Event Card；Layer 3 只替换右页为事件信息和条件状态。
 
-不实现 PossibilityIndex、Solver、事件命令语义、新 runtime truth provider、历史功能、多人回放、截图相册或解锁规则变化。
+保留 `ConditionDisplayItem`、`ConditionPresentationBuilder`、AST、Evaluation、Gap、Raw、Source、Negated、Unknown taxonomy、当前事件脚本回放及返回位置。没有新增截图系统、PossibilityIndex、Solver、runtime truth provider、历史功能、多人回放、解锁规则、存储或 schema。
 
 ## 操作流程与实现
 
-- 角色事件卡保留简短摘要，并为所有事件增加“详情”；未解锁事件可查看但不能回放。
-- `ConditionPresentationBuilder` 在压缩摘要前保留 AST、Evaluation、Gap、Raw、Source 与 Negated；详情按声明顺序展示且不去重，卡片摘要继续去重。
-- 已知条件显示满足/未满足；未知条件区分 MissingData、Unsupported、Invalid、Error。Gallery 不安装 GSQ provider，因此 GSQ 明确显示 Unsupported，Random、SendMail 与自定义条件仍不执行。
-- Friendship 缺口显示对应 NPC；时间范围两端使用游戏时间格式，不显示原始 `1800..2200`。
-- 详情回放复用 `RequestReplay` 与既有 `ReplayCoordinator`，结束后返回原角色、原事件列表滚动和当前事件焦点。
+- Layer 2 每屏两列三行，超过六个事件按行连续滚动。卡片只显示心数门槛、Event ID、`详情 >`、默认缩略图；不显示地点、条件摘要或诊断 tooltip。
+- 所有事件都能打开详情。已解锁事件点击缩略图或 `▶` 进入既有 `RequestReplay → ReplayCoordinator`；锁定事件隐藏回放入口，不能绕过 Gallery unlock。
+- `EventThumbnailAsset.For(EventIdentity)` 是薄 provider 边界；2.1.0 对任意事件都返回 `assets/EventPlaceholder.png`，不扫描文件、不建缓存或 metadata。
+- Layer 3 条件保持声明顺序且不排序、不去重。每个条件一个可变高度 row：左侧显示要求，可靠时附当前值；右侧严格映射 Known True=`✓`、Known False=`✗`、Unknown=`?`。
+- Unknown 包括 MissingData、Unsupported、Invalid、Error，只在第二行显示准确的轻量原因；普通条件不显示 Raw、Source、Knowledge、Gap 标签，底层结构化字段仍保留。
+- 长条件完整换行，状态图标在对应 row 垂直居中；条件区继续使用像素滚动和裁剪。
 
 ## UI 与坐标交互
 
-- 复用 1672×941 画廊画布与 `GalleryDetail-alpha-v2.png`，不增加图片资源。
-- 顶部约 105–200 显示角色、心数、Event ID、地点、解锁状态和 AssetName；210 起显示当前分析免责声明。
-- 条件阅读区为 `(175,275,1300,520)`，按实际换行计算 block 高度并进行像素滚动；滚动条位于 `(1510,275,24,520)`。
-- 鼠标滚轮每次 60px，支持轨道翻页与拖动；DPad 上下每次 60px。窗口尺寸变化后重新适配并限制滚动范围。
-- 返回按钮 `(350,842,280,52)`；已解锁时回放按钮 `(1042,842,280,52)`。Escape、右键、手柄 B 返回事件列表；Gallery 快捷键关闭详情。
-- 角色卡右侧“详情”使用独立 component ID 100–103；回放继续使用 0–3，保持回放返回焦点语义，锁定事件回退到详情按钮。
+- 画布继续使用 1672×941 和 `GalleryDetail-alpha-v2.png`。两层左页都由 `GalleryCharacterPanel` 绘制，人物图 `(240,120,380,270)`、姓名/心数及四条资料坐标和含义均沿用旧实现，共固定六行。
+- Layer 2 卡片从 `(755,140)` 开始，列距 365、行距 225，单卡 `345×205`；缩略图 `265×149`。滚动条 `(1508,180,24,600)`，返回按钮 `(360,842,280,52)`。
+- Layer 3 右页标题/心数与 ID/地点/缩略图位于顶部；条件区 `(755,365,720,420)`，滚动条 `(1508,365,24,420)`；已解锁回放 `(795,842,280,52)`，返回 `(1160,842,280,52)`。
+- Layer 2 支持滚轮、滚动条点击/拖动、DPad/左摇杆和缩放重排；焦点按 row-left、row-right 的视觉顺序，详情和回放使用基于事件索引的稳定 component ID。
+- Layer 3 支持滚轮、滚动条点击/拖动、DPad/左摇杆。Escape、右键、Controller B 返回 Layer 2；Gallery 快捷键 G 关闭整个 Gallery。
+- 从详情返回或回放结束都恢复原角色、原 event scroll 和当前 Event focus；回放结束回 Layer 2，不回详情。
 
 ## 模块职责、配置与存储
 
-- `ConditionPresentation` 负责纯展示模型和格式化；`GalleryCharacterMenu` 构建并复用 presentation；`GalleryEventDetailMenu` 只负责阅读、滚动和导航。
-- 12 个官方 locale 同步新增详情文本并保持 key/token parity。
-- 无配置、存档或 schema 变化；`gallery-state` 和已停用的历史数据保持不变。
+- `GalleryCharacterPanel`：两层共用的左页绘制。
+- `GalleryCharacterMenu`：2×3 相册、滚动、卡片交互和条件 presentation 构建。
+- `GalleryEventDetailMenu`：右页头部、逐条件 row、滚动与 footer。
+- `ConditionRowPresentation`：纯三态、row 文本和 unknown reason 映射。
+- `GalleryUiRules`：纯 2×3 坐标、卡片交互与返回位置规则。
+- 配置与存储：不适用；无配置、存档、历史数据或 schema 变化。
 
-## 兼容风险
+## 素材与兼容风险
 
-- 复杂 Mod 条件仍诚实显示未知，不猜测也不调用第三方执行入口。
-- 超长条件依赖像素滚动与裁剪；不同语言排版需实机抽查。
-- 多人模式未实测，current replay 仍沿用原有多人禁用规则。
+- `assets/EventPlaceholder.png` 为本项目生成的原创暖色像素画，无 NPC、Event 内容、文字、第三方素材或游戏原资产；最终为 640×360 PNG。
+- 状态使用游戏已有字体绘制符号与颜色，避免引入额外图标资源；Unknown 绝不降级成红叉。
+- 不调用 Random、SendMail、GSQ 或自定义条件 callback。多人模式未实测；回放仍沿用既有多人禁用规则。
+- 超长翻译、不同 UI scale、手柄边界滚动和占位图视觉需进游戏实测。
 
 ## 验收
 
-- 自动检查 presentation 顺序/重复、known/unknown、Friendship subject、时间范围、raw/source/negation、GSQ 安全策略及 12 locale parity。
-- 运行 Checks、PersistenceChecks、Release build 与基线 diff check。
-- 实机 D21-1～D21-7：锁定/解锁详情、长条件、unknown、gap、鼠标/手柄/缩放导航及多语言；均待实测。
+- 自动：Layer 2 locked/unlocked action、2×3 顺序与无重叠、条件三态、Friendship/Time row、无 CurrentValue row、Unknown reason、共享 placeholder、12 locale key/token parity、既有 Condition/Replay/Persistence 回归。
+- 运行 `Checks`、`PersistenceChecks`、Release build、`git diff --check b589a9b...HEAD`。
+- 实机 U21-1～U21-12：左页一致、2×3 与 >6 滚动、placeholder、锁定/解锁、逐条件 row、current、unknown、长文本、footer/navigation、返回位置与多语言；交付前均标记待实测。
