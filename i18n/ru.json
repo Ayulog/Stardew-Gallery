@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "Поиск недоступен",
+  "location.custom_jenkinshouse": "Дом семьи Дженкинс",
   "condition.points-value": "{{points}} очков",
   "condition.raining": "Идёт дождь",
   "condition.not-raining": "Дождя нет",

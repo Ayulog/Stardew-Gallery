@@ -11,7 +11,7 @@ internal static class GallerySpreadLayout
     internal const int EventColumns = 2;
     internal const int EventVisibleRows = 3;
     internal const int ScrollbarX = 1508;
-    internal const int FooterBaseline = 842;
+    internal const int FooterBaseline = 862;
     internal const int IconSize = 16;
     internal const int BookLeft = 20;
     internal const int BookRight = 1652;
@@ -65,9 +65,9 @@ internal static class GallerySpreadLayout
     internal static (int X, int Y, int Width, int Height) ConditionHeadingBounds => (755, 310, 710, 40);
     internal static (int X, int Y, int Width, int Height) ConditionViewportBounds => (755, 365, 710, 420);
     internal static (int X, int Y, int Width, int Height) DetailScrollTrackBounds => (ScrollbarX, 365, 24, 420);
-    internal static (int X, int Y, int Width, int Height) FooterBounds => (755, 795, 710, 55);
-    internal static (int X, int Y, int Width, int Height) BackButtonBounds => (755, FooterBaseline - 44, 336, 48);
-    internal static (int X, int Y, int Width, int Height) ReplayButtonBounds => (1129, FooterBaseline - 44, 336, 48);
+    internal static (int X, int Y, int Width, int Height) FooterBounds => (735, 802, 764, 86);
+    internal static (int X, int Y, int Width, int Height) BackButtonBounds => (735, 810, 368, 72);
+    internal static (int X, int Y, int Width, int Height) ReplayButtonBounds => (1131, 810, 368, 72);
 
     // Atlas order is check, cross, question. Unknown must not use the cross.
     internal static (int X, int Y, int Width, int Height) ConditionCheckSource => (0, 0, IconSize, IconSize);

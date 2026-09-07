@@ -42,11 +42,11 @@ internal static class ConditionDescriber
         WeatherCondition { Kind: WeatherKind.Rainy } x => Named(x, "condition.raining", negative: "condition.not-raining"),
         WeatherCondition { Kind: WeatherKind.Sunny } x => Named(x, "condition.sunny", negative: "condition.not-sunny"),
         WeatherCondition x => NamedNegative(x, "condition.weather", "condition.weather-not", ("weather", Term("weather", NormalizeWeather(x.WeatherId)))),
-        DayOfWeekCondition x => NamedNegative(x, "condition.weekday", "condition.weekday-not", ("days", List(x.Days.Select(d => Term("weekday", d.ToString()))))),
+        DayOfWeekCondition x => DescribeWeekday(x),
         SpouseCondition x => NamedNegative(x, "condition.spouse", "condition.spouse-not", ("npc", Npc(x.Npc))),
         RoommateCondition x => NamedNegative(x, "condition.roommate-with", "condition.roommate-not", ("npc", Npc("Krobus"))),
         NpcVisibleCondition x => NamedNegative(x, "condition.npc-at-location", "condition.npc-not-at-location", ("npc", Npc(x.Npc)), ("location", Text(eventLocation ?? "event location"))),
-        SeasonCondition x => NamedNegative(x, "condition.season", "condition.season-not", ("seasons", List(x.Seasons.Select(s => Term("season", s))))),
+        SeasonCondition x => DescribeSeason(x),
         SpouseBedCondition x => Named(x, "condition.spouse-bed"),
         ReachedMineBottomCondition x => Named(x, "condition.mine-bottom", ("count", Num(x.Minimum))),
         YearCondition x => Named(x, x.DesiredYear == 1 ? "condition.year-one" : "condition.year", ("year", Num(x.DesiredYear))),
@@ -62,6 +62,23 @@ internal static class ConditionDescriber
         OpaqueCondition x => Named(x with { Negated = false }, x.Kind != OpaqueConditionKind.UnknownType ? "condition.unrecognized" : "condition.custom"),
         _ => Named(c with { Negated = false }, "condition.custom")
     };
+
+    private static ConditionTextSpec DescribeWeekday(DayOfWeekCondition condition)
+    {
+        DayOfWeek[] remaining = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday,
+            DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday }.Except(condition.Days).ToArray();
+        if (condition.Negated && remaining.Length > 0 && remaining.Length < condition.Days.Distinct().Count())
+            return Named(condition with { Negated = false }, "condition.weekday", ("days", List(remaining.Select(day => Term("weekday", day.ToString())))));
+        return NamedNegative(condition, "condition.weekday", "condition.weekday-not", ("days", List(condition.Days.Select(day => Term("weekday", day.ToString())))));
+    }
+
+    private static ConditionTextSpec DescribeSeason(SeasonCondition condition)
+    {
+        string[] remaining = new[] { "spring", "summer", "fall", "winter" }.Except(condition.Seasons, StringComparer.OrdinalIgnoreCase).ToArray();
+        if (condition.Negated && remaining.Length > 0 && remaining.Length < condition.Seasons.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+            return Named(condition with { Negated = false }, "condition.season", ("seasons", List(remaining.Select(season => Term("season", season)))));
+        return NamedNegative(condition, "condition.season", "condition.season-not", ("seasons", List(condition.Seasons.Select(season => Term("season", season)))));
+    }
 
     private static ConditionTextSpec Named(ConditionExpression c, string key, params (string Key, ConditionTextValue Value)[] args) => Named(c, key, args, null);
     private static ConditionTextSpec NamedNegative(ConditionExpression c, string key, string negative, params (string Key, ConditionTextValue Value)[] args) => Named(c, key, args, negative);

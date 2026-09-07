@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.1.2 - Input and UI Corrections / 输入与界面修正
+
+- Isolate keyboard shortcuts before SMAPI input events while editing search; keep native text input and paste, and filter control characters. / 搜索编辑期间在 SMAPI 分发前隔离键盘快捷键，保留原生文字输入和粘贴，过滤控制字符。
+- Enlarge album/detail footer buttons with padded, font-measured labels across all 12 locales. / 放大相册与详情底部按钮，按字体测量和内边距适配 12 种语言。
+- Show readable fallback location names, including Jenkins' House, and simplify long negated weekday/season lists to shorter equivalent positive descriptions. / 补齐詹金斯家等地点的可读名称，将较长的星期/季节否定列表改为更短的等价正向描述。
+- Preserve character search, scroll and focus through detail/replay return paths; return to the selected event's Details action. / 详情与回放往返保留原人物搜索、滚动及焦点；详情返回选中事件的详情入口。
+
 ## 2.1.1 - Search Performance / 搜索性能
 
 - Reuse character search results until the query, catalog, or language comparison changes, avoiding repeated filtering, sorting, and result-list allocation on idle frames. / 搜索文本、目录或语言比较规则变化时才重算人物搜索结果，消除空闲帧的重复筛选、排序及结果列表分配。

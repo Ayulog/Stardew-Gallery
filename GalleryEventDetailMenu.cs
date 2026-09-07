@@ -213,7 +213,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
         DrawHeaderText(b, $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
-        string location = Game1.getLocationFromName(entry.LocationName)?.DisplayName ?? entry.LocationName;
+        string location = GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
+            key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
         DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
         DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
     }

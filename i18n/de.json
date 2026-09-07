@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "Suche nicht verfügbar",
+  "location.custom_jenkinshouse": "Haus der Familie Jenkins",
   "condition.points-value": "{{points}} Punkte",
   "condition.raining": "Es regnet",
   "condition.not-raining": "Es regnet nicht",

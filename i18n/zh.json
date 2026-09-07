@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "搜索暂不可用",
+  "location.custom_jenkinshouse": "詹金斯家",
   "condition.points-value": "{{points}} 点",
   "condition.raining": "正在下雨",
   "condition.not-raining": "没有下雨",

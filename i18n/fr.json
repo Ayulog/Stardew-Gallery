@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "Recherche indisponible",
+  "location.custom_jenkinshouse": "Maison des Jenkins",
   "condition.points-value": "{{points}} points",
   "condition.raining": "Il pleut",
   "condition.not-raining": "Il ne pleut pas",

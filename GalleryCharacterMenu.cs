@@ -46,7 +46,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         Texture2D scrollbarTrackTexture, Func<bool> isUnlocked, Action back,
         Action<GalleryEvent, int> replay,
         Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details,
-        int initialScroll = 0, string? initialFocusIdentity = null)
+        int initialScroll = 0, string? initialFocusIdentity = null, EventCardAction initialFocusAction = EventCardAction.Details)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
         this.character = character;
@@ -73,7 +73,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             {
                 GameLocation? location = Game1.getLocationFromName(entry.LocationName);
                 return presentation.Build(entry.EventKey, RuntimeStateReader.ForLocation(sharedState, location),
-                    location?.DisplayName ?? i18n.Get("condition.event-location"));
+                    GalleryLocationName.Resolve(entry.LocationName, location?.DisplayName,
+                        key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null));
             });
         leftPanel = new GalleryCharacterPanel(character, events, i18n, scene);
 
@@ -81,7 +82,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         (scrollRow, _) = GalleryUiRules.ResolveReturnPosition(
             focusIndex, initialScroll, GalleryUiRules.EventColumns, GalleryUiRules.EventVisibleRows, events.Count);
         bool replayAvailable = focusIndex >= 0 && IsReplayAvailable(events[focusIndex]);
-        preferredComponentId = new EventCardFocus(Math.Max(0, focusIndex), replayAvailable ? EventCardAction.Replay : EventCardAction.Details)
+        preferredComponentId = new EventCardFocus(Math.Max(0, focusIndex), replayAvailable && initialFocusAction == EventCardAction.Replay
+            ? EventCardAction.Replay : EventCardAction.Details)
             .GetComponentId(CardComponentBase);
         RecalculateLayout();
         SnapForGamepad();

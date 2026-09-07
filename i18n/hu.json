@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "A keresés nem elérhető",
+  "location.custom_jenkinshouse": "A Jenkins család háza",
   "condition.points-value": "{{points}} pont",
   "condition.raining": "Esik az eső",
   "condition.not-raining": "Nem esik az eső",

@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "Search unavailable",
+  "location.custom_jenkinshouse": "Jenkins' House",
   "condition.points-value": "{{points}} points",
   "condition.raining": "It is raining",
   "condition.not-raining": "It is not raining",

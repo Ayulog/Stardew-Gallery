@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "検索は利用できません",
+  "location.custom_jenkinshouse": "ジェンキンス家",
   "condition.points-value": "{{points}}ポイント",
   "condition.raining": "雨が降っている",
   "condition.not-raining": "雨が降っていない",

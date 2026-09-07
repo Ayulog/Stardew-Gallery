@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "검색을 사용할 수 없습니다",
+  "location.custom_jenkinshouse": "젠킨스 저택",
   "condition.points-value": "{{points}}점",
   "condition.raining": "비가 내림",
   "condition.not-raining": "비가 내리지 않음",

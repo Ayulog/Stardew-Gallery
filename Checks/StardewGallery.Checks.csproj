@@ -10,6 +10,10 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="GallerySearchChecks.cs" />
+    <Compile Include="GalleryCorrectionChecks.cs" />
+    <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
+    <Compile Include="..\GalleryLocationName.cs" Link="GalleryLocationName.cs" />
+    <Compile Include="..\GalleryTextFit.cs" Link="GalleryTextFit.cs" />
     <Compile Include="..\GallerySearchFilter.cs" Link="GallerySearchFilter.cs" />
     <Compile Include="EventCardFocusChecks.cs" />
     <Compile Include="..\EventCardFocus.cs" Link="EventCardFocus.cs" />

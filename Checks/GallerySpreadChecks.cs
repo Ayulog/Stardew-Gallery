@@ -43,7 +43,7 @@ internal static class GallerySpreadChecks
             albumRegions.Add(card);
         }
         foreach (var bounds in albumRegions)
-            Contains(GallerySpreadLayout.RightPageBounds, bounds, "Album content");
+            Contains(bounds == GallerySpreadLayout.FooterBounds ? canvas : GallerySpreadLayout.RightPageBounds, bounds, "Album content");
         Disjoint("Album title, track, footer and all six cards", albumRegions.ToArray());
 
         // Header and metadata are parents, not siblings of the regions they contain.
@@ -57,7 +57,9 @@ internal static class GallerySpreadChecks
             GallerySpreadLayout.ConditionHeadingBounds, GallerySpreadLayout.ConditionViewportBounds,
             GallerySpreadLayout.FooterBounds, GallerySpreadLayout.DetailScrollTrackBounds];
         foreach (var bounds in detailRegions)
-            Contains(GallerySpreadLayout.RightPageBounds, bounds, "Detail content");
+            Contains(bounds == GallerySpreadLayout.FooterBounds ? canvas : GallerySpreadLayout.RightPageBounds, bounds, "Detail content");
+        Check(GallerySpreadLayout.FooterBounds.Y + GallerySpreadLayout.FooterBounds.Height < GallerySpreadLayout.BookBottom,
+            "Enlarged footer must remain inside the book, below content.");
         Disjoint("Detail title, header, condition heading, viewport, footer and track", detailRegions);
         Contains(GallerySpreadLayout.FooterBounds, GallerySpreadLayout.BackButtonBounds, "Back button");
         Contains(GallerySpreadLayout.FooterBounds, GallerySpreadLayout.ReplayButtonBounds, "Replay button");

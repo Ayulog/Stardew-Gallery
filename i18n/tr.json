@@ -1,4 +1,6 @@
 {
+  "home.search-unavailable": "Arama kullanılamıyor",
+  "location.custom_jenkinshouse": "Jenkins Ailesinin Evi",
   "condition.points-value": "{{points}} puan",
   "condition.raining": "Yağmur yağıyor",
   "condition.not-raining": "Yağmur yağmıyor",

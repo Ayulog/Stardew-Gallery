@@ -33,6 +33,14 @@ internal sealed class ModEntry : Mod
         }
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
+        try
+        {
+            GallerySearchInputGuard.Apply(helper, Monitor);
+        }
+        catch (Exception error)
+        {
+            Monitor.Log($"Search input isolation unavailable; search is disabled: {error}", LogLevel.Error);
+        }
         replay = new ReplayCoordinator(Monitor, helper, planner, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
         try
         {
@@ -235,8 +243,8 @@ internal sealed class ModEntry : Mod
                 Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
                 () => unlockAll,
                 ToggleUnlock,
-                (character, entry, scroll) => RequestReplay(snapshot, character, entry, scroll),
-                (character, entry, scroll, conditions) => OpenEventDetail(snapshot, character, entry, scroll, conditions));
+                (character, entry, scroll, returnHome) => RequestReplay(snapshot, character, entry, scroll, returnHome),
+                (character, entry, scroll, conditions, returnHome) => OpenEventDetail(snapshot, character, entry, scroll, conditions, returnHome));
             Game1.playSound("bigSelect");
         }
         catch (Exception error)
@@ -245,7 +253,7 @@ internal sealed class ModEntry : Mod
         }
     }
 
-    private void RequestReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, int scroll)
+    private void RequestReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, int scroll, Action returnHome)
     {
         if (!replayProtectionReady)
         {
@@ -258,22 +266,22 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        Action start = () => StartReplay(snapshot, character, entry, scroll);
+        Action start = () => StartReplay(snapshot, character, entry, scroll, returnHome);
         if (Config.ShowRollbackWarning && !rollbackWarningShown)
         {
             Game1.activeClickableMenu = new ConfirmationDialog(Helper.Translation.Get("replay.warning"), _ =>
             {
                 rollbackWarningShown = true;
                 start();
-            }, _ => OpenCharacter(snapshot, character, scroll, entry.Identity));
+            }, _ => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity));
             return;
         }
         start();
     }
 
-    private void StartReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, int scroll)
+    private void StartReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, int scroll, Action returnHome)
     {
-        Action reopen = () => OpenCharacter(snapshot, character, scroll, entry.Identity);
+        Action reopen = () => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity, EventCardAction.Replay);
         bool ok = replay.TryStart(entry, reopen, out string error);
         if (!ok)
         {
@@ -283,7 +291,8 @@ internal sealed class ModEntry : Mod
         }
     }
 
-    private void OpenCharacter(GalleryCatalog snapshot, GalleryCharacter character, int scroll, string? focusIdentity = null)
+    private void OpenCharacter(GalleryCatalog snapshot, GalleryCharacter character, int scroll, Action returnHome,
+        string? focusIdentity = null, EventCardAction focusAction = EventCardAction.Details)
     {
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, snapshot, Helper.Translation,
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.EventAlbum),
@@ -293,11 +302,12 @@ internal sealed class ModEntry : Mod
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.EventSlotFrame),
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
             () => unlockAll,
-            OpenGallery,
-            (entry, position) => RequestReplay(snapshot, character, entry, position),
-            (entry, position, conditions) => OpenEventDetail(snapshot, character, entry, position, conditions),
+            returnHome,
+            (entry, position) => RequestReplay(snapshot, character, entry, position, returnHome),
+            (entry, position, conditions) => OpenEventDetail(snapshot, character, entry, position, conditions, returnHome),
             scroll,
-            focusIdentity);
+            focusIdentity,
+            focusAction);
     }
 
     private void OpenEventDetail(
@@ -305,7 +315,8 @@ internal sealed class ModEntry : Mod
         GalleryCharacter character,
         GalleryEvent entry,
         int scroll,
-        IReadOnlyList<ConditionDisplayItem> conditions)
+        IReadOnlyList<ConditionDisplayItem> conditions,
+        Action returnHome)
     {
         bool CanReplay() => EventCardStateResolver.Resolve(
             Game1.player.eventsSeen.Contains(entry.EventId), unlockAll).Unlocked;
@@ -321,8 +332,8 @@ internal sealed class ModEntry : Mod
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ConditionStatusIcons),
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
             CanReplay,
-            () => OpenCharacter(snapshot, character, scroll, entry.Identity),
-            () => RequestReplay(snapshot, character, entry, scroll));
+            () => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity),
+            () => RequestReplay(snapshot, character, entry, scroll, returnHome));
     }
 
     private void ToggleUnlock()

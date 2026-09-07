@@ -29,10 +29,11 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Texture2D scrollbarTrackTexture;
     private readonly Func<bool> isUnlocked;
     private readonly Action toggleUnlock;
-    private readonly Action<GalleryCharacter, GalleryEvent, int> replay;
-    private readonly Action<GalleryCharacter, GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details;
+    private readonly Action<GalleryCharacter, GalleryEvent, int, Action> replay;
+    private readonly Action<GalleryCharacter, GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>, Action> details;
     private readonly TextBox search;
     private readonly GallerySearchFilter searchFilter = new();
+    private string validatedSearchText = "";
     private List<GalleryCharacter> filtered = [];
     private int scrollRow;
     private bool dragging;
@@ -68,8 +69,8 @@ internal sealed class GalleryMenu : IClickableMenu
         Texture2D scrollbarTrackTexture,
         Func<bool> isUnlocked,
         Action toggleUnlock,
-        Action<GalleryCharacter, GalleryEvent, int> replay,
-        Action<GalleryCharacter, GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details,
+        Action<GalleryCharacter, GalleryEvent, int, Action> replay,
+        Action<GalleryCharacter, GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>, Action> details,
         string initialSearchText = "",
         int initialScrollRow = 0,
         string? initialFocusCharacterName = null)
@@ -168,7 +169,8 @@ internal sealed class GalleryMenu : IClickableMenu
         }
         if (searchBounds.Contains(x, y))
         {
-            search.SelectMe();
+            if (GallerySearchInputGuard.Ready)
+                search.SelectMe();
             return;
         }
         DeselectSearch();
@@ -185,13 +187,15 @@ internal sealed class GalleryMenu : IClickableMenu
             string returnSearchText = search.Text;
             int returnScrollRow = scrollRow;
             string returnCharacterName = character.Name;
+            Action returnHome = () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene,
+                eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
+                returnSearchText, returnScrollRow, returnCharacterName);
             Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail, replayGlyph,
                 slotFrame, scrollbarTrackTexture,
                 isUnlocked,
-                () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
-                    returnSearchText, returnScrollRow, returnCharacterName),
-                (entry, scroll) => replay(character, entry, scroll),
-                (entry, scroll, conditions) => details(character, entry, scroll, conditions));
+                returnHome,
+                (entry, scroll) => replay(character, entry, scroll, returnHome),
+                (entry, scroll, conditions) => details(character, entry, scroll, conditions, returnHome));
             return;
         }
 
@@ -236,9 +240,10 @@ internal sealed class GalleryMenu : IClickableMenu
 
     public override void receiveKeyPress(Keys key)
     {
-        if (key == Keys.Escape && search.Selected)
+        if (search.Selected)
         {
-            DeselectSearch();
+            if (key == Keys.Escape)
+                DeselectSearch();
             return;
         }
         base.receiveKeyPress(key);
@@ -294,7 +299,8 @@ internal sealed class GalleryMenu : IClickableMenu
         DrawButton(b, unlockBounds, i18n.Get(isUnlocked() ? "menu.restore-locks" : "menu.unlock-all"));
         search.Draw(b);
         if (search.Text.Length == 0 && !search.Selected)
-            b.DrawString(Game1.smallFont, i18n.Get("home.search"), new Vector2(searchBounds.X + 12, searchBounds.Y + 10), Color.Gray);
+            DrawLeftFitted(b, i18n.Get(GallerySearchInputGuard.Ready ? "home.search" : "home.search-unavailable"),
+                new Rectangle(searchBounds.X + 12, searchBounds.Y + 8, searchBounds.Width - 24, searchBounds.Height - 16));
 
         int first = scrollRow * Columns;
         for (int slot = 0; slot < Columns * VisibleRows && first + slot < filtered.Count; slot++)
@@ -365,6 +371,11 @@ internal sealed class GalleryMenu : IClickableMenu
 
     private void RefreshFilter()
     {
+        if (search.Text != validatedSearchText)
+        {
+            search.Text = GallerySearchInput.CleanText(search.Text);
+            validatedSearchText = search.Text;
+        }
         bool changed = searchFilter.Update(catalog, search.Text, i18n.Locale,
             LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.zh);
         filtered = searchFilter.Results;
@@ -383,13 +394,16 @@ internal sealed class GalleryMenu : IClickableMenu
         string returnSearchText = search.Text;
         int returnScrollRow = scrollRow;
         string returnCharacterName = character.Name;
+        Action returnHome = () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene,
+            eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
+            returnSearchText, returnScrollRow, returnCharacterName);
+        DeselectSearch();
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail, replayGlyph,
             slotFrame, scrollbarTrackTexture,
             isUnlocked,
-            () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene, eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
-                returnSearchText, returnScrollRow, returnCharacterName),
-            (entry, scroll) => replay(character, entry, scroll),
-            (entry, scroll, conditions) => details(character, entry, scroll, conditions));
+            returnHome,
+            (entry, scroll) => replay(character, entry, scroll, returnHome),
+            (entry, scroll, conditions) => details(character, entry, scroll, conditions, returnHome));
     }
 
     private int MaxScroll => Math.Max(0, (filtered.Count + Columns - 1) / Columns - VisibleRows);
@@ -525,7 +539,7 @@ internal sealed class GalleryMenu : IClickableMenu
     internal static void DrawButton(SpriteBatch b, Rectangle bounds, string text)
     {
         IClickableMenu.drawTextureBox(b, bounds.X, bounds.Y, bounds.Width, bounds.Height, Color.White);
-        DrawCentered(b, text, bounds);
+        DrawCentered(b, text, new Rectangle(bounds.X + 20, bounds.Y + 8, bounds.Width - 40, bounds.Height - 16));
     }
 
     internal static void DrawScrollbar(SpriteBatch b, Rectangle thumb) =>
@@ -537,14 +551,14 @@ internal sealed class GalleryMenu : IClickableMenu
     internal static void DrawCentered(SpriteBatch b, string text, Rectangle bounds)
     {
         Vector2 size = Game1.smallFont.MeasureString(text);
-        float scale = Math.Min(1f, bounds.Width / Math.Max(1f, size.X));
+        float scale = GalleryTextFit.Scale(size.X, size.Y, bounds.Width, bounds.Height);
         b.DrawString(Game1.smallFont, text, new Vector2(bounds.Center.X - size.X * scale / 2, bounds.Center.Y - size.Y * scale / 2), Game1.textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
     internal static void DrawLeftFitted(SpriteBatch b, string text, Rectangle bounds)
     {
         Vector2 size = Game1.smallFont.MeasureString(text);
-        float scale = Math.Min(1f, bounds.Width / Math.Max(1f, size.X));
+        float scale = GalleryTextFit.Scale(size.X, size.Y, bounds.Width, bounds.Height);
         b.DrawString(Game1.smallFont, text, new Vector2(bounds.X, bounds.Center.Y - size.Y * scale / 2), Game1.textColor,
             0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
