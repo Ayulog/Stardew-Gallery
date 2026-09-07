@@ -17,10 +17,7 @@ internal static class GalleryUiRules
         => (index / EventColumns, index % EventColumns);
 
     internal static (int X, int Y, int Width, int Height) EventCardBounds(int visibleIndex)
-    {
-        (int row, int column) = EventCardPosition(visibleIndex);
-        return (755 + column * 365, 140 + row * 225, 345, 205);
-    }
+        => GallerySpreadLayout.EventCardBounds(visibleIndex);
 
     internal static EventCardInteraction EventCardInteraction(bool unlocked)
         => new(CanReplay: unlocked, CanViewDetails: true);

@@ -9,6 +9,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="EventCardFocusChecks.cs" />
+    <Compile Include="..\EventCardFocus.cs" Link="EventCardFocus.cs" />
+    <Compile Include="GallerySpreadChecks.cs" />
+    <Compile Include="..\GallerySpreadLayout.cs" Link="GallerySpreadLayout.cs" />
     <Compile Include="..\Conditions\ConditionTruth.cs" Link="Conditions\ConditionTruth.cs" />
     <Compile Include="..\Conditions\ConditionKnowledge.cs" Link="Conditions\ConditionKnowledge.cs" />
     <Compile Include="..\Conditions\ConditionSource.cs" Link="Conditions\ConditionSource.cs" />

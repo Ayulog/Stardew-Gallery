@@ -17,7 +17,7 @@ internal sealed class GalleryCharacterPanel(
 
     internal void DrawPhoto(SpriteBatch b)
     {
-        Rectangle photo = new(240, 120, 380, 270);
+        Rectangle photo = Bounds(GallerySpreadLayout.PortraitBounds);
         b.Draw(scene, photo, Color.White);
         previewSprite ??= Game1.getCharacterFromName(character.Name)?.Sprite?.Clone();
         if (previewSprite?.Texture is null)
@@ -47,8 +47,8 @@ internal sealed class GalleryCharacterPanel(
             day = data.BirthDay
         });
         string relationship = friendship is null ? i18n.Get("status.none") : i18n.Get($"status.{friendship.Status.ToString().ToLowerInvariant()}");
-        GalleryMenu.DrawCentered(b, character.DisplayName, new Rectangle(195, 432, 445, 48));
-        DrawHearts(b, new Rectangle(195, 495, 445, 48), friendship?.Points ?? 0, data?.CanBeRomanced == true);
+        GalleryMenu.DrawCentered(b, character.DisplayName, Bounds(GallerySpreadLayout.LeftRowBounds(0)));
+        DrawHearts(b, Bounds(GallerySpreadLayout.LeftRowBounds(1)), friendship?.Points ?? 0, data?.CanBeRomanced == true);
         string[] lines =
         [
             i18n.Get("detail.birthday", new { birthday }),
@@ -57,7 +57,7 @@ internal sealed class GalleryCharacterPanel(
             i18n.Get("detail.seen", new { seen = events.Count(entry => Game1.player.eventsSeen.Contains(entry.EventId)), total = events.Count, relationship })
         ];
         for (int i = 0; i < lines.Length; i++)
-            GalleryMenu.DrawCentered(b, lines[i], new Rectangle(195, 558 + i * 63, 445, 48));
+            GalleryMenu.DrawCentered(b, lines[i], Bounds(GallerySpreadLayout.LeftRowBounds(i + 2)));
     }
 
     private static void DrawHearts(SpriteBatch b, Rectangle bounds, int points, bool canBeRomanced)
@@ -77,4 +77,7 @@ internal sealed class GalleryCharacterPanel(
         string translated = i18n.Get(key);
         return translated == key ? value : translated;
     }
+
+    private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds)
+        => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
 }

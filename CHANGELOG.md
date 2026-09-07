@@ -4,10 +4,12 @@
 
 - Reworked each character's event page into a two-column, three-row thumbnail album with continuous scrolling and a project-owned placeholder image. / 将角色事件页改为两列三行、可连续滚动的缩略图相册，并加入项目自有占位图。
 - Kept the character panel identical between album and detail; event cards now show only heart threshold, event ID, thumbnail, replay, and a compact details action. / 相册与详情共用完全一致的角色左页；事件卡只显示心数门槛、事件 ID、缩略图、回放与精简详情入口。
-- Detail conditions now use one variable-height row each, identify the affected NPC for multi-friendship gaps, and show native check/cross sprites or an unknown question mark. / 详情条件改为逐条可变高度行，多角色好感缺口会标明当前值对应角色，并使用原版勾/叉或未知问号。
+- Detail conditions use variable-height rows and original parchment-style check/cross/unknown pixel icons, retaining the affected NPC for multi-friendship gaps. / 详情采用可变高度条件行与原创羊皮纸风格勾/叉/未知像素图标，保留多角色好感缺口的对应角色。
 - Unknown rows keep a lightweight reason without exposing raw/source diagnostics in the main UI; unlocked replay and locked-event protection remain unchanged. / 未知条件仅显示轻量原因，不在主界面堆叠原始/来源诊断；已解锁回放与锁定保护保持不变。
 - Added complete album/detail localization for all 12 supported languages. / 为全部 12 种支持语言补齐相册与详情文本。
 - Fixed controller navigation from each unlocked card's Details action to its Replay thumbnail, including mixed locked cards and scrolling across rows. / 修复手柄从已解锁卡片详情到同卡回放缩略图的导航，并覆盖锁定混排与跨行滚动。
+- Redesigned both event spreads with dedicated background-owned layouts, light Details links, original replay glyphs, and shared brown scrollbars; condition rows no longer stack framed panels. / 两层事件书页改用背景主导的独立布局、轻量详情链接、原创播放标记与统一棕色滚动条，条件行不再叠加厚框。
+- Unified card navigation around persistent event/action focus, including lower-row Details, locked fallback, scrolling, and footer return. / 以稳定事件索引与动作焦点统一卡片导航，覆盖下排详情、锁定回退、滚动与页底返回。
 
 ## 2.0.6 — Stop Historical Collection / 停止历史采集
 

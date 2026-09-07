@@ -1,5 +1,7 @@
 # Stardew Gallery 2.1.0 — Event Album + Event Detail
 
+> 下方第一阶段记录保留为历史上下文；当前实现以本文末尾的 **UI Integration Redesign Phase 2** 为准。V21 实机门尚未完成，不能宣布 UI CLOSED。
+
 ## 目标与边界
 
 本版把角色事件页定型为缩略图相册，并提供逐条件详情：Layer 1 人物相册不改；Layer 2 左页保留人物大图与固定六行资料，右页显示 2×3 Event Card；Layer 3 只替换右页为事件信息和条件状态。
@@ -45,3 +47,94 @@
 - 自动：Layer 2 locked/unlocked action、2×3 顺序与无重叠、条件三态、单/多人 Friendship 与 Time row、多人 `GapSubject`、无 CurrentValue row、Unknown reason、共享 placeholder、12 locale key/token parity、既有 Condition/Replay/Persistence 回归。
 - 运行 `Checks`、`PersistenceChecks`、Release build、`git diff --check b589a9b...HEAD`。
 - 新增实机 C21-1～C21-3：纯手柄到达同卡 Replay/跨行混排、原版三态图标视觉、多人 Friendship subject；完成后再跑 U21-1～U21-12，交付前均标记待实测。
+
+## UI Integration Redesign Phase 2
+
+### 基线与范围
+
+- 分支：`feature/2.1.0-event-detail`。
+- 精确基线：`dcfac2c3ec8a86e8e845ae2d0eb7becc99d6d198`；另检查 `b589a9b` 至最终提交的 whitespace diff。
+- 版本仍为 `2.1.0`，manifest、项目版本均不变。
+- Layer 1 绘制不变，`GalleryMenu` 仅传递 Layer 2 所需的新 replay texture。
+- Condition AST/evaluator、三态分类、GapSubject、unlock、RequestReplay、EventPlayback、Catalog、History、Persistence 全部不变。
+- 不新增条件探测或 callback，不开始 PossibilityIndex、Solver、截图系统、Historical Replay 或下一版本。
+
+### 视觉归属
+
+采用 A：Background owns structure。一种视觉边框只有一个 owner。
+
+| 元素 | Owner |
+| --- | --- |
+| book border / page texture / title slot | background |
+| album slot corners | album background |
+| detail header/condition heading/footer 分区线 | detail background |
+| scrollbar channel | background |
+| thumbnail 内容 | runtime，继续 `EventThumbnailAsset.For` -> placeholder |
+| 条件 row separator | runtime，单条淡棕线 |
+| 文字 / 状态图标 / Replay glyph | runtime |
+| Details underline / thumbnail corner focus | runtime |
+| scroll thumb / footer tab highlight | runtime |
+
+Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `drawTextureBox`。不再叠加旧橙色容器。
+
+### 坐标与资源
+
+`GallerySpreadLayout` 集中维护 1672×941 逻辑画布、book/spine anchors、两页 bounds、标题、六行左页、两层右页/scroll/footer/icon source。
+
+- 左页 portrait `(240,120,380,270)`，六行 `(195,432+63*i,445,48)` 完全保持原坐标；`GalleryCharacterPanel` 仅将字面常量替换为共享 bounds。
+- Layer 2 为 `345×205` 六卡，起点 `(755,140)`，列距365，行距225；header / Details / thumbnail 是互不重叠的子区域。
+- Details 是 smallFont 文本 link，hitbox 按实际测量文字加4px padding，各 locale 在98×36区域内 fitted；无厚按钮。
+- thumbnail 265×149，unlocked 图像可点击回放；locked 使用轻度暗化且隐藏播放标记，不禁用 Details。
+- Layer 3 header：左侧425px元信息，右侧265×149封面；条件标题固定，正文 viewport `(755,365,710,420)`。
+- 两层 scrollbar X=1508；footer 共享 `(755,810,710,40)`，文字 baseline 位于842。
+- Layer 3 row 测量与绘制共用622px宽度，保持原 structured row 文本与 Unknown reason，变量高度/像素滚动/scissor，图标垂直居中。
+- 状态 atlas：`assets/ConditionStatusIcons.png`，48×16，check/cross/question 顺序，16×16源、3倍绘制、PointClamp。
+- 播放图标：`assets/ReplayGlyph.png`，16×16原创像素三角，替代 Unicode 播放字形。
+- 背景：`assets/GalleryEventAlbum-v3.png`、`assets/GalleryEventDetail-v3.png`，各1672×941。
+- 资源生产说明见 `docs/GALLERY_SPREAD_ASSETS.md`；`tools/Generate-GallerySpreadAssets.ps1 -VerifyOnly` 验证原左页逐像素及透明 portrait 孔位、布局与图标。素材只重用本项目已有美术并原创绘制右页/图标，无第三方 Mod 或 icon sheet。
+
+### Controller 规则
+
+`EventCardFocus(EventIndex, Details|Replay)` 为纯 helper，ID采用 `2000 + 2*eventIndex + action`，不以可视slot作为长期身份，避免两组base ID在大目录中冲突。
+
+- Details 左/右：同视觉行另一列 Details；第一列 Left 进入 Back。
+- Details Down：unlocked进入同卡Replay；locked进入下一行同列Details。
+- Details Up：上一行同列Details。
+- Replay Up：同卡Details；左右及Down保留Replay family，目标locked退到Details。
+- 可视第三行Replay Down才滚一行，真实事件索引/列/action一起保留；目录末尾Down进入Back。
+- Back记住卡片action并返回；在Back焦点下滚动后，将记忆焦点限制到新可见行，避免跳回目录首行。
+- `applyMovementKey` 是两层的唯一方向调度入口；删除 Layer 2 的 `ScrollController` 拦截，Layer 3 上下像素滚动、左右footer。
+- A按逻辑component激活对应Details/Replay，不依赖旧鼠标位置；重排/滚轮后同步Snappy光标，拖动期间不抢光标、release后同步。
+- native输入分发、按住重复及一次A是否恰好调用一次仍必须实机验证，不以纯helper通过替代。
+
+### 自动检查与兼容性
+
+- `Checks/EventCardFocusChecks.cs` 覆盖F21-1到5、前三行同卡Details↓Replay、第四行滚动、锁定回退、奇数尾行、footer焦点恢复、10000个稳定ID，以及全部512种九卡解锁排列的可达性。
+- `Checks/GallerySpreadChecks.cs` 覆盖六卡与子区域无重叠、Layer 3各分区、scroll/footer、左页不变、资源路径/PNG尺寸/atlas边界；这些文件显式link进Checks。
+- 12 locale文件无改动、无新key；现有key/token parity和条件三态/多好感subject/time/无current回归继续执行。
+- 检查工程一度触发CS8785：SDK8的C#12 tuple alias触发net6 JSON generator旧语法扫描。基线复现对比后，移除测试中的tuple alias解决；没有禁用analyzer或增加依赖。
+- 构建继续 `EnableModDeploy=false` / `EnableModZip=true`。没有安装或覆盖游戏目录中的DLL，没有修改其他Mods。
+- ZIP已检查包含两张新背景、状态atlas、ReplayGlyph和既有EventPlaceholder；新tools/test/source未作为runtime文件打包。
+
+### 手工门与截图
+
+以下均为 **MANUAL REQUIRED**，本次没有获得运行中游戏截图，不宣布2.1.0 UI CLOSED：
+
+| 项目 | 状态 / 所需证据 |
+| --- | --- |
+| V21-1 背景融合 | MANUAL REQUIRED：Layer2 100%截图无双框 |
+| V21-2 对齐 | MANUAL REQUIRED：100%/90%/80% UI scale |
+| V21-3 左页 | MANUAL REQUIRED：两层左页对比；自动像素/坐标检查已通过 |
+| V21-4 每行Details | MANUAL REQUIRED：第一/二/三及滚后第四行A打开 |
+| V21-5 Replay | MANUAL REQUIRED：左右列/各行/locked fallback |
+| V21-6 Layer3 | MANUAL REQUIRED：专属右页整体截图 |
+| V21-7 图标 | MANUAL REQUIRED：三态同屏；原创PNG已静态查看 |
+| V21-8 长条件 | MANUAL REQUIRED：multi Friendship、GSQ、opaque换行/滚动 |
+| V21-9 Unknown | MANUAL REQUIRED：问号与轻量原因，不变红叉 |
+| V21-10 >6事件 | MANUAL REQUIRED：滚动后槽位/滑块 |
+| V21-11 Mouse | MANUAL REQUIRED：link/thumbnail/drag/Back hitbox |
+| V21-12 locale | MANUAL REQUIRED：EN/DE/RU/ZH截图 |
+
+交付截图清单：Layer2 100%、Layer3 100%、Layer2 >6滚后、Layer3长条件、row2 Details焦点、row3 Replay焦点。全部待用户实机取得；没有实现截图功能。
+
+安装DLL hash比对未完成：任务未明确授权本次安装，保留已安装版本，不能声称与build DLL相同。下一步仅为安装确认及V21手工验收，不自动merge/tag/release或开始2.1.1。

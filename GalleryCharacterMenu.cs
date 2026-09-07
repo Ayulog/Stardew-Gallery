@@ -11,12 +11,12 @@ namespace StardewGallery;
 internal sealed class GalleryCharacterMenu : IClickableMenu
 {
     private const int BackComponentId = 1000;
-    private const int ReplayComponentBase = 2000;
-    private const int DetailsComponentBase = 3000;
+    private const int CardComponentBase = 2000;
     private readonly GalleryCharacter character;
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
+    private readonly Texture2D replayGlyph;
     private readonly Action back;
     private readonly Action<GalleryEvent, int> replay;
     private readonly Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details;
@@ -37,9 +37,10 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private int drawOffsetX;
     private int drawOffsetY;
     private bool pendingInitialSnap = true;
+    private EventCardFocus? lastCardFocus;
 
     internal GalleryCharacterMenu(GalleryCharacter character, GalleryCatalog catalog, ITranslationHelper i18n,
-        Texture2D background, Texture2D scene, Texture2D thumbnail, Func<bool> isUnlocked, Action back,
+        Texture2D background, Texture2D scene, Texture2D thumbnail, Texture2D replayGlyph, Func<bool> isUnlocked, Action back,
         Action<GalleryEvent, int> replay,
         Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details,
         int initialScroll = 0, string? initialFocusIdentity = null)
@@ -49,6 +50,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         this.i18n = i18n;
         this.background = background;
         this.thumbnail = thumbnail;
+        this.replayGlyph = replayGlyph;
         this.isUnlocked = isUnlocked;
         this.back = back;
         this.replay = replay;
@@ -69,7 +71,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         (scrollRow, _) = GalleryUiRules.ResolveReturnPosition(
             focusIndex, initialScroll, GalleryUiRules.EventColumns, GalleryUiRules.EventVisibleRows, events.Count);
         bool replayAvailable = focusIndex >= 0 && IsReplayAvailable(events[focusIndex]);
-        preferredComponentId = focusIndex < 0 ? DetailsComponentBase : (replayAvailable ? ReplayComponentBase : DetailsComponentBase) + focusIndex;
+        preferredComponentId = new EventCardFocus(Math.Max(0, focusIndex), replayAvailable ? EventCardAction.Replay : EventCardAction.Details)
+            .GetComponentId(CardComponentBase);
         RecalculateLayout();
         SnapForGamepad();
     }
@@ -120,13 +123,12 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         for (int slot = 0; slot < visible; slot++)
         {
             GalleryEvent entry = events[first + slot];
-            Rectangle card = Card(slot);
-            if (DetailsBounds(card).Contains(x, y))
+            if (DetailsBounds(slot).Contains(x, y))
             {
                 details(entry, scrollRow, conditionItems[entry.Resolved.Identity]);
                 return;
             }
-            if (IsReplayAvailable(entry) && ThumbnailBounds(card).Contains(x, y))
+            if (IsReplayAvailable(entry) && Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)).Contains(x, y))
             {
                 replay(entry, scrollRow);
                 return;
@@ -148,6 +150,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     public override void releaseLeftClick(int x, int y)
     {
         dragging = false;
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
         base.releaseLeftClick(x, y);
     }
 
@@ -170,16 +174,71 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             Return();
             return;
         }
-        if ((button is Buttons.DPadDown or Buttons.LeftThumbstickDown) && ScrollController(1)
-            || (button is Buttons.DPadUp or Buttons.LeftThumbstickUp) && ScrollController(-1))
-            return;
+        if (button == Buttons.A && Game1.options.snappyMenus)
+        {
+            int id = currentlySnappedComponent?.myID ?? -1;
+            if (id == BackComponentId)
+            {
+                Return();
+                return;
+            }
+            if (EventCardFocus.TryFromComponentId(id, CardComponentBase, events.Count, out EventCardFocus focus))
+            {
+                GalleryEvent entry = events[focus.EventIndex];
+                if (focus.Action == EventCardAction.Details)
+                    details(entry, scrollRow, conditionItems[entry.Resolved.Identity]);
+                else if (IsReplayAvailable(entry))
+                    replay(entry, scrollRow);
+                return;
+            }
+        }
         base.receiveGamePadButton(button);
+    }
+
+    // Native Snappy movement has one owner. Details/Replay transitions and scrolling
+    // are resolved together, so a lower-row Details press cannot be stolen by scroll.
+    public override void applyMovementKey(int direction)
+    {
+        if (direction < 0 || direction > 3)
+            return;
+        int id = currentlySnappedComponent?.myID ?? BackComponentId;
+        if (!EventCardFocus.TryFromComponentId(id, CardComponentBase, events.Count, out EventCardFocus focus))
+        {
+            if (events.Count > 0 && direction is 0 or 1)
+                FocusCard(lastCardFocus ?? new EventCardFocus(scrollRow * 2, EventCardAction.Details));
+            return;
+        }
+        if (direction == 3 && focus.EventIndex % GalleryUiRules.EventColumns == 0
+            || direction == 2 && focus.EventIndex + 2 >= events.Count
+                && (focus.Action == EventCardAction.Replay || !IsReplayAvailable(events[focus.EventIndex])))
+        {
+            lastCardFocus = focus;
+            currentlySnappedComponent = allClickableComponents.First(component => component.myID == BackComponentId);
+            snapCursorToCurrentSnappedComponent();
+            return;
+        }
+        var next = focus.Navigate((EventCardDirection)direction, events.Count, index => IsReplayAvailable(events[index]), scrollRow);
+        if (next.Focus is EventCardFocus target)
+            FocusCard(target);
+    }
+
+    private void FocusCard(EventCardFocus focus)
+    {
+        var normalized = focus.Normalize(events.Count, index => IsReplayAvailable(events[index]), scrollRow);
+        if (normalized.Focus is not EventCardFocus target)
+            return;
+        lastCardFocus = target;
+        scrollRow = normalized.ScrollRow;
+        UpdateScrollbar();
+        BuildClickableComponents();
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target.GetComponentId(CardComponentBase));
+        snapCursorToCurrentSnappedComponent();
     }
 
     public override void snapToDefaultClickableComponent()
     {
         currentlySnappedComponent = allClickableComponents?.FirstOrDefault(component => component.myID == preferredComponentId)
-            ?? allClickableComponents?.FirstOrDefault(component => component.myID >= DetailsComponentBase)
+            ?? allClickableComponents?.FirstOrDefault(component => component.myID >= CardComponentBase)
             ?? allClickableComponents?.FirstOrDefault(component => component.myID == BackComponentId);
         snapCursorToCurrentSnappedComponent();
     }
@@ -191,62 +250,52 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
-        DrawPageTitle(b, i18n.Get("detail.title"), new Rectangle(895, 68, 530, 56));
+        DrawPageTitle(b, i18n.Get("detail.title"), Bounds(GallerySpreadLayout.TitleBounds));
         leftPanel.DrawInformation(b);
 
         int first = scrollRow * GalleryUiRules.EventColumns;
         int visible = Math.Min(GalleryUiRules.EventColumns * GalleryUiRules.EventVisibleRows, events.Count - first);
         for (int slot = 0; slot < visible; slot++)
-            DrawEvent(b, events[first + slot], Card(slot));
+            DrawEvent(b, events[first + slot], slot, first + slot);
         if (MaxScroll > 0)
-            GalleryMenu.DrawScrollbar(b, scrollThumb);
-        GalleryMenu.DrawButton(b, backBounds, i18n.Get("detail.back"));
+            GallerySpreadDrawing.DrawScrollbar(b, scrollThumb);
+        GallerySpreadDrawing.DrawFooterTab(b, backBounds, i18n.Get("detail.back"), Highlighted(backBounds, BackComponentId));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
         drawMouse(b);
     }
 
-    private void DrawEvent(SpriteBatch b, GalleryEvent entry, Rectangle card)
+    private void DrawEvent(SpriteBatch b, GalleryEvent entry, int slot, int index)
     {
-        IClickableMenu.drawTextureBox(b, card.X, card.Y, card.Width, card.Height, Color.White);
         EventOwner owner = entry.Ownership.Owners.First(value => value.Name == character.Name);
         string hearts = owner.FriendshipPoints is int points
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
-        GalleryMenu.DrawLeftFitted(b, $"{hearts} · ID {entry.EventId}", new Rectangle(card.X + 16, card.Y + 10, card.Width - 132, 34));
-        GalleryMenu.DrawLeftFitted(b, i18n.Get("event.details-short"), DetailsBounds(card));
+        GalleryMenu.DrawLeftFitted(b, $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.EventCardHeaderBounds(slot)));
+        Rectangle detailWell = Bounds(GallerySpreadLayout.EventCardDetailsBounds(slot));
+        string label = i18n.Get("event.details-short");
+        Vector2 labelSize = Game1.smallFont.MeasureString(label);
+        float labelScale = Math.Min(1f, Math.Min((detailWell.Width - 8) / Math.Max(1, labelSize.X), (detailWell.Height - 8) / Math.Max(1, labelSize.Y)));
+        bool detailsFocused = Highlighted(DetailsBounds(slot), new EventCardFocus(index, EventCardAction.Details).GetComponentId(CardComponentBase));
+        Vector2 labelPosition = new(detailWell.Right - 4 - labelSize.X * labelScale, detailWell.Center.Y - labelSize.Y * labelScale / 2);
+        b.DrawString(Game1.smallFont, label, labelPosition, detailsFocused ? new Color(155, 99, 32) : GallerySpreadDrawing.Ink,
+            0, Vector2.Zero, labelScale, SpriteEffects.None, 0);
+        if (detailsFocused)
+            b.Draw(Game1.staminaRect, new Rectangle((int)labelPosition.X, (int)(labelPosition.Y + labelSize.Y * labelScale), (int)(labelSize.X * labelScale), 2), GallerySpreadDrawing.LightInk);
 
-        Rectangle image = ThumbnailBounds(card);
-        Color tint = IsReplayAvailable(entry) ? Color.White : Color.Gray * .72f;
+        Rectangle image = Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot));
+        bool unlocked = IsReplayAvailable(entry);
+        bool replayFocused = unlocked && Highlighted(image, new EventCardFocus(index, EventCardAction.Replay).GetComponentId(CardComponentBase));
+        Color tint = unlocked ? Color.White : new Color(185, 180, 167);
         b.Draw(thumbnail, image, null, tint, 0f, Vector2.Zero, SpriteEffects.None, .88f);
-        if (IsReplayAvailable(entry))
-            GalleryMenu.DrawCentered(b, "▶", new Rectangle(image.Right - 42, image.Bottom - 36, 34, 30));
-    }
-
-    private bool ScrollController(int direction)
-    {
-        int id = currentlySnappedComponent?.myID ?? -1;
-        int baseId = id >= DetailsComponentBase ? DetailsComponentBase : id >= ReplayComponentBase ? ReplayComponentBase : -1;
-        if (baseId < 0)
-            return false;
-        int index = id - baseId;
-        if ((direction > 0 && baseId == DetailsComponentBase && IsReplayAvailable(events[index]))
-            || (direction < 0 && baseId == ReplayComponentBase))
-            return false;
-        int visibleRow = index / GalleryUiRules.EventColumns - scrollRow;
-        if (direction > 0 && (visibleRow < GalleryUiRules.EventVisibleRows - 1 || scrollRow >= MaxScroll)
-            || direction < 0 && (visibleRow > 0 || scrollRow <= 0))
-            return false;
-        int target = index + direction * GalleryUiRules.EventColumns;
-        if (target < 0 || target >= events.Count)
-            return false;
-        scrollRow += direction;
-        UpdateScrollbar();
-        BuildClickableComponents();
-        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == baseId + target)
-            ?? allClickableComponents.FirstOrDefault(component => component.myID == DetailsComponentBase + target);
-        snapCursorToCurrentSnappedComponent();
-        return true;
+        if (unlocked)
+            b.Draw(replayGlyph, new Rectangle(image.Right - 52, image.Bottom - 52, 48, 48), replayFocused ? Color.White : Color.White * .8f);
+        if (replayFocused)
+        {
+            Color ink = GallerySpreadDrawing.LightInk;
+            foreach (Point corner in new[] { new Point(image.X, image.Y), new Point(image.Right - 12, image.Y), new Point(image.X, image.Bottom - 2), new Point(image.Right - 12, image.Bottom - 2) })
+                b.Draw(Game1.staminaRect, new Rectangle(corner.X, corner.Y, 12, 2), ink);
+        }
     }
 
     private void RecalculateLayout()
@@ -260,8 +309,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         viewportWidth = Game1.uiViewport.Width;
         viewportHeight = Game1.uiViewport.Height;
         initializeUpperRightCloseButton();
-        scrollTrack = new Rectangle(1508, 180, 24, 600);
-        backBounds = new Rectangle(360, 842, 280, 52);
+        scrollTrack = Bounds(GallerySpreadLayout.AlbumScrollTrackBounds);
+        backBounds = Bounds(GallerySpreadLayout.BackButtonBounds);
         UpdateScrollbar();
         BuildClickableComponents();
     }
@@ -299,40 +348,40 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         for (int slot = 0; slot < visible; slot++)
         {
             int index = first + slot;
-            (int row, int column) = GalleryUiRules.EventCardPosition(slot);
-            int leftIndex = column > 0 ? index - 1 : -1;
-            int rightIndex = column + 1 < GalleryUiRules.EventColumns && index + 1 < events.Count ? index + 1 : -1;
-            int upIndex = row > 0 ? index - GalleryUiRules.EventColumns : -1;
-            int downIndex = row + 1 < GalleryUiRules.EventVisibleRows && index + GalleryUiRules.EventColumns < events.Count ? index + GalleryUiRules.EventColumns : -1;
-            Rectangle card = Card(slot);
-            allClickableComponents.Add(new ClickableComponent(ToScreen(DetailsBounds(card)), $"details-{index}")
+            allClickableComponents.Add(new ClickableComponent(ToScreen(DetailsBounds(slot)), $"details-{index}")
             {
-                myID = DetailsComponentBase + index,
-                leftNeighborID = leftIndex >= 0 ? DetailsComponentBase + leftIndex : BackComponentId,
-                rightNeighborID = rightIndex >= 0 ? DetailsComponentBase + rightIndex : -1,
-                upNeighborID = upIndex >= 0 ? DetailsComponentBase + upIndex : -1,
-                downNeighborID = IsReplayAvailable(events[index])
-                    ? ReplayComponentBase + index
-                    : downIndex >= 0 ? DetailsComponentBase + downIndex : BackComponentId
+                myID = new EventCardFocus(index, EventCardAction.Details).GetComponentId(CardComponentBase)
             });
             if (!IsReplayAvailable(events[index]))
                 continue;
-            allClickableComponents.Add(new ClickableComponent(ToScreen(ThumbnailBounds(card)), $"replay-{index}")
+            allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot))), $"replay-{index}")
             {
-                myID = ReplayComponentBase + index,
-                leftNeighborID = leftIndex >= 0 ? ReplayOrDetails(leftIndex) : BackComponentId,
-                rightNeighborID = rightIndex >= 0 ? ReplayOrDetails(rightIndex) : -1,
-                upNeighborID = DetailsComponentBase + index,
-                downNeighborID = downIndex >= 0 ? ReplayOrDetails(downIndex) : BackComponentId
+                myID = new EventCardFocus(index, EventCardAction.Replay).GetComponentId(CardComponentBase)
             });
         }
-        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previousId);
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previousId)
+            ?? VisibleFocusFallback(previousId, visible)
+            ?? allClickableComponents[0];
+        if (EventCardFocus.TryFromComponentId(currentlySnappedComponent.myID, CardComponentBase, events.Count, out EventCardFocus current))
+            lastCardFocus = current;
+        else if (lastCardFocus is EventCardFocus remembered)
+            lastCardFocus = remembered.ClampToViewport(events.Count, index => IsReplayAvailable(events[index]), scrollRow);
+        if (!dragging && Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
+    }
+
+    private ClickableComponent? VisibleFocusFallback(int previousId, int visible)
+    {
+        if (visible <= 0)
+            return null;
+        EventCardFocus.TryFromComponentId(previousId, CardComponentBase, events.Count, out EventCardFocus previous);
+        EventCardFocus? target = previous.ClampToViewport(events.Count, index => IsReplayAvailable(events[index]), scrollRow);
+        return target is EventCardFocus focus
+            ? allClickableComponents.FirstOrDefault(component => component.myID == focus.GetComponentId(CardComponentBase)) : null;
     }
 
     private bool IsReplayAvailable(GalleryEvent entry) => EventCardStateResolver.Resolve(
         Game1.player.eventsSeen.Contains(entry.EventId), isUnlocked()).Unlocked;
-
-    private int ReplayOrDetails(int index) => (IsReplayAvailable(events[index]) ? ReplayComponentBase : DetailsComponentBase) + index;
 
     internal static List<GalleryEvent> EventsFor(GalleryCharacter character, GalleryCatalog catalog) => catalog.Events
         .Where(entry => entry.Ownership.Owners.Any(owner => owner.Name == character.Name))
@@ -340,14 +389,25 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         .ThenBy(entry => entry.EventId, StringComparer.Ordinal)
         .ToList();
 
-    private static Rectangle Card(int slot)
+    private Rectangle DetailsBounds(int slot)
     {
-        (int x, int y, int cardWidth, int cardHeight) = GalleryUiRules.EventCardBounds(slot);
-        return new Rectangle(x, y, cardWidth, cardHeight);
+        Rectangle well = Bounds(GallerySpreadLayout.EventCardDetailsBounds(slot));
+        Vector2 size = Game1.smallFont.MeasureString(i18n.Get("event.details-short"));
+        float scale = Math.Min(1f, Math.Min((well.Width - 8) / Math.Max(1, size.X), (well.Height - 8) / Math.Max(1, size.Y)));
+        int width = (int)Math.Ceiling(size.X * scale) + 8;
+        int height = (int)Math.Ceiling(size.Y * scale) + 8;
+        return new Rectangle(well.Right - width, well.Center.Y - height / 2, width, height);
     }
 
-    private static Rectangle DetailsBounds(Rectangle card) => new(card.Right - 112, card.Y + 8, 98, 36);
-    private static Rectangle ThumbnailBounds(Rectangle card) => new(card.X + 40, card.Y + 50, card.Width - 80, 149);
+    private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds)
+        => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+
+    private bool Highlighted(Rectangle bounds, int componentId)
+    {
+        (int x, int y) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
+        return bounds.Contains(x, y) || (Game1.options.snappyMenus && Game1.options.gamepadControls
+            && currentlySnappedComponent?.myID == componentId);
+    }
 
     private string Translate(string group, string value)
     {

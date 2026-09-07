@@ -13,6 +13,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private const int BackComponentId = 1000;
     private const int ReplayComponentId = 1001;
     private const int ScrollStep = 60;
+    private const int RowPadding = 12;
+    private const int StatusSize = GallerySpreadLayout.IconSize * 3;
+    private const int StatusGap = 16;
     private static readonly RasterizerState ClipRasterizer = new() { ScissorTestEnable = true };
     private readonly GalleryCharacter character;
     private readonly GalleryEvent entry;
@@ -20,6 +23,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
+    private readonly Texture2D statusIcons;
+    private readonly Texture2D replayGlyph;
     private readonly GalleryCharacterPanel leftPanel;
     private readonly Func<bool> canReplay;
     private readonly Action back;
@@ -48,6 +53,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Texture2D background,
         Texture2D scene,
         Texture2D thumbnail,
+        Texture2D statusIcons,
+        Texture2D replayGlyph,
         Func<bool> canReplay,
         Action back,
         Action replay)
@@ -59,6 +66,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.i18n = i18n;
         this.background = background;
         this.thumbnail = thumbnail;
+        this.statusIcons = statusIcons;
+        this.replayGlyph = replayGlyph;
         this.canReplay = canReplay;
         this.back = back;
         this.replay = replay;
@@ -137,17 +146,27 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             Return();
             return;
         }
-        if (button is Buttons.DPadUp or Buttons.LeftThumbstickUp)
+        if (button == Buttons.A && Game1.options.snappyMenus)
         {
-            ScrollBy(-ScrollStep);
-            return;
-        }
-        if (button is Buttons.DPadDown or Buttons.LeftThumbstickDown)
-        {
-            ScrollBy(ScrollStep);
+            if (currentlySnappedComponent?.myID == ReplayComponentId && canReplay())
+                replay();
+            else if (currentlySnappedComponent?.myID == BackComponentId)
+                Return();
             return;
         }
         base.receiveGamePadButton(button);
+    }
+
+    public override void applyMovementKey(int direction)
+    {
+        if (direction is 0 or 2)
+            ScrollBy(direction == 0 ? -ScrollStep : ScrollStep);
+        else if (direction is 1 or 3)
+        {
+            int target = direction == 1 && canReplay() ? ReplayComponentId : BackComponentId;
+            currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target);
+            snapCursorToCurrentSnappedComponent();
+        }
     }
 
     internal void HandleControllerBack() => Return();
@@ -170,15 +189,15 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
         leftPanel.DrawInformation(b);
         DrawHeader(b);
-        IClickableMenu.drawTextureBox(b, contentBounds.X - 10, contentBounds.Y - 10, contentBounds.Width + 20, contentBounds.Height + 20, Color.White);
         BeginContentClip(b);
         DrawConditions(b);
         EndContentClip(b);
         if (MaxScroll > 0)
-            GalleryMenu.DrawScrollbar(b, scrollThumb);
+            GallerySpreadDrawing.DrawScrollbar(b, scrollThumb);
+        (int mouseX, int mouseY) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
         if (canReplay())
-            GalleryMenu.DrawButton(b, replayBounds, i18n.Get("event.replay"));
-        GalleryMenu.DrawButton(b, backBounds, i18n.Get("event-detail.back"));
+            GallerySpreadDrawing.DrawFooterTab(b, replayBounds, i18n.Get("event.replay"), replayBounds.Contains(mouseX, mouseY) || Focused(ReplayComponentId), replayGlyph);
+        GallerySpreadDrawing.DrawFooterTab(b, backBounds, i18n.Get("event-detail.back"), backBounds.Contains(mouseX, mouseY) || Focused(BackComponentId));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
         drawMouse(b);
@@ -186,58 +205,76 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private void DrawHeader(SpriteBatch b)
     {
-        SpriteText.drawStringHorizontallyCenteredAt(b, i18n.Get("event-detail.title"), 1125, 52, maxWidth: 620);
+        Rectangle title = Bounds(GallerySpreadLayout.TitleBounds);
+        SpriteText.drawStringHorizontallyCenteredAt(b, i18n.Get("event-detail.title"), title.Center.X, title.Y + 8, maxWidth: title.Width - 24);
         EventOwner owner = entry.Ownership.Owners.First(value => value.Name == character.Name);
         string hearts = owner.FriendshipPoints is int points
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
-        GalleryMenu.DrawLeftFitted(b, $"{hearts} · ID {entry.EventId}", new Rectangle(785, 112, 650, 38));
+        DrawHeaderText(b, $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
         string location = Game1.getLocationFromName(entry.LocationName)?.DisplayName ?? entry.LocationName;
-        b.DrawString(Game1.smallFont, i18n.Get("event-detail.location", new { location }), new Vector2(785, 153), new Color(90, 70, 45));
-        b.Draw(thumbnail, new Rectangle(1000, 190, 266, 150), Color.White);
+        DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
+        b.Draw(thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
+        DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
     }
+
+    private static void DrawHeaderText(SpriteBatch b, string text, Rectangle bounds, bool wrap = false)
+    {
+        if (wrap)
+            text = Game1.parseText(text, Game1.smallFont, bounds.Width);
+        Vector2 size = Game1.smallFont.MeasureString(text);
+        float scale = Math.Min(1f, Math.Min(bounds.Width / Math.Max(1f, size.X), bounds.Height / Math.Max(1f, size.Y)));
+        b.DrawString(Game1.smallFont, text, new Vector2(bounds.X, wrap ? bounds.Y : bounds.Center.Y - size.Y * scale / 2f), GallerySpreadDrawing.Ink,
+            0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+    }
+
+    // Both measurement and drawing reserve the same padding, icon and gap.
+    private int RowTextWidth => contentBounds.Width - RowPadding * 2 - StatusSize - StatusGap;
 
     private int MeasureContent()
     {
-        int height = LineHeight(i18n.Get("event-detail.requirements"), contentBounds.Width - 40) + 16;
         if (conditions.Count == 0)
-            return height + LineHeight(i18n.Get("condition.none"), contentBounds.Width - 60) + 24;
-        return height + conditions.Sum(MeasureRow);
+            return LineHeight(i18n.Get("condition.none"), RowTextWidth) + RowPadding * 2;
+        return conditions.Sum(MeasureRow);
     }
 
     private int MeasureRow(ConditionDisplayItem item)
     {
-        const int textWidth = 610;
-        int height = LineHeight(RowText(item), textWidth) + 28;
+        int height = LineHeight(RowText(item), RowTextWidth);
         string? reasonKey = ConditionRowPresentation.UnknownReasonKey(item);
         if (reasonKey is not null)
-            height += LineHeight(i18n.Get(reasonKey), textWidth) + 6;
-        return Math.Max(58, height) + 10;
+            height += LineHeight(i18n.Get(reasonKey), RowTextWidth) + 6;
+        return Math.Max(StatusSize, height) + RowPadding * 2;
     }
 
     private void DrawConditions(SpriteBatch b)
     {
         int y = contentBounds.Y - scroll;
-        b.DrawString(Game1.smallFont, i18n.Get("event-detail.requirements"), new Vector2(contentBounds.X + 10, y), Game1.textColor);
-        y += LineHeight(i18n.Get("event-detail.requirements"), contentBounds.Width - 40) + 16;
         if (conditions.Count == 0)
         {
-            DrawWrapped(b, i18n.Get("condition.none"), contentBounds.X + 18, y + 10, contentBounds.Width - 60, Game1.textColor);
+            DrawWrapped(b, i18n.Get("condition.none"), contentBounds.X + RowPadding, y + RowPadding, RowTextWidth, Game1.textColor);
             return;
         }
         foreach (ConditionDisplayItem item in conditions)
         {
             int height = MeasureRow(item);
-            Rectangle row = new(contentBounds.X + 6, y, contentBounds.Width - 12, height - 8);
-            IClickableMenu.drawTextureBox(b, row.X, row.Y, row.Width, row.Height, Color.White);
+            Rectangle row = new(contentBounds.X, y, contentBounds.Width, height);
+            if (row.Top >= contentBounds.Bottom)
+                break;
+            if (row.Bottom <= contentBounds.Top)
+            {
+                y += height;
+                continue;
+            }
+            if (y > contentBounds.Y - scroll)
+                b.Draw(Game1.staminaRect, new Rectangle(row.X, row.Y, row.Width, 1), GallerySpreadDrawing.LightInk);
             string text = RowText(item);
-            int textHeight = LineHeight(text, row.Width - 82);
-            int textY = row.Y + 13;
-            DrawWrapped(b, text, row.X + 16, textY, row.Width - 82, Game1.textColor);
+            int textY = row.Y + RowPadding;
+            int textHeight = DrawWrapped(b, text, row.X + RowPadding, textY, RowTextWidth, Game1.textColor);
             string? reasonKey = ConditionRowPresentation.UnknownReasonKey(item);
             if (reasonKey is not null)
-                DrawWrapped(b, i18n.Get(reasonKey), row.X + 16, textY + textHeight + 6, row.Width - 82, new Color(125, 90, 35));
-            DrawStatus(b, ConditionRowPresentation.Status(item.Evaluation), new Rectangle(row.Right - 58, row.Y, 42, row.Height));
+                DrawWrapped(b, i18n.Get(reasonKey), row.X + RowPadding, textY + textHeight + 6, RowTextWidth, new Color(125, 90, 35));
+            DrawStatus(b, ConditionRowPresentation.Status(item.Evaluation), new Rectangle(row.Right - RowPadding - StatusSize, row.Center.Y - StatusSize / 2, StatusSize, StatusSize));
             y += height;
         }
     }
@@ -245,22 +282,15 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private string RowText(ConditionDisplayItem item)
         => ConditionRowPresentation.Text(item, (key, arguments) => i18n.Get(key, arguments));
 
-    private static void DrawStatus(SpriteBatch b, ConditionStatusIcon status, Rectangle bounds)
+    private void DrawStatus(SpriteBatch b, ConditionStatusIcon status, Rectangle bounds)
     {
-        if (status == ConditionStatusIcon.Unknown)
+        Rectangle source = Bounds(status switch
         {
-            const string glyph = "?";
-            Vector2 size = Game1.smallFont.MeasureString(glyph);
-            b.DrawString(Game1.smallFont, glyph, new Vector2(bounds.Center.X - size.X / 2, bounds.Center.Y - size.Y / 2), new Color(145, 100, 20));
-            return;
-        }
-        Rectangle source = status == ConditionStatusIcon.Check
-            ? OptionsCheckbox.sourceRectChecked
-            : new Rectangle(337, 494, 12, 12);
-        float scale = status == ConditionStatusIcon.Check ? 4f : 3f;
-        Vector2 sizePixels = new(source.Width * scale, source.Height * scale);
-        Color tint = status == ConditionStatusIcon.Check ? new Color(80, 170, 80) : new Color(210, 90, 90);
-        b.Draw(Game1.mouseCursors, new Vector2(bounds.Center.X - sizePixels.X / 2, bounds.Center.Y - sizePixels.Y / 2), source, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, .9f);
+            ConditionStatusIcon.Check => GallerySpreadLayout.ConditionCheckSource,
+            ConditionStatusIcon.Cross => GallerySpreadLayout.ConditionCrossSource,
+            _ => GallerySpreadLayout.ConditionQuestionSource
+        });
+        b.Draw(statusIcons, bounds, source, Color.White);
     }
 
     private static int DrawWrapped(SpriteBatch b, string text, int x, int y, int width, Color color)
@@ -299,10 +329,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         drawOffsetY = (int)Math.Round((Game1.uiViewport.Height - height * menuScale) / 2f);
         viewportWidth = Game1.uiViewport.Width;
         viewportHeight = Game1.uiViewport.Height;
-        contentBounds = new Rectangle(755, 365, 720, 420);
-        scrollTrack = new Rectangle(1508, 365, 24, 420);
-        replayBounds = new Rectangle(795, 842, 280, 52);
-        backBounds = new Rectangle(1160, 842, 280, 52);
+        contentBounds = Bounds(GallerySpreadLayout.ConditionViewportBounds);
+        scrollTrack = Bounds(GallerySpreadLayout.DetailScrollTrackBounds);
+        replayBounds = Bounds(GallerySpreadLayout.ReplayButtonBounds);
+        backBounds = Bounds(GallerySpreadLayout.BackButtonBounds);
         initializeUpperRightCloseButton();
         contentHeight = MeasureContent();
         scroll = Math.Clamp(scroll, 0, MaxScroll);
@@ -334,9 +364,13 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private void BuildClickableComponents()
     {
-        allClickableComponents = [new ClickableComponent(ToScreen(backBounds), "back") { myID = BackComponentId, leftNeighborID = canReplay() ? ReplayComponentId : -1 }];
+        int previous = currentlySnappedComponent?.myID ?? (canReplay() ? ReplayComponentId : BackComponentId);
+        allClickableComponents = [new ClickableComponent(ToScreen(backBounds), "back") { myID = BackComponentId, rightNeighborID = canReplay() ? ReplayComponentId : -1 }];
         if (canReplay())
-            allClickableComponents.Add(new ClickableComponent(ToScreen(replayBounds), "replay") { myID = ReplayComponentId, rightNeighborID = BackComponentId });
+            allClickableComponents.Add(new ClickableComponent(ToScreen(replayBounds), "replay") { myID = ReplayComponentId, leftNeighborID = BackComponentId });
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previous) ?? allClickableComponents[0];
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
     }
 
     private void SnapForGamepad()
@@ -351,6 +385,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         back();
     }
 
+    private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds) => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
     private Rectangle ToScreen(Rectangle bounds) => GalleryMenu.ScaleRectangle(bounds, menuScale, drawOffsetX, drawOffsetY);
+    private bool Focused(int id) => Game1.options.snappyMenus && Game1.options.gamepadControls && currentlySnappedComponent?.myID == id;
     private (int X, int Y) ToLogical(int x, int y) => ((int)Math.Round((x - drawOffsetX) / menuScale), (int)Math.Round((y - drawOffsetY) / menuScale));
 }
