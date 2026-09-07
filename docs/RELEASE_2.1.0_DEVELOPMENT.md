@@ -69,11 +69,11 @@
 | album slot corners | album background |
 | detail header/condition heading/footer 分区线 | detail background |
 | scrollbar channel | background |
-| thumbnail 内容 | runtime，继续 `EventThumbnailAsset.For` -> placeholder |
+| thumbnail 内容 | runtime underlay，继续 `EventThumbnailAsset.For` -> placeholder |
 | 条件 row separator | runtime，单条淡棕线 |
 | 文字 / 状态图标 / Replay glyph | runtime |
 | Details underline / thumbnail corner focus | runtime |
-| scroll thumb / footer tab highlight | runtime |
+| scroll thumb / footer buttons | runtime，复用 Layer 1 renderer |
 
 Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `drawTextureBox`。不再叠加旧橙色容器。
 
@@ -89,7 +89,7 @@ Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `
 - 两层 scrollbar X=1508；footer 共享 `(755,810,710,40)`，文字 baseline 位于842。
 - Layer 3 row 测量与绘制共用622px宽度，保持原 structured row 文本与 Unknown reason，变量高度/像素滚动/scissor，图标垂直居中。
 - 状态 atlas：`assets/ConditionStatusIcons.png`，48×16，check/cross/question 顺序，16×16源、3倍绘制、PointClamp。
-- 播放图标：`assets/ReplayGlyph.png`，16×16原创像素三角，替代 Unicode 播放字形。
+- 播放图标：`assets/ReplayGlyph.png`，16×16原创像素三角，仅用于 Layer 2 thumbnail；Layer 3 footer Replay 使用普通文字按钮。
 - 背景：`assets/GalleryEventAlbum-v3.png`、`assets/GalleryEventDetail-v3.png`，各1672×941。
 - 资源生产说明见 `docs/GALLERY_SPREAD_ASSETS.md`；`tools/Generate-GallerySpreadAssets.ps1 -VerifyOnly` 验证原左页逐像素及透明 portrait 孔位、布局与图标。素材只重用本项目已有美术并原创绘制右页/图标，无第三方 Mod 或 icon sheet。
 
@@ -111,9 +111,9 @@ Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `
 
 - `Checks/EventCardFocusChecks.cs` 覆盖F21-1到5、前三行同卡Details↓Replay、第四行滚动、锁定回退、奇数尾行、footer焦点恢复、10000个稳定ID，以及全部512种九卡解锁排列的可达性。
 - `Checks/GallerySpreadChecks.cs` 覆盖六卡与子区域无重叠、Layer 3各分区、scroll/footer、左页不变、资源路径/PNG尺寸/atlas边界；这些文件显式link进Checks。
-- 12 locale文件无改动、无新key；现有key/token parity和条件三态/多好感subject/time/无current回归继续执行。
+- 12 locale同步加入自然否定、地点与安全 fallback 文案；key/token parity和条件三态/多好感subject/time/无current回归继续执行。
 - 检查工程一度触发CS8785：SDK8的C#12 tuple alias触发net6 JSON generator旧语法扫描。基线复现对比后，移除测试中的tuple alias解决；没有禁用analyzer或增加依赖。
-- 构建继续 `EnableModDeploy=false` / `EnableModZip=true`。没有安装或覆盖游戏目录中的DLL，没有修改其他Mods。
+- 构建继续 `EnableModDeploy=false` / `EnableModZip=true`；本轮修正完成后按任务授权手动更新本项目对应 Mods 子目录，没有修改其他 Mods。
 - ZIP已检查包含两张新背景、状态atlas、ReplayGlyph和既有EventPlaceholder；新tools/test/source未作为runtime文件打包。
 
 ### 手工门与截图
@@ -137,4 +137,18 @@ Layer 2 删除每卡 `drawTextureBox`；Layer 3 删除条件区外框与逐行 `
 
 交付截图清单：Layer2 100%、Layer3 100%、Layer2 >6滚后、Layer3长条件、row2 Details焦点、row3 Replay焦点。全部待用户实机取得；没有实现截图功能。
 
-安装DLL hash比对未完成：任务未明确授权本次安装，保留已安装版本，不能声称与build DLL相同。下一步仅为安装确认及V21手工验收，不自动merge/tag/release或开始2.1.1。
+本轮构建已更新到游戏 Mods 目录且保留 `config.json`，安装 DLL 与 Release build SHA-256 一致；旧安装与旧发布包已归档。仍需完成 VP21/WT21 实机验收，不自动merge/tag/release或开始2.1.1。
+
+## UI 融合与条件文案修正
+
+- 修正基线：`d850388e115028596d8c45d36dd9f102bb286e2d`；版本保持 `2.1.0`。
+- Layer 2/3 缩略图改为先画图片、再画带透明孔位的书页背景；孔位边框由背景收口，条件文字仍直接画在羊皮纸上。
+- Layer 2/3 返回与回放统一复用 `GalleryMenu.DrawButton`；三层滚动条统一复用 `GalleryMenu.DrawScrollbar` 和固定 40px thumb。
+- 右页纸张生成移除 RGB 偏移，并验证孔位透明比例、边框、左页 RGBA 与补纸边界连续性。
+- Condition 主文案只描述 requirement；Known True / Known False / Unknown 仍只由右侧图标表达。常见否定改为自然语言，天气、季节、时间、NPC 与地点等展示值在 UI 边界本地化。
+- AST、evaluator、NativePreconditionProbe、unlock、replay、history 与 persistence 均未改变。
+
+### Future / Backlog（本轮不实现）
+
+- Seen-event quick jump：从“已看过事件”条件跳到目录中对应 Event Detail；使用 navigation stack 保存来源 `EventIdentity`、角色/owner 与 detail scroll，Back 后原样恢复。
+- Search performance / fast locate：仅在 query/catalog 变化时搜索；为每个 catalog 建不可变索引，覆盖 NPC 内部名/显示名和 Event ID，并为未来直接定位 Event 预留结果目标；避免每帧重复扫描与拼接字符串。

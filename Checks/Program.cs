@@ -904,9 +904,9 @@ ConditionTextSpec readable = ConditionDescriber.Describe(underrunSet.Conditions[
 Check(readable.LocalizationKey == "condition.friendship");
 Check(readable.Arguments["requirements"] is FriendshipRequirementsTextValue { Values.Count: 1 });
 ConditionTextSpec opaqueReadable = ConditionDescriber.Describe(unknownSet.Conditions[0]);
-Check(opaqueReadable.LocalizationKey == "condition.unsupported");
+Check(opaqueReadable.LocalizationKey == "condition.custom");
 Check(opaqueReadable.RawFallback == "SomethingElse value");
-Check(opaqueReadable.Arguments["raw"] is PlainTextValue { Value: "SomethingElse value" });
+Check(opaqueReadable.Arguments.Count == 0, "opaque raw must remain diagnostic-only");
 ConditionTextSpec seasonReadable = ConditionDescriber.Describe(parser2.Parse(["Season Winter"]).Conditions[0]);
 Check(seasonReadable.LocalizationKey == "condition.season" && seasonReadable.Arguments["seasons"] is ListTextValue { Values: [TermTextValue { Value: "Winter" }] });
 ConditionTextSpec conditionReadable = ConditionDescriber.Describe(parser2.Parse(["SawEvent 123"]).Conditions[0]);
@@ -1028,11 +1028,11 @@ Check(datingReadable.LocalizationKey == "condition.dating" && datingReadable.Arg
 ConditionTextSpec spouseReadable = ConditionDescriber.Describe(parser2.Parse(["Spouse Alex"]).Conditions[0]);
 Check(spouseReadable.LocalizationKey == "condition.spouse" && spouseReadable.Arguments["npc"] is NpcTextValue { Name: "Alex" });
 ConditionTextSpec roommateReadable = ConditionDescriber.Describe(parser2.Parse(["Roommate"]).Conditions[0]);
-Check(roommateReadable.LocalizationKey == "condition.roommate");
+Check(roommateReadable.LocalizationKey == "condition.roommate-with");
 ConditionTextSpec worldReadable = ConditionDescriber.Describe(parser2.Parse(["WorldState flag"]).Conditions[0]);
 Check(worldReadable.LocalizationKey == "condition.world-state" && worldReadable.Arguments["id"] is PlainTextValue { Value: "flag" });
 ConditionTextSpec nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
-Check(nativeReadable.LocalizationKey == "condition.native-query" && nativeReadable.Arguments["query"] is PlainTextValue { Value: "SEASON Spring" });
+Check(nativeReadable.LocalizationKey == "condition.game-query" && nativeReadable.Arguments.Count == 0);
 
 // ---------- 2.0.3 complete vanilla event-precondition domain ----------
 Dictionary<string, string> canonicalSamples = new(StringComparer.OrdinalIgnoreCase)
@@ -1086,7 +1086,7 @@ Check(formattedShipped.Contains("ITEM:24 × 2"), "typed item value resolves at f
 string formattedNegative = ConditionTextFormatter.Format(
     ConditionDescriber.Describe(aliasParser.ParseSegment("!Friendship Leah 1000")),
     (key, arguments) => $"{key}|{string.Join(',', arguments.Values)}", testResolver);
-Check(formattedNegative.StartsWith("condition.not|condition.friendship|"), "group negation remains exact");
+Check(formattedNegative.StartsWith("condition.friendship-not|"), "friendship uses natural aggregate negation");
 
 ConditionEvaluationContext collectionContext = fullContext with
 {
@@ -1161,7 +1161,7 @@ Check(presentationItems.Select(item => item.Expression.RawSegment).SequenceEqual
     "Random 0.5", "SomeMod.Custom foo", "Time bad", "GameStateQuery WEATHER Here Sun", "SendMail Letter", "!Season winter"
 }), "presentation preserves declaration order and duplicates");
 Check(presentationItems[0].Evaluation is { Truth: ConditionTruth.True, Knowledge: ConditionKnowledge.Known }, "presentation known true");
-Check(presentationItems[0].CurrentValue == "season:spring", "presentation reliable met season current value");
+Check(presentationItems[0].CurrentValue is null, "presentation omits redundant met season current value");
 ConditionDisplayItem friendshipPresentation = presentationItems[1];
 Check(friendshipPresentation.Evaluation.Truth == ConditionTruth.False && friendshipPresentation.GapSubject == "NPC:Abigail", "presentation friendship gap subject");
 Check(friendshipPresentation.CurrentValue == "7 hearts" && friendshipPresentation.RequiredValue == "8 hearts", "presentation friendship values humanized");
@@ -1175,8 +1175,16 @@ Check(presentationItems[8].Evaluation.Knowledge == ConditionKnowledge.Unsupporte
 Check(presentationItems[9].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation SendMail unsupported");
 Check(presentationItems[10].Expression is SeasonCondition { Negated: true, Source: ConditionSource.LegacyEventPrecondition }
     && presentationItems[10].Expression.RawSegment == "!Season winter", "presentation retains raw source and negation");
+ConditionDisplayItem sunnyMet = presentationBuilder.Build("1/Weather sunny", sunnyLocationState).Single();
+ConditionDisplayItem sunnyMissing = presentationBuilder.Build("1/Weather sunny", rainyLocationState).Single();
+Check(sunnyMet.CurrentValue is null, "2.1 wording omits redundant true weather current value");
+Check(sunnyMissing.CurrentValue == "weather:stormy", "2.1 wording humanizes false weather current value");
+Check(presentationItems.All(item => !item.Description.StartsWith("Met:") && !item.Description.StartsWith("Missing:")
+    && !item.Description.StartsWith("Can't determine safely:")), "2.1 wording keeps status out of requirements");
 string compactPresentation = presentationBuilder.Compact(presentationItems);
-Check(compactPresentation.Split("Missing: Friendship", StringSplitOptions.None).Length == 2, "compact summary deduplicates repeated text");
+Check(compactPresentation.Split("Friendship:", StringSplitOptions.None).Length == 2, "compact summary deduplicates repeated requirement text");
+Check(!compactPresentation.Contains("Met:") && !compactPresentation.Contains("Missing:") && !compactPresentation.Contains("Can't determine safely:"),
+    "compact requirement text must not contain evaluator status wrappers");
 Check(presentationBuilder.Build("1", presentationState).Count == 0, "presentation no-condition items empty");
 Check(presentationBuilder.Compact([]) == defaultLocale["condition.none"], "presentation no-condition compact text");
 
@@ -1236,9 +1244,23 @@ Check(AuditFormat("SawEvent A B", defaultLocale).Contains("A, B"), "audit: seen 
 Check(AuditFormat("Friendship Abigail 250", defaultLocale).Contains("1 hearts"), "audit: whole heart");
 Check(AuditFormat("Friendship Abigail 251", defaultLocale).Contains("251 points"), "audit: exact fractional heart points");
 Check(AuditFormat("Weather rainy", defaultLocale) == "It is raining", "audit: rain predicate wording");
-Check(AuditFormat("Weather sunny", defaultLocale) == "It is not raining", "audit: non-rain predicate wording");
-Check(AuditFormat("!Weather sunny", defaultLocale) == "It is raining", "audit: negated non-rain");
+Check(AuditFormat("Weather sunny", defaultLocale) == "Weather: sunny", "audit: sunny predicate wording");
+Check(AuditFormat("!Weather sunny", defaultLocale) == "Weather: not sunny", "audit: negated sunny wording");
 Check(AuditFormat("Weather GreenRain", defaultLocale).Contains("GreenRain"), "audit: custom weather raw ID");
+Check(!AuditFormat("Weather Sun", defaultLocale).Contains("Sun", StringComparison.Ordinal), "2.1 wording humanizes raw Sun");
+Check(AuditFormat("!Weather rainy", defaultLocale) == "It is not raining", "2.1 wording natural no-rain requirement");
+Check(AuditFormat("DayOfWeek Saturday", defaultLocale).Contains("Saturday"), "2.1 wording weekday positive");
+Check(AuditFormat("!DayOfWeek Saturday", defaultLocale) == "Not weekday:Saturday", "2.1 wording weekday negation");
+Check(AuditFormat("!Spouse Penny", defaultLocale) == "Not married to NPC:Penny", "2.1 wording spouse negation");
+Check(AuditFormat("!Dating Penny", defaultLocale) == "Not dating NPC:Penny", "2.1 wording dating negation");
+Check(AuditFormat("!Roommate", defaultLocale) == "Not living with NPC:Krobus", "2.1 wording roommate negation");
+Check(AuditFormat("!Season winter", defaultLocale) == "Season isn't season:winter", "2.1 wording season negation");
+Check(AuditFormat("!SawEvent 75160352", defaultLocale) == "Hasn't seen event 75160352", "2.1 wording seen-event negation");
+Check(AuditFormat("InUpgradedHouse 2", defaultLocale).Contains("upgrade level 2"), "2.1 wording farmhouse level");
+string npcAtLocation = ConditionTextFormatter.Format(
+    ConditionDescriber.Describe(aliasParser.ParseSegment("NpcVisible Abigail"), "Pierre's General Store"),
+    TranslatePresentation, testResolver);
+Check(npcAtLocation == "NPC:Abigail at Pierre's General Store", "2.1 wording NPC at event target location");
 Check(AuditFormat("Time 600 2600", defaultLocale).Contains("GAME-TIME:2600"), "audit: native time delegate");
 Check(AuditFormat("HasItem Some.Invalid.Item", defaultLocale, testResolver with { Item = _ => null }).Contains("Some.Invalid.Item"), "audit: item raw fallback");
 foreach (string input in new[] { "", "!", "Time \"600" })
@@ -1250,7 +1272,7 @@ foreach (string input in new[] { "SendMail TestLetter", "x TestLetter true", "!S
     ConditionExpression legacy = aliasParser.ParseSegment(input);
     Check(legacy is LegacySendMailCondition, "audit: legacy SendMail typed");
     Check(eval.Evaluate(legacy, fullContext).Knowledge == ConditionKnowledge.Unsupported, "audit: SendMail never evaluated");
-    Check(AuditFormat(input, defaultLocale).Contains("display only"), "audit: SendMail display only");
+    Check(AuditFormat(input, defaultLocale) == "Special mail condition", "audit: SendMail player-safe wording");
 }
 Check(aliasParser.ParseSegment("SendMail TestLetter") is LegacySendMailCondition { InMailboxToday: false }, "audit: SendMail default");
 Check(aliasParser.ParseSegment("x TestLetter true") is LegacySendMailCondition { InMailboxToday: true }, "audit: SendMail today");

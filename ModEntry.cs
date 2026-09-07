@@ -315,7 +315,6 @@ internal sealed class ModEntry : Mod
             Helper.ModContent.Load<Texture2D>("assets/CharacterScene-day-v2.png"),
             Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For(entry.Resolved.Identity)),
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ConditionStatusIcons),
-            Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ReplayGlyph),
             CanReplay,
             () => OpenCharacter(snapshot, character, scroll, entry.Identity),
             () => RequestReplay(snapshot, character, entry, scroll));

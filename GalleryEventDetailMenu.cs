@@ -24,7 +24,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
     private readonly Texture2D statusIcons;
-    private readonly Texture2D replayGlyph;
     private readonly GalleryCharacterPanel leftPanel;
     private readonly Func<bool> canReplay;
     private readonly Action back;
@@ -54,7 +53,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Texture2D scene,
         Texture2D thumbnail,
         Texture2D statusIcons,
-        Texture2D replayGlyph,
         Func<bool> canReplay,
         Action back,
         Action replay)
@@ -67,7 +65,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.background = background;
         this.thumbnail = thumbnail;
         this.statusIcons = statusIcons;
-        this.replayGlyph = replayGlyph;
         this.canReplay = canReplay;
         this.back = back;
         this.replay = replay;
@@ -186,6 +183,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
+        b.Draw(thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
         leftPanel.DrawInformation(b);
         DrawHeader(b);
@@ -193,11 +191,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         DrawConditions(b);
         EndContentClip(b);
         if (MaxScroll > 0)
-            GallerySpreadDrawing.DrawScrollbar(b, scrollThumb);
-        (int mouseX, int mouseY) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
+            GalleryMenu.DrawScrollbar(b, scrollThumb);
         if (canReplay())
-            GallerySpreadDrawing.DrawFooterTab(b, replayBounds, i18n.Get("event.replay"), replayBounds.Contains(mouseX, mouseY) || Focused(ReplayComponentId), replayGlyph);
-        GallerySpreadDrawing.DrawFooterTab(b, backBounds, i18n.Get("event-detail.back"), backBounds.Contains(mouseX, mouseY) || Focused(BackComponentId));
+            GalleryMenu.DrawButton(b, replayBounds, i18n.Get("event.replay"));
+        GalleryMenu.DrawButton(b, backBounds, i18n.Get("event-detail.back"));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
         drawMouse(b);
@@ -214,7 +211,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         DrawHeaderText(b, $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
         string location = Game1.getLocationFromName(entry.LocationName)?.DisplayName ?? entry.LocationName;
         DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
-        b.Draw(thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
         DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
     }
 
@@ -356,7 +352,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private void UpdateScrollbar()
     {
-        int thumbHeight = MaxScroll == 0 ? 40 : Math.Max(40, contentBounds.Height * contentBounds.Height / contentHeight);
+        const int thumbHeight = 40;
         int travel = scrollTrack.Height - thumbHeight;
         int y = MaxScroll == 0 ? scrollTrack.Y : scrollTrack.Y + (int)Math.Round(travel * scroll / (double)MaxScroll);
         scrollThumb = new Rectangle(scrollTrack.X, y, scrollTrack.Width, thumbHeight);

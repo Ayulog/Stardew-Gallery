@@ -10,6 +10,7 @@
 - Fixed controller navigation from each unlocked card's Details action to its Replay thumbnail, including mixed locked cards and scrolling across rows. / 修复手柄从已解锁卡片详情到同卡回放缩略图的导航，并覆盖锁定混排与跨行滚动。
 - Redesigned both event spreads with dedicated background-owned layouts, light Details links, original replay glyphs, and shared brown scrollbars; condition rows no longer stack framed panels. / 两层事件书页改用背景主导的独立布局、轻量详情链接、原创播放标记与统一棕色滚动条，条件行不再叠加厚框。
 - Unified card navigation around persistent event/action focus, including lower-row Details, locked fallback, scrolling, and footer return. / 以稳定事件索引与动作焦点统一卡片导航，覆盖下排详情、锁定回退、滚动与页底返回。
+- Polished album/detail compositing with true thumbnail openings, restored the shared button and scrollbar styles, and separated natural-language requirements from status icons across all locales. / 以真实透明孔位完善相册与详情融合，恢复统一按钮和滚动条样式，并在全部语言中将自然条件文案与状态图标彻底分离。
 
 ## 2.0.6 — Stop Historical Collection / 停止历史采集
 

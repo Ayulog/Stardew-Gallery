@@ -23,17 +23,22 @@ public static class GallerySpreadAssetGenerator
         using var paper = MakePaper(source);
         using var album = (System.Drawing.Bitmap)paper.Clone();
         for (int slot = 0; slot < GallerySpreadLayout.EventColumns * GallerySpreadLayout.EventVisibleRows; slot++)
+        {
+            Opening(album, GallerySpreadLayout.EventCardThumbnailBounds(slot));
             Corners(album, GallerySpreadLayout.EventCardBounds(slot), 15);
-        Track(album, GallerySpreadLayout.AlbumScrollTrackBounds);
+            Corners(album, GallerySpreadLayout.EventCardThumbnailBounds(slot), 10);
+        }
+        Track(album, source, GallerySpreadLayout.AlbumScrollTrackBounds);
         Footer(album);
 
         using var detail = (System.Drawing.Bitmap)paper.Clone();
+        Opening(detail, GallerySpreadLayout.DetailThumbnailBounds);
         Corners(detail, GallerySpreadLayout.DetailThumbnailBounds, 10);
         var header = GallerySpreadLayout.DetailHeaderBounds;
         var heading = GallerySpreadLayout.ConditionHeadingBounds;
         Rule(detail, header.X, header.Y + header.Height + 10, header.Width);
         Rule(detail, heading.X, heading.Y + heading.Height + 5, heading.Width);
-        Track(detail, GallerySpreadLayout.DetailScrollTrackBounds);
+        Track(detail, source, GallerySpreadLayout.DetailScrollTrackBounds);
         Footer(detail);
 
         using var icons = new System.Drawing.Bitmap(48, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
@@ -66,6 +71,10 @@ public static class GallerySpreadAssetGenerator
 
         VerifyLeft(source, album);
         VerifyLeft(source, detail);
+        for (int slot = 0; slot < GallerySpreadLayout.EventColumns * GallerySpreadLayout.EventVisibleRows; slot++)
+            VerifyOpening(album, GallerySpreadLayout.EventCardThumbnailBounds(slot), "album thumbnail " + slot);
+        VerifyOpening(detail, GallerySpreadLayout.DetailThumbnailBounds, "detail thumbnail");
+        VerifyPaperContinuity(paper);
         Require(detail.GetPixel(755, 590).ToArgb() == paper.GetPixel(755, 590).ToArgb(), "Detail contains an album corner.");
         Store(root, GalleryUiAssets.EventAlbum, album, verifyOnly);
         Store(root, GalleryUiAssets.EventDetail, detail, verifyOnly);
@@ -224,12 +233,19 @@ public static class GallerySpreadAssetGenerator
             var tile = source.GetPixel(806 + (tx < 640 ? tx : 1279 - tx), 170 + (ty < 100 ? ty : 199 - ty));
             var old = source.GetPixel(x, y);
             int weight = Math.Min(10, Math.Min(Math.Min(x - 735, 1549 - x), Math.Min(y - 128, 839 - y)));
-            int r = (old.R * (10 - weight) + Math.Min(255, tile.R + 3) * weight) / 10;
-            int g = (old.G * (10 - weight) + Math.Min(255, tile.G + 7) * weight) / 10;
-            int b = (old.B * (10 - weight) + Math.Min(255, tile.B + 12) * weight) / 10;
+            int r = (old.R * (10 - weight) + tile.R * weight) / 10;
+            int g = (old.G * (10 - weight) + tile.G * weight) / 10;
+            int b = (old.B * (10 - weight) + tile.B * weight) / 10;
             result.SetPixel(x, y, System.Drawing.Color.FromArgb(255, r, g, b));
         }
         return result;
+    }
+
+    private static void Opening(System.Drawing.Bitmap image, (int X, int Y, int Width, int Height) bounds)
+    {
+        for (int y = bounds.Y; y < bounds.Y + bounds.Height; y++)
+        for (int x = bounds.X; x < bounds.X + bounds.Width; x++)
+            image.SetPixel(x, y, System.Drawing.Color.Transparent);
     }
 
     private static void Corners(System.Drawing.Bitmap image, (int X, int Y, int Width, int Height) bounds, int length)
@@ -265,17 +281,37 @@ public static class GallerySpreadAssetGenerator
         }
     }
 
-    private static void Track(System.Drawing.Bitmap image, (int X, int Y, int Width, int Height) bounds)
+    private static void Track(System.Drawing.Bitmap image, System.Drawing.Bitmap source, (int X, int Y, int Width, int Height) bounds)
     {
-        int x = bounds.X + bounds.Width / 2 - 1;
         for (int y = bounds.Y; y < bounds.Y + bounds.Height; y++)
+        for (int x = 0; x < bounds.Width; x++)
+            image.SetPixel(bounds.X + x, y, source.GetPixel(1534 + x, 146 + (y - bounds.Y) % 640));
+    }
+
+    private static void VerifyOpening(System.Drawing.Bitmap image, (int X, int Y, int Width, int Height) bounds, string name)
+    {
+        int transparent = 0;
+        for (int y = bounds.Y; y < bounds.Y + bounds.Height; y++)
+        for (int x = bounds.X; x < bounds.X + bounds.Width; x++)
+            if (image.GetPixel(x, y).A == 0) transparent++;
+        Require(transparent > bounds.Width * bounds.Height * .8, name + " opening is not mostly transparent.");
+        Require(image.GetPixel(bounds.X, bounds.Y).A != 0 && image.GetPixel(bounds.X + bounds.Width - 1, bounds.Y + bounds.Height - 1).A != 0,
+            name + " frame corners are missing.");
+    }
+
+    private static void VerifyPaperContinuity(System.Drawing.Bitmap paper)
+    {
+        long difference = 0;
+        int samples = 0;
+        for (int y = 138; y < 830; y += 7)
+        foreach (int x in new[] { 734, 735, 1549, 1550 })
         {
-            image.SetPixel(x, y, LightInk);
-            image.SetPixel(x + 1, y, LightInk);
-            image.SetPixel(x + 2, y, Highlight);
+            var a = paper.GetPixel(x, y);
+            var b = paper.GetPixel(x + (x is 734 or 1549 ? 1 : -1), y);
+            difference += Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+            samples += 3;
         }
-        Rule(image, x - 4, bounds.Y, 11);
-        Rule(image, x - 4, bounds.Y + bounds.Height - 2, 11);
+        Require(difference / (double)samples < 12, "Clean-paper patch edge color discontinuity is too large.");
     }
 
     private static void Footer(System.Drawing.Bitmap image)
@@ -369,7 +405,12 @@ public static class GallerySpreadAssetGenerator
     private static void Store(string root, string relativePath, System.Drawing.Bitmap expected, bool verifyOnly)
     {
         string path = System.IO.Path.Combine(root, relativePath);
-        if (!verifyOnly) expected.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        if (!verifyOnly)
+        {
+            using var encoded = new System.IO.MemoryStream();
+            expected.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
+            System.IO.File.WriteAllBytes(path, encoded.ToArray());
+        }
         using var actual = new System.Drawing.Bitmap(path);
         Require(actual.Width == expected.Width && actual.Height == expected.Height, "Incorrect PNG dimensions: " + relativePath);
         for (int y = 0; y < actual.Height; y++)

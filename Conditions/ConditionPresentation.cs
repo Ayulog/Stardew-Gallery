@@ -55,26 +55,23 @@ internal sealed class ConditionPresentationBuilder(
     Func<string, IReadOnlyDictionary<string, string>, string> translate,
     ConditionDisplayResolver resolver)
 {
-    internal IReadOnlyList<ConditionDisplayItem> Build(string rawEventKey, CurrentStateSnapshot state)
+    internal IReadOnlyList<ConditionDisplayItem> Build(string rawEventKey, CurrentStateSnapshot state, string? eventLocation = null)
     {
         List<ConditionDisplayItem> items = [];
         foreach (ConditionExpression expression in parser.ParseRawKey(rawEventKey).Conditions)
         {
-            string description = ConditionTextFormatter.Format(ConditionDescriber.Describe(expression), translate, resolver);
+            string description = ConditionTextFormatter.Format(ConditionDescriber.Describe(expression, eventLocation), translate, resolver);
             ConditionEvaluation evaluation = evaluator.Evaluate(expression, state.ToConditionContext());
             string? current = CurrentValue(expression, evaluation, state);
             string? required = evaluation.Gap.Target is null ? null : ConditionTextFormatter.FormatGap(expression, evaluation.Gap.Target, translate, resolver);
             string compactDescription = current is not null && required is not null
                 ? description + translate("condition.gap", new Dictionary<string, string> { ["current"] = current, ["target"] = required })
                 : description;
-            string statusKey = evaluation.Knowledge != ConditionKnowledge.Known || evaluation.Truth == ConditionTruth.Unknown
-                ? "condition.status-unknown"
-                : evaluation.Truth == ConditionTruth.True ? "condition.status-met" : "condition.status-missing";
             items.Add(new ConditionDisplayItem(
                 expression,
                 evaluation,
                 description,
-                translate(statusKey, new Dictionary<string, string> { ["condition"] = compactDescription }),
+                compactDescription,
                 current,
                 required,
                 expression is FriendshipCondition && evaluation.Gap.Kind == ConditionGapKind.NumericGap && evaluation.Gap.Detail is string npc
@@ -90,14 +87,15 @@ internal sealed class ConditionPresentationBuilder(
             return ConditionTextFormatter.FormatGap(expression, gapCurrent, translate, resolver);
         return expression switch
         {
-            SeasonCondition when state.Season is not null => resolver.Term("season", state.Season),
-            TimeCondition when state.Time is int time => resolver.Time(time),
+            SeasonCondition when evaluation.Truth == ConditionTruth.False && state.Season is not null => resolver.Term("season", state.Season),
+            TimeCondition when evaluation.Truth == ConditionTruth.False && state.Time is int time => resolver.Time(time),
             FriendshipCondition { Requirements.Count: 1 } friendship
                 when state.Friendship?.TryGetValue(friendship.Requirements[0].Npc, out int points) == true
                 => ConditionTextFormatter.FormatGap(expression, points.ToString(), translate, resolver),
-            WeatherCondition { Kind: WeatherKind.Rainy or WeatherKind.Sunny } when state.IsRaining is bool raining
+            WeatherCondition { Kind: WeatherKind.Rainy or WeatherKind.Sunny } when evaluation.Truth == ConditionTruth.False && state.IsRaining is bool raining
                 => translate(raining ? "condition.raining" : "condition.not-raining", EmptyArguments()),
-            WeatherCondition { Kind: WeatherKind.Custom } when state.Weather is not null => state.Weather,
+            WeatherCondition { Kind: WeatherKind.Custom } when evaluation.Truth == ConditionTruth.False && state.Weather is not null
+                => resolver.Term("weather", ConditionDescriber.NormalizeWeather(state.Weather)),
             _ => null
         };
     }

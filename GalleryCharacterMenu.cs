@@ -64,7 +64,12 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             new ConditionDisplayResolver(NPC.GetDisplayName, id => ItemRegistry.GetData(id)?.DisplayName, Translate, Game1.getTimeOfDayString));
         conditionItems = events.ToDictionary(
             entry => entry.Resolved.Identity,
-            entry => presentation.Build(entry.EventKey, RuntimeStateReader.ForLocation(sharedState, Game1.getLocationFromName(entry.LocationName))));
+            entry =>
+            {
+                GameLocation? location = Game1.getLocationFromName(entry.LocationName);
+                return presentation.Build(entry.EventKey, RuntimeStateReader.ForLocation(sharedState, location),
+                    location?.DisplayName ?? i18n.Get("condition.event-location"));
+            });
         leftPanel = new GalleryCharacterPanel(character, events, i18n, scene);
 
         int focusIndex = initialFocusIdentity is null ? -1 : events.FindIndex(entry => entry.Identity == initialFocusIdentity);
@@ -249,6 +254,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
+        DrawAlbumThumbnailsUnderlay(b);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
         DrawPageTitle(b, i18n.Get("detail.title"), Bounds(GallerySpreadLayout.TitleBounds));
         leftPanel.DrawInformation(b);
@@ -258,11 +264,20 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         for (int slot = 0; slot < visible; slot++)
             DrawEvent(b, events[first + slot], slot, first + slot);
         if (MaxScroll > 0)
-            GallerySpreadDrawing.DrawScrollbar(b, scrollThumb);
-        GallerySpreadDrawing.DrawFooterTab(b, backBounds, i18n.Get("detail.back"), Highlighted(backBounds, BackComponentId));
+            GalleryMenu.DrawScrollbar(b, scrollThumb);
+        GalleryMenu.DrawButton(b, backBounds, i18n.Get("detail.back"));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
         drawMouse(b);
+    }
+
+    private void DrawAlbumThumbnailsUnderlay(SpriteBatch b)
+    {
+        int first = scrollRow * GalleryUiRules.EventColumns;
+        int visible = Math.Min(GalleryUiRules.EventColumns * GalleryUiRules.EventVisibleRows, events.Count - first);
+        for (int slot = 0; slot < visible; slot++)
+            b.Draw(thumbnail, Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)), null,
+                IsReplayAvailable(events[first + slot]) ? Color.White : new Color(185, 180, 167), 0f, Vector2.Zero, SpriteEffects.None, .88f);
     }
 
     private void DrawEvent(SpriteBatch b, GalleryEvent entry, int slot, int index)
@@ -286,8 +301,6 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         Rectangle image = Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot));
         bool unlocked = IsReplayAvailable(entry);
         bool replayFocused = unlocked && Highlighted(image, new EventCardFocus(index, EventCardAction.Replay).GetComponentId(CardComponentBase));
-        Color tint = unlocked ? Color.White : new Color(185, 180, 167);
-        b.Draw(thumbnail, image, null, tint, 0f, Vector2.Zero, SpriteEffects.None, .88f);
         if (unlocked)
             b.Draw(replayGlyph, new Rectangle(image.Right - 52, image.Bottom - 52, 48, 48), replayFocused ? Color.White : Color.White * .8f);
         if (replayFocused)
