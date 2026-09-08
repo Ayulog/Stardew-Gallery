@@ -17,4 +17,7 @@ internal sealed record ConditionEvaluationContext(
     int? DaysPlayed,
     IReadOnlySet<string>? WorldState,
     bool? IsRaining = null
-);
+)
+{
+    internal ConditionReadState? Details { get; init; }
+}

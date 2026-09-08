@@ -12,6 +12,8 @@ internal sealed record TermTextValue(string Group, string Value) : ConditionText
 internal sealed record ListTextValue(IReadOnlyList<ConditionTextValue> Values) : ConditionTextValue;
 internal sealed record FriendshipRequirementsTextValue(IReadOnlyList<FriendshipRequirement> Values) : ConditionTextValue;
 internal sealed record ShippedRequirementsTextValue(IReadOnlyList<ShippedRequirement> Values) : ConditionTextValue;
+internal sealed record CalendarDateTextValue(string Season, int Day) : ConditionTextValue;
+internal sealed record NestedConditionTextValue(ConditionTextSpec Spec) : ConditionTextValue;
 internal sealed record ConditionTextSpec(string LocalizationKey, IReadOnlyDictionary<string, ConditionTextValue> Arguments, string RawFallback, bool Negated, string? NaturalNegativeKey = null);
 
 internal static class ConditionDescriber
@@ -45,6 +47,7 @@ internal static class ConditionDescriber
         DayOfWeekCondition x => DescribeWeekday(x),
         SpouseCondition x => NamedNegative(x, "condition.spouse", "condition.spouse-not", ("npc", Npc(x.Npc))),
         RoommateCondition x => NamedNegative(x, "condition.roommate-with", "condition.roommate-not", ("npc", Npc("Krobus"))),
+        NpcVisibleCondition { CurrentLocationOnly: false } x => NamedNegative(x, "condition.npc-visible", "condition.npc-not-visible", ("npc", Npc(x.Npc))),
         NpcVisibleCondition x => NamedNegative(x, "condition.npc-at-location", "condition.npc-not-at-location", ("npc", Npc(x.Npc)), ("location", Text(eventLocation ?? "event location"))),
         SeasonCondition x => DescribeSeason(x),
         SpouseBedCondition x => Named(x, "condition.spouse-bed"),
@@ -56,12 +59,36 @@ internal static class ConditionDescriber
         ActiveDialogueEventCondition x => Named(x, "condition.dialogue-event", ("id", Id(x.Id))),
         DayOfMonthCondition x => Named(x, "condition.day", ("day", List(x.Days.Select(d => Num(d))))),
         UpcomingFestivalCondition x => NamedNegative(x, "condition.upcoming-festival", "condition.no-upcoming-festival", ("days", Num(x.Days))),
-        NativeQueryCondition x => Named(x with { Negated = false }, "condition.game-query"),
+        NativeQueryCondition x => DescribeQuery(x),
         SkillCondition x => Named(x, "condition.skill", ("skill", Term("skill", x.Skill)), ("level", Num(x.MinimumLevel))),
         LegacySendMailCondition x => Named(x with { Negated = false }, "condition.special-mail"),
         OpaqueCondition x => Named(x with { Negated = false }, x.Kind != OpaqueConditionKind.UnknownType ? "condition.unrecognized" : "condition.custom"),
         _ => Named(c with { Negated = false }, "condition.custom")
     };
+
+    private static ConditionTextSpec DescribeQuery(NativeQueryCondition condition)
+    {
+        if (!SafeGameQuery.TryParse(condition.Query, out var clauses))
+            return Named(condition with { Negated = false }, "condition.game-query");
+        List<ConditionTextSpec> specs = [];
+        foreach (SafeQueryClause clause in clauses)
+        {
+            string[] a = clause.Arguments;
+            ConditionExpression source = condition with { Negated = clause.Negated };
+            specs.Add(clause.Name switch
+            {
+                "IS_PASSIVE_FESTIVAL_TODAY" => Named(source, "condition.passive-festival", ("festival", Term("festival", a[0]))),
+                "SEASON_DAY" => Named(source, "condition.season-dates", ("dates", List(Enumerable.Range(0, a.Length / 2)
+                    .Select(index => new CalendarDateTextValue(a[index * 2], SafeGameQuery.ParseInt(a[index * 2 + 1])))))),
+                _ => a.Length == 3
+                    ? Named(source, "condition.player-stat-min", ("player", Term("player", a[0])), ("stat", Term("stat", a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))))
+                    : Named(source, "condition.player-stat-range", ("player", Term("player", a[0])), ("stat", Term("stat", a[1])),
+                        ("min", Num(SafeGameQuery.ParseInt(a[2]))), ("max", Num(SafeGameQuery.ParseInt(a[3]))))
+            });
+        }
+        return specs.Count == 1 ? specs[0] with { Negated = specs[0].Negated ^ condition.Negated }
+            : Named(condition, "condition.query-all", ("conditions", List(specs.Select(spec => new NestedConditionTextValue(spec)))));
+    }
 
     private static ConditionTextSpec DescribeWeekday(DayOfWeekCondition condition)
     {
@@ -161,6 +188,11 @@ internal static class ConditionTextFormatter
         ItemTextValue x => ResolveItem(x.Id, resolver),
         TimeTextValue x => resolver.Time(x.Value),
         TermTextValue x => resolver.Term(x.Group, x.Value),
+        CalendarDateTextValue x => translate("condition.season-date", new Dictionary<string, string>
+        {
+            ["season"] = resolver.Term("season", x.Season), ["day"] = x.Day.ToString(CultureInfo.CurrentCulture)
+        }),
+        NestedConditionTextValue x => Format(x.Spec, translate, resolver),
         ListTextValue x => string.Join(", ", x.Values.Select(item => FormatValue(item, resolver, translate))),
         FriendshipRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Npc(item.Npc)} ≥ {FormatFriendship(item.Points, translate)}")),
         ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{ResolveItem(item.ItemId, resolver)} × {item.Count}")),

@@ -5,6 +5,7 @@ using StardewGallery;
 GallerySearchChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();
+ConditionCoverageChecks.Run(FakeSplitArgs);
 if (args.Contains("--benchmark-search"))
     GallerySearchChecks.Benchmark();
 
@@ -1281,9 +1282,12 @@ Check(AuditFormat("!Season winter", defaultLocale) == "Season isn't season:winte
 Check(AuditFormat("!SawEvent 75160352", defaultLocale) == "Hasn't seen event 75160352", "2.1 wording seen-event negation");
 Check(AuditFormat("InUpgradedHouse 2", defaultLocale).Contains("upgrade level 2"), "2.1 wording farmhouse level");
 string npcAtLocation = ConditionTextFormatter.Format(
-    ConditionDescriber.Describe(aliasParser.ParseSegment("NpcVisible Abigail"), "Pierre's General Store"),
+    ConditionDescriber.Describe(aliasParser.ParseSegment("NpcVisibleHere Abigail"), "Pierre's General Store"),
     TranslatePresentation, testResolver);
 Check(npcAtLocation == "NPC:Abigail at Pierre's General Store", "2.1 wording NPC at event target location");
+Check(AuditFormat("NpcVisible Abigail", defaultLocale) == "NPC:Abigail is present and visible", "2.4 global visibility does not claim a location");
+Check(ConditionRowPresentation.UnknownReasonKey(presentationItems[5]) == "event-detail.unknown.random", "random explains deferred drawing");
+Check(ConditionRowPresentation.UnknownReasonKey(presentationItems[9]) == "event-detail.unknown.action", "mail action explains its background role");
 Check(AuditFormat("Time 600 2600", defaultLocale).Contains("GAME-TIME:2600"), "audit: native time delegate");
 Check(AuditFormat("HasItem Some.Invalid.Item", defaultLocale, testResolver with { Item = _ => null }).Contains("Some.Invalid.Item"), "audit: item raw fallback");
 foreach (string input in new[] { "", "!", "Time \"600" })
@@ -1328,9 +1332,20 @@ string[] localeFiles = Directory.GetFiles(i18nDirectory, "*.json");
 Check(localeFiles.Length == 12, "all 12 official locale files present");
 foreach (string localeFile in localeFiles)
 {
-    Dictionary<string, string> locale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(localeFile))!;
+    using var localeJson = System.Text.Json.JsonDocument.Parse(File.ReadAllText(localeFile));
+    Check(localeJson.RootElement.EnumerateObject().GroupBy(property => property.Name).All(group => group.Count() == 1),
+        "locale keys are unique: " + Path.GetFileName(localeFile));
+    Dictionary<string, string> locale = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(localeJson.RootElement.GetRawText())!;
     foreach (var sample in canonicalSamples)
         AuditFormat(sample.Key + " " + sample.Value, locale);
+    foreach (string query in new[] { "G !IS_PASSIVE_FESTIVAL_TODAY SquidFest",
+        "G !IS_PASSIVE_FESTIVAL_TODAY TroutDerby, !SEASON_DAY summer 17 summer 18 summer 19",
+        "G PLAYER_STAT Any monstersKilled 1000", "G PLAYER_STAT Current monstersKilled 1 100" })
+    {
+        string text = AuditFormat(query, locale);
+        Check(!text.Contains("IS_PASSIVE_FESTIVAL_TODAY") && !text.Contains("SEASON_DAY") && !text.Contains("PLAYER_STAT"),
+            "GSQ commands replaced with readable requirements: " + Path.GetFileName(localeFile));
+    }
     foreach (string input in new[] { "SendMail TestLetter", "Friendship Abigail 251", "Weather sunny", "!Weather rainy", "SomeMod.Custom foo", "Time bad" })
         AuditFormat(input, locale);
     Check(locale.Keys.OrderBy(key => key).SequenceEqual(defaultLocale.Keys.OrderBy(key => key)), "locale key parity: " + Path.GetFileName(localeFile));

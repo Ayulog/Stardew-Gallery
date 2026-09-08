@@ -85,6 +85,8 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
         string[] args = tokens.Skip(1).ToArray();
         ConditionSource source = canonical == "GameStateQuery" ? ConditionSource.GameStateQuery : ConditionSource.LegacyEventPrecondition;
         ConditionExpression? parsed = args.Any(string.IsNullOrWhiteSpace) ? null : ParseCanonical(canonical, args, source, rawSegment, negated);
+        if (parsed is NativeQueryCondition query)
+            parsed = query with { Query = args.Length == 1 ? args[0] : segment[head.Length..].Trim() };
         return parsed ?? new OpaqueCondition(OpaqueConditionKind.MalformedKnown, canonical, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
     }
 

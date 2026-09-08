@@ -14,6 +14,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 - 搜索角色或事件 ID；已加载的其他事件也可按 ID 查看。从条件下的事件 ID 跳转前置事件，逐层返回原位置。
 - 回放截图按存档保存，可选封面、替换封面、恢复默认或移除归档。
 - 阅读型条件说明与进度缺口：好感/心数、看过事件、邮件、季节、日期、时间等用可读文本呈现；无法安全解析的模组条件会明确标注，而不是猜测。
+- 支持金钱、背包、技能、对话记录、NPC可见性、住宅与节日等只读条件，以及受限的节日/日期/统计量查询。随机结果、缺少入场位置或未支持的第三方条件会说明未知原因。
 - 当前状态回放：所有回放都从当前已解析的事件内容与当前游戏状态启动，不再使用历史冻结版本。
 - 已观看的事件可直接回放，也可用“一键解锁全部”临时开放画廊回放。
 - 回放会尽力构造事件要求的季节、时间和原版天气；结束后恢复玩家位置和原环境。
@@ -66,6 +67,7 @@ Stardew Gallery is a current-state event album and planning tool: it discovers t
 - Search by character or event ID, including loaded events outside the heart-event gallery. Follow prerequisite IDs and return through previous views with their positions preserved.
 - Capture replay photos per save, choose or replace covers, restore defaults, and archive removed photos.
 - Readable condition explanation with progress gaps: friendship/hearts, seen events, mail, season, day, time, and more are shown in plain text; mod conditions that can't be parsed safely are labeled as unknown rather than guessed.
+- Read-only checks cover money, inventory, skills, dialogue records, NPC visibility, homes and festivals, plus restricted festival/date/stat queries. Random outcomes, missing entry positions and unsupported third-party conditions explain why their results remain unknown.
 - Current-state replay: every replay launches from currently resolved event content and current game state, not from a frozen historical version.
 - Replay events you've seen, or temporarily expose all gallery replays with Unlock All.
 - Replay applies supported season, time, and vanilla weather requirements when possible, then restores the original environment.

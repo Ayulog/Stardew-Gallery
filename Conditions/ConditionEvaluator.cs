@@ -9,6 +9,8 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
         ConditionExpression condition,
         ConditionEvaluationContext context)
     {
+        if (context.Details?.Errors?.Contains(condition.RawSegment) == true)
+            return Unknown(condition, ConditionKnowledge.Error);
         ConditionEvaluation baseResult = condition switch
         {
             SeasonCondition leaf => EvaluateSeason(leaf, context),
@@ -24,7 +26,31 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
             RoommateCondition leaf => EvaluateRoommate(leaf, context),
             DaysPlayedCondition leaf => EvaluateDaysPlayed(leaf, context),
             WorldStateCondition leaf => EvaluateWorldState(leaf, context),
-            NativeQueryCondition leaf => EvaluateNativeQuery(leaf),
+            DayOfWeekCondition leaf => EvaluateWeekday(leaf, context.Details),
+            IsHostCondition leaf => Boolean(leaf, context.Details?.IsHost),
+            EarnedMoneyCondition leaf => Minimum(leaf, leaf.Minimum, context.Details?.EarnedMoney),
+            HasMoneyCondition leaf => Minimum(leaf, leaf.Minimum, context.Details?.Money),
+            FreeInventorySlotsCondition leaf => Minimum(leaf, leaf.Minimum, context.Details?.FreeSlots),
+            GoldenWalnutsCondition leaf => Minimum(leaf, leaf.Minimum, context.Details?.Walnuts),
+            ReachedMineBottomCondition leaf => Minimum(leaf, leaf.Minimum, context.Details?.MineBottoms),
+            CommunityCenterOrWarehouseDoneCondition leaf => Boolean(leaf, context.Details?.CommunityComplete),
+            JojaBundlesDoneCondition leaf => Boolean(leaf, context.Details?.JojaComplete),
+            MissingPetCondition leaf => EvaluatePet(leaf, context.Details),
+            GenderCondition leaf => Boolean(leaf, context.Details?.Gender is string gender ? leaf.Gender.Equals(gender, StringComparison.OrdinalIgnoreCase) : null),
+            SawSecretNoteCondition leaf => Boolean(leaf, context.Details?.SecretNotes?.Contains(leaf.NoteId)),
+            ChoseDialogueAnswersCondition leaf => Boolean(leaf, context.Details?.DialogueAnswers is { } answers ? leaf.AnswerIds.All(answers.Contains) : null),
+            ActiveDialogueEventCondition leaf => Boolean(leaf, context.Details?.ActiveDialogues?.Contains(leaf.Id)),
+            ShippedCondition leaf => EvaluateShipped(leaf, context.Details),
+            HasItemCondition leaf => Boolean(leaf, context.Details?.Items?.TryGetValue(leaf.ItemId, out bool hasItem) == true ? hasItem : null),
+            SkillCondition leaf => EvaluateSkill(leaf, context.Details),
+            NpcVisibleCondition leaf => Boolean(leaf, leaf.CurrentLocationOnly ? context.Details?.NpcsAtLocation?.Contains(leaf.Npc)
+                : context.Details?.VisibleNpcs?.TryGetValue(leaf.Npc, out bool visible) == true ? visible : null),
+            InUpgradedHouseCondition leaf => EvaluateHouse(leaf, context.Details),
+            SpouseBedCondition leaf => Boolean(leaf, context.Details?.SpouseBed),
+            FestivalDayCondition leaf => EvaluateFestival(leaf, 1, context),
+            UpcomingFestivalCondition leaf => EvaluateFestival(leaf, leaf.Days, context),
+            TileCondition leaf => Boolean(leaf, context.Details?.EntryTile is { } tile ? leaf.Positions.Contains(tile) : null),
+            NativeQueryCondition leaf => EvaluateNativeQuery(leaf, context),
             OpaqueCondition leaf => new ConditionEvaluation(condition, ConditionTruth.Unknown,
                 leaf.Kind == OpaqueConditionKind.UnknownType ? ConditionKnowledge.Unsupported : ConditionKnowledge.Invalid, FlatUnavailable),
             LegacySendMailCondition => new ConditionEvaluation(condition, ConditionTruth.Unknown, ConditionKnowledge.Unsupported, FlatUnavailable),
@@ -218,8 +244,10 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
                 new ConditionGap(ConditionGapKind.MissingState, Target: leaf.Id));
     }
 
-    private ConditionEvaluation EvaluateNativeQuery(NativeQueryCondition leaf)
+    private ConditionEvaluation EvaluateNativeQuery(NativeQueryCondition leaf, ConditionEvaluationContext context)
     {
+        if (SafeGameQuery.TryParse(leaf.Query, out var query))
+            return Boolean(leaf, SafeGameQuery.Evaluate(query, context));
         if (checkNativeQuery is null)
             return Unknown(leaf, ConditionKnowledge.Unsupported);
         try
@@ -233,6 +261,67 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
         {
             return Unknown(leaf, ConditionKnowledge.Error);
         }
+    }
+
+    private static ConditionEvaluation Boolean(ConditionExpression leaf, bool? matches)
+        => matches is null ? Unknown(leaf, ConditionKnowledge.MissingData)
+            : Known(leaf, matches.Value ? ConditionTruth.True : ConditionTruth.False,
+                matches.Value ? NoGap : new(ConditionGapKind.MissingState));
+
+    private static ConditionEvaluation Minimum(ConditionExpression leaf, long target, long? current)
+        => current is null ? Unknown(leaf, ConditionKnowledge.MissingData)
+            : current >= target ? Known(leaf, ConditionTruth.True, NoGap)
+            : Known(leaf, ConditionTruth.False, new(ConditionGapKind.NumericGap,
+                Target: target.ToString(), Current: current.Value.ToString()));
+
+    private static ConditionEvaluation EvaluateWeekday(DayOfWeekCondition leaf, ConditionReadState? state)
+        => state?.Weekday is not { } day ? Unknown(leaf, ConditionKnowledge.MissingData)
+            : Boolean(leaf, leaf.Days.Contains(day));
+
+    private static ConditionEvaluation EvaluatePet(MissingPetCondition leaf, ConditionReadState? state)
+        => state?.HasPet is null ? Unknown(leaf, ConditionKnowledge.MissingData)
+            : state.HasPet.Value ? Boolean(leaf, false)
+            : leaf.PetType is null ? Boolean(leaf, true)
+            : Boolean(leaf, state.PetPreference is string type ? leaf.PetType.Equals(type, StringComparison.OrdinalIgnoreCase) : null);
+
+    private static ConditionEvaluation EvaluateShipped(ShippedCondition leaf, ConditionReadState? state)
+    {
+        if (state?.Shipped is null)
+            return Unknown(leaf, ConditionKnowledge.MissingData);
+        // Missing keys fail even a zero requirement, matching the game's shipment lookup.
+        return Boolean(leaf, leaf.Requirements.All(item =>
+            state.Shipped.TryGetValue(item.ItemId, out int count) && count >= item.Count));
+    }
+
+    private static ConditionEvaluation EvaluateSkill(SkillCondition leaf, ConditionReadState? state)
+    {
+        if (state?.Skills?.TryGetValue(leaf.Skill, out int? level) != true)
+            return Unknown(leaf, ConditionKnowledge.MissingData);
+        return level is null ? Unknown(leaf, ConditionKnowledge.Unsupported) : Minimum(leaf, leaf.MinimumLevel, level);
+    }
+
+    private static ConditionEvaluation EvaluateHouse(InUpgradedHouseCondition leaf, ConditionReadState? state)
+        => state?.IsFarmHouse is null ? Unknown(leaf, ConditionKnowledge.MissingData)
+            : !state.IsFarmHouse.Value ? Boolean(leaf, false) : Minimum(leaf, leaf.MinimumLevel, state.HouseUpgrade);
+
+    private static ConditionEvaluation EvaluateFestival(ConditionExpression leaf, int days, ConditionEvaluationContext context)
+    {
+        if (days <= 0)
+            return Boolean(leaf, false);
+        string[] seasons = ["spring", "summer", "fall", "winter"];
+        int season = Array.FindIndex(seasons, value => value.Equals(context.Season, StringComparison.OrdinalIgnoreCase));
+        if (context.Details?.FestivalDates is not { } dates || season < 0 || context.DayOfMonth is not int day)
+            return Unknown(leaf, ConditionKnowledge.MissingData);
+        int originalSeason = season;
+        // In 1.6.15 the native window repeats the next season after its first rollover.
+        // After 56 checks no unseen date remains, even for an unbounded modded window.
+        for (int offset = 0; offset < Math.Min(days, 56); offset++)
+        {
+            if (dates.Contains(seasons[season] + day))
+                return Boolean(leaf, true);
+            if (++day > 28) { day = 1; season = (originalSeason + 1) % 4; }
+        }
+        return Boolean(leaf, false);
     }
 
     private static ConditionEvaluation Known(ConditionExpression leaf, ConditionTruth truth, ConditionGap gap)

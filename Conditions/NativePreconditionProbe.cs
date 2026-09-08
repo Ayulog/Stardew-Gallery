@@ -14,13 +14,14 @@ internal sealed class NativePreconditionProbe(Func<string, string[]> splitPrecon
 {
     private readonly ConditionParser parser = new(splitPreconditions, splitArguments);
 
-    internal NativePreconditionProbeResult Check(string rawKey, Func<string, string?> nativeCheck)
+    internal NativePreconditionProbeResult Check(string rawKey, Func<string, string?> nativeCheck, bool dedicatedServer = false)
     {
         try
         {
             ConditionExpression? unsafeCondition = parser.ParseRawKey(rawKey).Conditions.FirstOrDefault(condition =>
                 condition.Source != ConditionSource.LegacyEventPrecondition
-                || condition is RandomCondition or LegacySendMailCondition or OpaqueCondition or NativeQueryCondition);
+                || condition is RandomCondition or LegacySendMailCondition or OpaqueCondition or NativeQueryCondition
+                || dedicatedServer && condition is IsHostCondition);
             if (unsafeCondition is not null)
                 return new(NativePreconditionProbeStatus.NotSafelyEvaluated, unsafeCondition.RawSegment);
 

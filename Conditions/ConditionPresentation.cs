@@ -40,7 +40,12 @@ internal static class ConditionRowPresentation
             });
 
     internal static string? UnknownReasonKey(ConditionDisplayItem item)
-        => Status(item.Evaluation) != ConditionStatusIcon.Unknown ? null : item.Evaluation.Knowledge switch
+        => Status(item.Evaluation) != ConditionStatusIcon.Unknown ? null
+        : item.Expression is RandomCondition ? "event-detail.unknown.random"
+        : item.Expression is LegacySendMailCondition ? "event-detail.unknown.action"
+        : item.Expression is TileCondition && item.Evaluation.Knowledge == ConditionKnowledge.MissingData ? "event-detail.unknown.entry"
+        : item.Expression is SkillCondition && item.Evaluation.Knowledge == ConditionKnowledge.Unsupported ? "event-detail.unknown.skill"
+        : item.Evaluation.Knowledge switch
         {
             ConditionKnowledge.MissingData => "event-detail.unknown.missing-data",
             ConditionKnowledge.Invalid => "event-detail.unknown.invalid",

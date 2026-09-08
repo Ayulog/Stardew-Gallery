@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.4.0 - Condition Coverage / 补齐条件判定
+
+- Read weekday, host, money, inventory, shipments, skills, dialogue records, notes, pets, walnuts, mine progress, community/Joja progress, NPC visibility, homes and festival dates without running event predicates. / 补齐星期、主机、金钱、背包、出货、技能、对话记录、纸条、宠物、核桃、矿底、社区/Joja进度、NPC可见性、住宅和节日日历的只读判定。
+- Interpret a restricted set of passive-festival, season/day and player-stat queries with readable text in all 12 languages. Unsupported third-party or nested queries remain unknown. / 为被动节日、季节日期和玩家统计量提供受限查询判定及12语言可读说明；未知第三方及嵌套查询保留问号。
+- Explain random results, entry-position context and legacy mail actions instead of prematurely executing them. Avoid the dedicated-server host predicate's write during catalog probing. / 对随机结果、入场位置和旧发信动作解释原因，不提前执行；目录安全探测避开专用服务器主机条件的写操作。
+- Development build, pending in-game acceptance. Replay, unlock and storage rules are unchanged. / 开发包待实机验收，保留既有回放、解锁与存储规则。
+
 ## 2.3.2 - Home Alignment / 首页对齐
 
 - Center the search field and Unlock All over their respective character columns, use equal widths and a shared horizontal centerline, and increase clearance above the first row. / 搜索框与一键解锁分别居中于左右角色区域，统一宽度和水平中线，增加与首排头像的间距。

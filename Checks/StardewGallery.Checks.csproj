@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="ConditionCoverageChecks.cs" />
     <Compile Include="GallerySearchChecks.cs" />
     <Compile Include="GalleryCorrectionChecks.cs" />
     <Compile Include="GalleryNavigationChecks.cs" />
@@ -30,6 +31,8 @@
     <Compile Include="..\Conditions\ConditionGap.cs" Link="Conditions\ConditionGap.cs" />
     <Compile Include="..\Conditions\ConditionEvaluation.cs" Link="Conditions\ConditionEvaluation.cs" />
     <Compile Include="..\Conditions\ConditionEvaluationContext.cs" Link="Conditions\ConditionEvaluationContext.cs" />
+    <Compile Include="..\Conditions\ConditionReadState.cs" Link="Conditions\ConditionReadState.cs" />
+    <Compile Include="..\Conditions\SafeGameQuery.cs" Link="Conditions\SafeGameQuery.cs" />
     <Compile Include="..\Conditions\ConditionParser.cs" Link="Conditions\ConditionParser.cs" />
     <Compile Include="..\Conditions\NativePreconditionProbe.cs" Link="Conditions\NativePreconditionProbe.cs" />
     <Compile Include="..\Conditions\ConditionEvaluator.cs" Link="Conditions\ConditionEvaluator.cs" />

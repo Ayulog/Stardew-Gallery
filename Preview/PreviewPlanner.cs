@@ -19,6 +19,8 @@ internal sealed record CurrentStateSnapshot(
     bool? IsRaining = null
 )
 {
+    internal ConditionReadState? Details { get; init; }
+
     internal CurrentStateSnapshot ForLocation(string? weather, bool? isRaining)
         => this with { Weather = weather, IsRaining = isRaining };
 
@@ -39,7 +41,7 @@ internal sealed record CurrentStateSnapshot(
             Roommate,
             DaysPlayed,
             WorldState,
-            IsRaining);
+            IsRaining) { Details = Details };
 }
 
 /// <summary>

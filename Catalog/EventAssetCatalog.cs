@@ -22,7 +22,7 @@ internal sealed class EventAssetCatalog : IEventAssetSourceCatalog
                 FragmentRootLocationName: location.Name,
                 Definitions: definitions,
                 LoadLocationEvents: name => LoadLocationEvents(name, location, events),
-                ProbePrecondition: key => probe.Check(key, candidate => location.checkEventPrecondition(candidate, check_seen: false))
+                ProbePrecondition: key => probe.Check(key, candidate => location.checkEventPrecondition(candidate, check_seen: false), Game1.dedicatedServer is not null)
             ));
             return true;
         }, includeInteriors: true, includeGenerated: false);
