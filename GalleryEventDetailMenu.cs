@@ -20,23 +20,24 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private const int StatusSize = GallerySpreadLayout.IconSize * 3;
     private const int StatusGap = 16;
     private static readonly RasterizerState ClipRasterizer = new() { ScissorTestEnable = true };
-    private readonly GalleryCharacter character;
+    private sealed record ReferenceItem(string EventId, GalleryEvent? Target, string Label, string? Message);
+    private readonly GalleryCharacter? character;
     private readonly GalleryEvent entry;
     private readonly IReadOnlyList<ConditionDisplayItem> conditions;
-    private readonly IReadOnlyDictionary<ConditionDisplayItem, IReadOnlyList<string>> conditionReferences;
+    private readonly IReadOnlyDictionary<ConditionDisplayItem, IReadOnlyList<ReferenceItem>> conditionReferences;
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
     private readonly GalleryPhotos photos;
     private readonly Texture2D statusIcons;
     private readonly Texture2D scrollbarTrackTexture;
-    private readonly GalleryCharacterPanel leftPanel;
+    private readonly GalleryCharacterPanel? leftPanel;
     private readonly Func<bool> canReplay;
     private readonly Action back;
     private readonly Action replay;
-    private readonly Action<string> followReference;
+    private readonly Action<GalleryEvent> followReference;
     private readonly string backLabelKey;
-    private readonly List<(string EventId, Rectangle Bounds)> referenceLinks = [];
+    private readonly List<(ReferenceItem Item, Rectangle Bounds)> referenceLinks = [];
     private Rectangle contentBounds;
     private Rectangle scrollTrack;
     private Rectangle scrollThumb;
@@ -53,7 +54,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private int drawOffsetY;
 
     internal GalleryEventDetailMenu(
-        GalleryCharacter character,
+        GalleryCharacter? character,
         GalleryCatalog catalog,
         GalleryEvent entry,
         IReadOnlyList<ConditionDisplayItem> conditions,
@@ -67,14 +68,23 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Action back,
         Action replay,
         GalleryPhotos photos,
-        Action<string> followReference,
+        Action<GalleryEvent> followReference,
+        Func<string, IReadOnlyList<GalleryEvent>> resolveReference,
         string backLabelKey)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
         this.character = character;
         this.entry = entry;
         this.conditions = conditions;
-        conditionReferences = conditions.Distinct().ToDictionary(item => item, item => GalleryEventNavigation.References(item.Expression));
+        conditionReferences = conditions.Distinct().ToDictionary(item => item, item => (IReadOnlyList<ReferenceItem>)GalleryEventNavigation.References(item.Expression)
+            .SelectMany(id =>
+            {
+                IReadOnlyList<GalleryEvent> targets = resolveReference(id);
+                return targets.Count == 0
+                    ? new[] { new ReferenceItem(id, null, "ID " + id, i18n.Get("nav.unavailable", new { id }).ToString()) }
+                    : targets.Select(target => new ReferenceItem(id, target, "ID " + id + " >", targets.Count > 1
+                        ? GalleryConditionPresentation.Location(target, i18n) + " | " + target.AssetName : null));
+            }).ToArray());
         this.i18n = i18n;
         this.background = background;
         this.thumbnail = thumbnail;
@@ -86,7 +96,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.photos = photos;
         this.followReference = followReference;
         this.backLabelKey = backLabelKey;
-        leftPanel = new GalleryCharacterPanel(character, GalleryCharacterMenu.EventsFor(character, catalog), i18n, scene);
+        leftPanel = character is null ? null : new GalleryCharacterPanel(character, GalleryCharacterMenu.EventsFor(character, catalog), i18n, scene);
         RecalculateLayout();
         SnapForGamepad();
     }
@@ -112,7 +122,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
                 if (ReferenceBounds(index).Contains(x, y))
                 {
                     FocusReference(index);
-                    followReference(referenceLinks[index].EventId);
+                    if (referenceLinks[index].Item.Target is GalleryEvent target)
+                        followReference(target);
                     return;
                 }
         }
@@ -210,7 +221,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     {
         int reference = (currentlySnappedComponent?.myID ?? -1) - ReferenceComponentId;
         if (reference >= 0 && reference < referenceLinks.Count)
-            followReference(referenceLinks[reference].EventId);
+        {
+            if (referenceLinks[reference].Item.Target is GalleryEvent target)
+                followReference(target);
+        }
         else if (currentlySnappedComponent?.myID == PhotosComponentId)
             OpenPhotos();
         else if (currentlySnappedComponent?.myID == ReplayComponentId && canReplay())
@@ -280,11 +294,17 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         EnsureLayout();
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
-        leftPanel.DrawPhoto(b);
+        if (leftPanel is not null)
+            leftPanel.DrawPhoto(b);
+        else
+            GalleryPhotos.DrawCover(b, photos.Cover(entry.Resolved.Identity) ?? thumbnail, Bounds(GallerySpreadLayout.PortraitBounds), Color.White);
         GalleryPhotos.DrawCover(b, photos.Cover(entry.Resolved.Identity) ?? thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
         GalleryMenu.DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
-        leftPanel.DrawInformation(b);
+        if (leftPanel is not null)
+            leftPanel.DrawInformation(b);
+        else
+            DrawOtherEventInformation(b);
         DrawHeader(b);
         Rectangle photoBounds = Bounds(GallerySpreadLayout.DetailThumbnailBounds);
         b.Draw(Game1.mouseCursors2, new Rectangle(photoBounds.Right - 58, photoBounds.Bottom - 52, 54, 48),
@@ -308,15 +328,23 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     {
         Rectangle title = Bounds(GallerySpreadLayout.TitleBounds);
         SpriteText.drawStringHorizontallyCenteredAt(b, i18n.Get("event-detail.title"), title.Center.X, title.Y + 8, maxWidth: title.Width - 24);
-        EventOwner owner = entry.Ownership.Owners.First(value => value.Name == character.Name);
-        string hearts = owner.FriendshipPoints is int points
+        EventOwner? owner = entry.Ownership.Owners.FirstOrDefault(value => value.Name == character?.Name);
+        string hearts = owner?.FriendshipPoints is int points
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
-        DrawHeaderText(b, $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
+        DrawHeaderText(b, owner is null ? "ID " + entry.EventId : $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
         string location = GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
             key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
         DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
         DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
+    }
+
+    private void DrawOtherEventInformation(SpriteBatch b)
+    {
+        string[] lines = [i18n.Get("nav.other-event"), "ID " + entry.EventId,
+            GalleryConditionPresentation.Location(entry, i18n), i18n.Get("nav.read-only")];
+        for (int row = 0; row < lines.Length; row++)
+            GalleryMenu.DrawCentered(b, lines[row], Bounds(GallerySpreadLayout.LeftRowBounds(row)));
     }
 
     private static void DrawHeaderText(SpriteBatch b, string text, Rectangle bounds, bool wrap = false)
@@ -340,7 +368,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     }
 
     private int MeasureRow(ConditionDisplayItem item)
-        => MeasureRowBody(item) + conditionReferences[item].Count * ReferenceHeight;
+        => MeasureRowBody(item) + conditionReferences[item].Sum(MeasureReference);
+
+    private int MeasureReference(ReferenceItem item)
+        => ReferenceHeight + (item.Message is null ? 0 : LineHeight(item.Message, RowTextWidth - 16) + 8);
 
     private int MeasureRowBody(ConditionDisplayItem item)
     {
@@ -389,7 +420,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             bool hovered = ToScreen(Rectangle.Intersect(bounds, contentBounds)).Contains(Game1.getMouseX(true), Game1.getMouseY(true));
             if (hovered || Focused(ReferenceComponentId + index))
                 b.Draw(Game1.staminaRect, bounds, new Color(255, 240, 165) * .7f);
-            GalleryMenu.DrawLeftFitted(b, "ID " + referenceLinks[index].EventId + " >", new Rectangle(bounds.X + 8, bounds.Y + 2, bounds.Width - 16, bounds.Height - 8));
+            ReferenceItem item = referenceLinks[index].Item;
+            GalleryMenu.DrawLeftFitted(b, item.Label, new Rectangle(bounds.X + 8, bounds.Y + 2, bounds.Width - 16, ReferenceHeight - 8));
+            if (item.Message is not null)
+                DrawWrapped(b, item.Message, bounds.X + 8, bounds.Y + ReferenceHeight, bounds.Width - 16, GallerySpreadDrawing.Ink);
             b.Draw(Game1.staminaRect, new Rectangle(bounds.X + 8, bounds.Bottom - 4, bounds.Width - 16, 1), GallerySpreadDrawing.LightInk);
         }
     }
@@ -455,10 +489,11 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         foreach (ConditionDisplayItem item in conditions)
         {
             int linkY = rowY + MeasureRowBody(item);
-            foreach (string id in conditionReferences[item])
+            foreach (ReferenceItem reference in conditionReferences[item])
             {
-                referenceLinks.Add((id, new Rectangle(contentBounds.X + RowPadding, linkY, RowTextWidth, ReferenceHeight)));
-                linkY += ReferenceHeight;
+                int referenceHeight = MeasureReference(reference);
+                referenceLinks.Add((reference, new Rectangle(contentBounds.X + RowPadding, linkY, RowTextWidth, referenceHeight)));
+                linkY += referenceHeight;
             }
             rowY = linkY;
         }
@@ -518,7 +553,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         {
             Rectangle visible = Rectangle.Intersect(ReferenceBounds(index), contentBounds);
             if (visible.Width > 0 && visible.Height > 0)
-                allClickableComponents.Add(new ClickableComponent(ToScreen(visible), referenceLinks[index].EventId) { myID = ReferenceComponentId + index });
+                allClickableComponents.Add(new ClickableComponent(ToScreen(visible), referenceLinks[index].Item.EventId) { myID = ReferenceComponentId + index });
         }
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previous) ?? allClickableComponents[0];
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)

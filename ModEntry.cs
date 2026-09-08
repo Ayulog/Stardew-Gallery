@@ -86,7 +86,7 @@ internal sealed class ModEntry : Mod
         {
             if (e.OldMenu is GalleryPhotoMenu)
                 photos.ReleasePreviews();
-            if (e.NewMenu is not (GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu or GalleryEventPickerMenu))
+            if (e.NewMenu is not (GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu))
                 photos.ClearTextures();
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
@@ -129,7 +129,7 @@ internal sealed class ModEntry : Mod
         }
         bool searchSelected = Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true };
         if (GalleryUiRules.ShouldCloseFromShortcut(galleryPressed, searchSelected)
-            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu or GalleryEventPickerMenu)
+            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu)
         {
             Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
             Game1.activeClickableMenu = null;
@@ -158,12 +158,6 @@ internal sealed class ModEntry : Mod
         {
             Helper.Input.Suppress(e.Button);
             photoMenu.HandleControllerBack();
-            return;
-        }
-        if (e.Button == SButton.ControllerB && Game1.activeClickableMenu is GalleryEventPickerMenu pickerMenu)
-        {
-            Helper.Input.Suppress(e.Button);
-            pickerMenu.HandleControllerBack();
             return;
         }
         if (Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true } home)
@@ -293,7 +287,7 @@ internal sealed class ModEntry : Mod
                 ToggleUnlock,
                 (character, entry, scroll, returnHome) => RequestReplay(snapshot, character, entry, scroll, returnHome),
                 (character, entry, scroll, conditions, returnHome) => OpenEventDetail(snapshot, character, entry, scroll, conditions, returnHome), photos,
-                (query, returnHome) => OpenEventSearch(snapshot, query, returnHome));
+                (entry, returnHome) => OpenDetailNavigation(snapshot, entry, null, returnHome, returnHome, null, "detail.back"));
             Game1.playSound("bigSelect");
         }
         catch (Exception error)
@@ -373,21 +367,6 @@ internal sealed class ModEntry : Mod
             () => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity), conditions, "event-detail.back");
     }
 
-    private void OpenEventSearch(GalleryCatalog snapshot, string query, Action returnHome)
-    {
-        IReadOnlyList<GalleryEvent> matches = GalleryEventNavigation.Search(snapshot, query,
-            entry => GalleryConditionPresentation.Location(entry, Helper.Translation));
-        if (matches.Count == 1)
-        {
-            OpenDetailNavigation(snapshot, matches[0], null, returnHome, returnHome, null, "nav.back");
-            return;
-        }
-        Game1.activeClickableMenu = new GalleryEventPickerMenu(matches, snapshot, photos,
-            Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For()), Helper.Translation,
-            Helper.Translation.Get("nav.results", new { query }),
-            (entry, returnResults) => OpenDetailNavigation(snapshot, entry, null, returnHome, returnResults, null, "nav.back-results"), returnHome);
-    }
-
     private void OpenDetailNavigation(GalleryCatalog snapshot, GalleryEvent initial, GalleryCharacter? preferredOwner,
         Action returnHome, Action rootBack, IReadOnlyList<ConditionDisplayItem>? initialConditions, string rootBackKey)
     {
@@ -395,7 +374,7 @@ internal sealed class ModEntry : Mod
         void Show(GalleryEvent target)
         {
             GalleryCharacter? owner = GalleryEventNavigation.Owner(snapshot, target, preferredOwner?.Name);
-            if (owner is null) { Unavailable(target.EventId); return; }
+            bool replayListed = owner is not null && GalleryEventNavigation.IsReplayListed(snapshot, target);
             GalleryEventDetailMenu menu = trail.Open(target.Resolved.Identity, () => new GalleryEventDetailMenu(
                 owner, snapshot, target,
                 target.Resolved.Identity == initial.Resolved.Identity && initialConditions is not null ? initialConditions : GalleryConditionPresentation.Build(target, Helper.Translation),
@@ -404,32 +383,12 @@ internal sealed class ModEntry : Mod
                 Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For()),
                 Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ConditionStatusIcons),
                 Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
-                () => EventCardStateResolver.Resolve(Game1.player.eventsSeen.Contains(target.EventId), unlockAll).Unlocked,
+                () => replayListed && EventCardStateResolver.Resolve(Game1.player.eventsSeen.Contains(target.EventId), unlockAll).Unlocked,
                 () => { GalleryEventDetailMenu? previous = trail.Back(); if (previous is null) rootBack(); else { Game1.activeClickableMenu = previous; previous.RestoreNavigationFocus(); } },
-                () => RequestReplay(snapshot, owner, target, 0, returnHome, () => { Game1.activeClickableMenu = trail.Current; trail.Current?.RestoreNavigationFocus(); }),
-                photos, Follow, trail.Count == 0 ? rootBackKey : "nav.back-detail"));
+                () => { if (replayListed) RequestReplay(snapshot, owner!, target, 0, returnHome, () => { Game1.activeClickableMenu = trail.Current; trail.Current?.RestoreNavigationFocus(); }); },
+                photos, Show, id => GalleryEventNavigation.Resolve(snapshot, id), trail.Count == 0 ? rootBackKey : "nav.back-detail"));
             Game1.activeClickableMenu = menu;
             menu.RestoreNavigationFocus();
-        }
-        void Follow(string id)
-        {
-            IReadOnlyList<GalleryEvent> matches = GalleryEventNavigation.Resolve(snapshot, id);
-            if (matches.Count == 0) { Unavailable(id); return; }
-            if (matches.Count == 1) { Show(matches[0]); return; }
-            GalleryEventDetailMenu? source = trail.Current;
-            Game1.activeClickableMenu = new GalleryEventPickerMenu(matches, snapshot, photos,
-                Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For()), Helper.Translation,
-                Helper.Translation.Get("nav.references", new { id }), (entry, _) => Show(entry),
-                () => { Game1.activeClickableMenu = source; source?.RestoreNavigationFocus(); });
-        }
-        void Unavailable(string id)
-        {
-            GalleryEventDetailMenu? source = trail.Current;
-            Game1.activeClickableMenu = new GalleryEventPickerMenu([], snapshot, photos,
-                Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For()), Helper.Translation,
-                Helper.Translation.Get("nav.references", new { id }), (_, _) => { },
-                () => { if (source is null) rootBack(); else { Game1.activeClickableMenu = source; source.RestoreNavigationFocus(); } },
-                Helper.Translation.Get("nav.unavailable", new { id }));
         }
         Show(initial);
     }

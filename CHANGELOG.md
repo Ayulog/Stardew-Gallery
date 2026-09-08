@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.3.1 - Search and UI Corrections / 搜索与界面修正
+
+- Find loaded non-heart events by ID and follow them from prerequisite links, with view-only details and existing replay restrictions. Content-pack definitions which have not loaded remain unavailable. / 支持按 ID 查找并跳转已加载的非好感事件，提供只读详情；未满足内容包加载条件的事件仍不可用，保留回放限制。
+- Remove the extra home search button and event picker popup. Show ambiguous prerequisite sources and missing-target messages inline, retaining return position and focus. / 移除首页额外搜索按钮及事件选择弹窗，多来源与缺失提示留在原书页，保留返回位置与焦点。
+- Match Unlock All to album/detail footer button dimensions and styling, with labels fitted for all 12 maintained languages. / 一键解锁按钮统一使用相册、详情页底按钮的尺寸与样式，适配现有 12 种语言。
+
 ## 2.3.0 - Event Navigation / 事件导航
 
 - Follow event IDs under prerequisite conditions, with a source picker for ambiguous IDs and a message for unavailable targets. Original condition meanings and replay permissions stay unchanged. / 点击前置条件下的事件 ID 跳转详情；同 ID 多来源时选择目标，缺失时提示。保留原条件含义与回放权限。

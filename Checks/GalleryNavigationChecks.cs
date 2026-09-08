@@ -7,19 +7,23 @@ internal static class GalleryNavigationChecks
         GalleryEvent town = Entry("Town", "123");
         GalleryEvent beach = Entry("Beach", "123");
         GalleryEvent locked = Entry("Forest", "456");
-        GalleryEvent excluded = Entry("Town", "missing");
+        GalleryEvent excluded = Entry("Town", "Custom-789") with
+        {
+            Ownership = new EventOwnership(OwnershipKind.Excluded, [], "no-eligible-speaking-actor")
+        };
         GalleryCharacter abigail = new("Abigail", "阿比盖尔", true, 0);
-        GalleryCatalog catalog = new([abigail], [town, beach, locked, town], [excluded]);
+        GalleryCatalog catalog = new([abigail], [town, beach, locked, town], [excluded, excluded]);
         Check(GalleryEventNavigation.Resolve(catalog, "123").Count == 2, "ambiguous ID keeps both assets, removes duplicate identity");
-        Check(GalleryEventNavigation.Resolve(catalog, "missing").Count == 0, "excluded catalog entries cannot be followed");
+        Check(GalleryEventNavigation.Resolve(catalog, "Custom-789").Single() == excluded, "loaded non-heart event remains readable");
+        Check(GalleryEventNavigation.Resolve(catalog, "57876001").Count == 0, "unloaded CP definition is not fabricated");
         Check(GalleryEventNavigation.Resolve(catalog, "456").Single() == locked, "locked event remains readable without unlocking");
         Check(GalleryEventNavigation.Resolve(catalog, "12").Count == 0, "references are exact IDs");
-        Check(GalleryEventNavigation.Search(catalog, " 123 ", Location).Count == 2, "search trims input and preserves ambiguity");
-        Check(GalleryEventNavigation.Search(catalog, "阿比", Location).Count == 3, "localized NPC search");
-        Check(GalleryEventNavigation.Search(catalog, "ABIGAIL", Location).Count == 3, "internal NPC search");
-        Check(GalleryEventNavigation.Search(catalog, "海滩", Location).Single() == beach, "localized location search");
-        Check(GalleryEventNavigation.Search(catalog, "Beach", Location).Single() == beach, "internal location search");
-        Check(GalleryEventNavigation.Search(catalog, "  ", Location).Count == 0, "empty event query");
+        Check(GalleryEventNavigation.SearchOtherIds(catalog, " custom- ").Single() == excluded, "other ID search trims, folds case and deduplicates identity");
+        Check(GalleryEventNavigation.SearchOtherIds(catalog, "  ").Count == 0, "empty home query keeps character gallery");
+        Check(GalleryEventNavigation.SearchOtherIds(catalog, "123").Count == 0, "heart events keep the existing character search route");
+        Check(GalleryEventNavigation.Owner(catalog, excluded) is null, "other event does not invent a character owner");
+        Check(!GalleryEventNavigation.IsReplayListed(catalog, excluded), "readable excluded event does not gain replay permission");
+        Check(GalleryEventNavigation.IsReplayListed(catalog, locked), "heart event retains existing replay eligibility checks");
         Check(GalleryEventNavigation.Owner(catalog, beach) == abigail, "target owner comes from target ownership");
 
         SawEventCondition any = new(["123", "456", "123"], ConditionSource.LegacyEventPrecondition, "e unrelated raw text", false);
@@ -38,16 +42,15 @@ internal static class GalleryNavigationChecks
         try { trail.Open(locked.Resolved.Identity, () => throw new InvalidOperationException()); } catch (InvalidOperationException) { }
         Check(trail.Count == 2 && ReferenceEquals(trail.Current, b), "failed target construction preserves source");
         Check(ReferenceEquals(trail.Back(), a) && trail.Back() is null && trail.Count == 0, "back unwinds then returns root");
-        Console.WriteLine("Gallery 2.3.0 navigation checks passed.");
+        Console.WriteLine("Gallery 2.3.1 navigation checks passed.");
     }
 
-    private static string Location(GalleryEvent entry) => entry.LocationName == "Beach" ? "海滩" : entry.LocationName;
     private static GalleryEvent Entry(string location, string id) => new(
         new ResolvedEvent(new EventIdentity("Data/Events/" + location, id), location, id + "/f Abigail 2000", "end",
             new EventFragments([], []), "definition", "script"),
         new EventOwnership(OwnershipKind.Direct, [new("Abigail", 2000)]));
     private static void Check(bool condition, string message)
     {
-        if (!condition) throw new InvalidOperationException("2.3.0: " + message);
+        if (!condition) throw new InvalidOperationException("2.3.1: " + message);
     }
 }

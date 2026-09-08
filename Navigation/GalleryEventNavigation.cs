@@ -10,26 +10,18 @@ internal static class GalleryEventNavigation
     };
 
     internal static IReadOnlyList<GalleryEvent> Resolve(GalleryCatalog catalog, string eventId)
-        => catalog.Events.Where(entry => string.Equals(entry.EventId, eventId, StringComparison.Ordinal)).DistinctBy(entry => entry.Resolved.Identity).ToArray();
+        => catalog.Events.Concat(catalog.ExcludedEvents).Where(entry => string.Equals(entry.EventId, eventId, StringComparison.Ordinal)).DistinctBy(entry => entry.Resolved.Identity).ToArray();
 
-    internal static IReadOnlyList<GalleryEvent> Search(GalleryCatalog catalog, string text, Func<GalleryEvent, string> location)
+    internal static IReadOnlyList<GalleryEvent> SearchOtherIds(GalleryCatalog catalog, string text)
     {
         string query = text.Trim();
-        if (query.Length == 0)
-            return [];
-        var characters = catalog.Characters.ToDictionary(character => character.Name, StringComparer.Ordinal);
-        return catalog.Events.Where(entry => entry.EventId.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || entry.LocationName.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || location(entry).Contains(query, StringComparison.CurrentCultureIgnoreCase)
-                || entry.Ownership.Owners.Any(owner => owner.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || characters.TryGetValue(owner.Name, out GalleryCharacter? character)
-                        && character.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)))
-            .DistinctBy(entry => entry.Resolved.Identity)
-            .OrderByDescending(entry => string.Equals(entry.EventId, query, StringComparison.Ordinal))
-            .ThenBy(entry => entry.EventId, StringComparer.Ordinal)
-            .ThenBy(entry => entry.AssetName, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return query.Length == 0 ? [] : catalog.ExcludedEvents
+            .Where(entry => entry.EventId.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .DistinctBy(entry => entry.Resolved.Identity).ToArray();
     }
+
+    internal static bool IsReplayListed(GalleryCatalog catalog, GalleryEvent entry)
+        => catalog.Events.Any(candidate => candidate.Resolved.Identity == entry.Resolved.Identity);
 
     internal static GalleryCharacter? Owner(GalleryCatalog catalog, GalleryEvent entry, string? preferredName = null)
     {

@@ -11,7 +11,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 ### 当前功能
 
 - 按角色浏览当前游戏与已安装 Mod 实际生效的好感事件。
-- 搜索角色、事件 ID 或地点，直达具体事件；从条件下的事件 ID 跳转前置事件，逐层返回原位置。
+- 搜索角色或事件 ID；已加载的其他事件也可按 ID 查看。从条件下的事件 ID 跳转前置事件，逐层返回原位置。
 - 回放截图按存档保存，可选封面、替换封面、恢复默认或移除归档。
 - 阅读型条件说明与进度缺口：好感/心数、看过事件、邮件、季节、日期、时间等用可读文本呈现；无法安全解析的模组条件会明确标注，而不是猜测。
 - 当前状态回放：所有回放都从当前已解析的事件内容与当前游戏状态启动，不再使用历史冻结版本。
@@ -37,7 +37,7 @@ GMCM 不是必需依赖；安装后可在游戏内配置快捷键、回放安全
 - 选择角色，查看事件的可读条件和缺失/未知要求；已解锁事件可点击“回放”。
 - 回放右上角按钮或配置的快捷键可循环切换 1x / 2x / 4x。
 - 回放时按 F8、手柄左肩或点击相机截图；从详情缩略图管理截图与封面。截图不含对话框和 HUD，保存在本 Mod 的 `event-photos/` 内，卸载前可保留此目录。
-- 首页输入后按 Enter 或点“搜索事件”；前置条件下的 ID 可点击，多个来源会显示列表供选择。
+- 首页使用原搜索框，按 Enter 或点击结果进入；无好感角色归属的事件按 ID 显示在书页中，仅供查看。前置事件的多个来源直接列在条件下，尚未加载时就地提示。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
 ### 兼容性与限制
@@ -63,7 +63,7 @@ Stardew Gallery is a current-state event album and planning tool: it discovers t
 ### Features
 
 - Browse the heart events actually active in the base game and installed mods, by character.
-- Search by character, event ID or location to open an exact event. Follow prerequisite IDs and return through previous views with their positions preserved.
+- Search by character or event ID, including loaded events outside the heart-event gallery. Follow prerequisite IDs and return through previous views with their positions preserved.
 - Capture replay photos per save, choose or replace covers, restore defaults, and archive removed photos.
 - Readable condition explanation with progress gaps: friendship/hearts, seen events, mail, season, day, time, and more are shown in plain text; mod conditions that can't be parsed safely are labeled as unknown rather than guessed.
 - Current-state replay: every replay launches from currently resolved event content and current game state, not from a frozen historical version.
@@ -89,7 +89,7 @@ GMCM is optional. When installed, it provides in-game settings for keybinds, rep
 - Choose a character, review readable conditions and missing/unknown requirements, then click "Replay" on an unlocked event.
 - Use the top-right replay button or the configured binding to cycle 1x / 2x / 4x.
 - During replay, press F8, the controller's left shoulder, or the camera button to capture the scene without dialogue/HUD. Open the detail thumbnail to manage photos/covers. Photos live in this mod's `event-photos/` folder; keep it when uninstalling to retain your pictures.
-- Enter a query and press Enter or Search events. Click IDs below prerequisite conditions; ambiguous sources appear in a selection list.
+- Use the home search field, then press Enter or select a result. Other loaded events appear on the book page by ID and are view-only. Prerequisite sources and unavailable-event messages appear directly below their conditions.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
 ### Compatibility and limitations
