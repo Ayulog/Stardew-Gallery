@@ -1,5 +1,9 @@
 # Changelog / 更新日志
 
+## 2.3.2 - Home Alignment / 首页对齐
+
+- Center the search field and Unlock All over their respective character columns, use equal widths and a shared horizontal centerline, and increase clearance above the first row. / 搜索框与一键解锁分别居中于左右角色区域，统一宽度和水平中线，增加与首排头像的间距。
+
 ## 2.3.1 - Search and UI Corrections / 搜索与界面修正
 
 - Find loaded non-heart events by ID and follow them from prerequisite links, with view-only details and existing replay restrictions. Content-pack definitions which have not loaded remain unavailable. / 支持按 ID 查找并跳转已加载的非好感事件，提供只读详情；未满足内容包加载条件的事件仍不可用，保留回放限制。

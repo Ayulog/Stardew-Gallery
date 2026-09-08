@@ -361,12 +361,12 @@ internal sealed class GalleryMenu : IClickableMenu
         drawOffsetY = (int)Math.Round((Game1.uiViewport.Height - height * menuScale) / 2f);
         viewportWidth = Game1.uiViewport.Width;
         viewportHeight = Game1.uiViewport.Height;
-        searchBounds = R(305, 150, 430, 48);
+        var footerButton = GallerySpreadLayout.BackButtonBounds;
+        searchBounds = R(268, 136, footerButton.Width, 48);
         search.X = searchBounds.X;
         search.Y = searchBounds.Y;
         search.Width = searchBounds.Width;
-        var footerButton = GallerySpreadLayout.BackButtonBounds;
-        unlockBounds = R(1005, 138, footerButton.Width, footerButton.Height);
+        unlockBounds = R(1014, 124, footerButton.Width, footerButton.Height);
         scrollTrack = R(1534, 146, 24, 640);
         yesBounds = R(650, 540, 160, 56);
         noBounds = R(860, 540, 160, 56);
