@@ -21,11 +21,13 @@ internal static class GalleryEventNavigation
     }
 
     internal static bool IsReplayListed(GalleryCatalog catalog, GalleryEvent entry)
-        => catalog.Events.Any(candidate => candidate.Resolved.Identity == entry.Resolved.Identity);
+        => entry.Resolved.HasLocationContext && entry.ReplayUnavailableReason is null
+            && (catalog.Events.Any(candidate => candidate.Resolved.Identity == entry.Resolved.Identity)
+                || entry.OrdinaryReplaySupported && catalog.ExcludedEvents.Any(candidate => candidate.Resolved.Identity == entry.Resolved.Identity));
 
     internal static GalleryCharacter? Owner(GalleryCatalog catalog, GalleryEvent entry, string? preferredName = null)
     {
-        var owners = entry.Ownership.Owners.Select(owner => owner.Name).ToHashSet(StringComparer.Ordinal);
+        var owners = entry.RelatedNpcNames.ToHashSet(StringComparer.Ordinal);
         return catalog.Characters.Where(character => owners.Contains(character.Name))
             .OrderByDescending(character => character.Name == preferredName)
             .ThenByDescending(character => character.IsMet)

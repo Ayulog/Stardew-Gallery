@@ -39,7 +39,7 @@ internal sealed class ResolvedEventReader(
                 Fragments: fragments,
                 RootDefinitionHash: EventHashes.RootDefinition(key, script),
                 RootScriptHash: EventHashes.RootScript(script)
-            );
+            ) { HasLocationContext = source.HasLocationContext };
             result.Add(new ResolvedEventCandidate(resolved, () => source.ProbePrecondition(key)));
         }
         return result;

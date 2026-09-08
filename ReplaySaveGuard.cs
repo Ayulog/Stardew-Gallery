@@ -19,7 +19,13 @@ internal static class ReplaySaveGuard
         new Harmony(helper.ModRegistry.ModID).Patch(
             AccessTools.Method(typeof(SaveGame), "getSaveEnumerator"),
             prefix: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(BeforeSave)));
+        new Harmony(helper.ModRegistry.ModID).Patch(
+            AccessTools.Method(typeof(Farmer), nameof(Farmer.NotifyQuests)),
+            prefix: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(BeforeQuestProgress)));
     }
+
+    // Native Speak reports socialization to live quests; a replay must not complete those quests.
+    private static bool BeforeQuestProgress() => !replay.SuppressQuestProgress;
 
     private static bool BeforeSave(ref IEnumerator<int> __result)
     {

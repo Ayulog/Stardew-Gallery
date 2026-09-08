@@ -96,7 +96,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.photos = photos;
         this.followReference = followReference;
         this.backLabelKey = backLabelKey;
-        leftPanel = character is null ? null : new GalleryCharacterPanel(character, GalleryCharacterMenu.EventsFor(character, catalog), i18n, scene);
+        leftPanel = character is null ? null : new GalleryCharacterPanel(character,
+            (catalog.Groups.Count > 0 ? catalog.Groups : GalleryEventGroup.Build(catalog.Events.Concat(catalog.ExcludedEvents)))
+                .Where(group => !group.IsFlow && group.NpcNames.Contains(character.Name)).Select(group => group.Representative).ToArray(), i18n, scene);
         RecalculateLayout();
         SnapForGamepad();
     }
@@ -316,6 +318,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             GalleryMenu.DrawScrollbar(b, scrollThumb);
         if (canReplay())
             GalleryMenu.DrawButton(b, replayBounds, i18n.Get("event.replay"));
+        else
+            GalleryMenu.DrawCentered(b, Game1.parseText(i18n.Get(entry.ReplayUnavailableReason ?? "event.locked"), Game1.smallFont, replayBounds.Width - 32),
+                new Rectangle(replayBounds.X + 16, replayBounds.Y - 14, replayBounds.Width - 32, 48));
         GalleryMenu.DrawButton(b, backBounds, i18n.Get(backLabelKey));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
@@ -333,8 +338,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
         DrawHeaderText(b, owner is null ? "ID " + entry.EventId : $"{hearts} · ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
-        string location = GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
-            key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
+        string location = GalleryConditionPresentation.Location(entry, i18n);
         DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
         DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
     }
@@ -342,7 +346,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private void DrawOtherEventInformation(SpriteBatch b)
     {
         string[] lines = [i18n.Get("nav.other-event"), "ID " + entry.EventId,
-            GalleryConditionPresentation.Location(entry, i18n), i18n.Get("nav.read-only")];
+            GalleryConditionPresentation.Location(entry, i18n), i18n.Get(canReplay() ? "event.state-unlocked" : entry.ReplayUnavailableReason is null ? "event.locked" : "nav.read-only")];
         for (int row = 0; row < lines.Length; row++)
             GalleryMenu.DrawCentered(b, lines[row], Bounds(GallerySpreadLayout.LeftRowBounds(row)));
     }

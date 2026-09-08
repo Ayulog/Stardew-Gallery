@@ -13,6 +13,11 @@
     <Compile Include="GallerySearchChecks.cs" />
     <Compile Include="GalleryCorrectionChecks.cs" />
     <Compile Include="GalleryNavigationChecks.cs" />
+    <Compile Include="GalleryDirectoryChecks.cs" />
+    <Compile Include="OrdinaryReplayChecks.cs" />
+    <Compile Include="..\Preview\OrdinaryReplayPolicy.cs" Link="Preview\OrdinaryReplayPolicy.cs" />
+    <Compile Include="..\Catalog\GalleryEventGroup.cs" Link="Catalog\GalleryEventGroup.cs" />
+    <Compile Include="..\Catalog\ObservedEventAssets.cs" Link="Catalog\ObservedEventAssets.cs" />
     <Compile Include="..\Navigation\GalleryEventNavigation.cs" Link="GalleryEventNavigation.cs" />
     <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
     <Compile Include="..\GalleryLocationName.cs" Link="GalleryLocationName.cs" />

@@ -10,7 +10,8 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
 {
     private sealed record IdentityConflict(string Location, string EventId, string SelectedKey, IReadOnlyList<string> CandidateKeys);
 
-    private readonly IEventAssetSourceCatalog eventAssets = new EventAssetCatalog();
+    private readonly EventAssetCatalog eventAssets = new();
+    private bool readingAssets;
     private readonly ResolvedEventReader eventReader = new(
         (key, script) => GameLocation.IsValidLocationEvent(key, script),
         raw => Event.ParseCommands(raw),
@@ -28,12 +29,30 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
 
     internal void Invalidate() => eventCandidates?.Invalidate();
 
+    internal void ObserveAsset(string name)
+    {
+        if (eventAssets.Observed.Observe(name) && !readingAssets) Invalidate();
+    }
+
+    internal void Reset()
+    {
+        eventAssets.Observed.Clear();
+        Invalidate();
+    }
+
+    private IReadOnlyList<ResolvedEventCandidate> ReadCandidates()
+    {
+        readingAssets = true;
+        try { return ResolvedEventIndex.ReadCurrentCandidates(eventAssets, eventReader); }
+        finally { readingAssets = false; }
+    }
+
     internal GalleryCatalog Get()
     {
         ResolvedEventIndex index = (eventCandidates ??= new(
-            () => ResolvedEventIndex.ReadCurrentCandidates(eventAssets, eventReader))).GetCurrent();
+            ReadCandidates)).GetCurrent();
         IReadOnlyList<GalleryCharacter> characters = ScanCharacters();
-        GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents);
+        GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents, ResolveDisplayCharacter);
         IReadOnlyList<GalleryEvent> events = build.AnalyzedEvents;
         GalleryCatalog catalog = build.Catalog;
         List<IdentityConflict> conflicts = index.Groups
@@ -65,6 +84,11 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     IdentityConflicts = conflicts.Count,
                     MissingFragments = events.Count(entry => entry.Fragments.MissingKeys.Count > 0)
                 },
+                Discovery = new { ObservedAssets = eventAssets.Observed.Names, eventAssets.Supplemental, eventAssets.Unavailable,
+                    DisplayGroups = catalog.Groups.Count, FlowGroups = catalog.Groups.Count(group => group.IsFlow),
+                    MissingReferencedIds = events.SelectMany(entry => GalleryEventNavigation.References(
+                        ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware).ParseRawKey(entry.EventKey)))
+                        .Except(events.Select(entry => entry.EventId), StringComparer.Ordinal).Distinct().ToArray() },
                 Conflicts = conflicts,
                 MissingFragments = events.Where(entry => entry.Fragments.MissingKeys.Count > 0).Select(entry => new
                 {
@@ -77,6 +101,17 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             monitor.Log($"详细扫描诊断已写入 {Path.Combine(GalleryDiagnostics.DirectoryPath, "catalog-latest.json")}。", LogLevel.Info);
         }
         return catalog;
+    }
+
+    private static GalleryCharacter? ResolveDisplayCharacter(string name)
+    {
+        if (!NPC.TryGetData(name, out CharacterData? data)) return null;
+        string textureName = NPC.getTextureNameForCharacter(name);
+        if (!Game1.content.DoesAssetExist<Texture2D>($"Portraits/{textureName}")) return null;
+        bool met = Game1.player.friendshipData.TryGetValue(name, out Friendship? friendship);
+        if (data.SocialTab == SocialTabBehavior.HiddenUntilMet && !met) return null;
+        return new GalleryCharacter(name, NPC.GetDisplayName(name), met || data.SocialTab is SocialTabBehavior.AlwaysShown or SocialTabBehavior.HiddenAlways, friendship?.Points ?? 0)
+            { IsSocial = false };
     }
 
     private IReadOnlyList<GalleryCharacter> ScanCharacters()

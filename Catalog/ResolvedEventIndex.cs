@@ -19,11 +19,18 @@ internal enum ResolvedEventSelectionSource
 internal sealed class ResolvedEventCandidateCache(Func<IReadOnlyList<ResolvedEventCandidate>> loadCandidates)
 {
     private IReadOnlyList<ResolvedEventCandidate>? candidates;
+    private int revision;
 
     internal ResolvedEventIndex GetCurrent()
-        => ResolvedEventIndex.Build(candidates ??= loadCandidates());
+    {
+        if (candidates is not null) return ResolvedEventIndex.Build(candidates);
+        int startedAt = revision;
+        IReadOnlyList<ResolvedEventCandidate> loaded = loadCandidates();
+        if (revision == startedAt) candidates = loaded;
+        return ResolvedEventIndex.Build(loaded);
+    }
 
-    internal void Invalidate() => candidates = null;
+    internal void Invalidate() { revision++; candidates = null; }
 }
 
 internal sealed class ResolvedEventIndex

@@ -13,6 +13,7 @@ internal sealed class ModEntry : Mod
     private GalleryCatalogCache catalog = null!;
     private readonly PreviewPlanner planner = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware, null);
     private bool unlockAll;
+    private (SaveProfileKey Profile, bool Value)? pendingUnlockSetting;
     private bool pendingOpen;
     private Texture2D tabIcon = null!;
     private ReplayCoordinator replay = null!;
@@ -60,17 +61,23 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); rollbackWarningShown = false; };
         helper.Events.GameLoop.SaveLoaded += (_, _) => photos.Load(new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID));
         helper.Events.GameLoop.GameLaunched += (_, _) => RegisterGmcm();
-        helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
+        helper.Events.GameLoop.SaveLoaded += (_, _) =>
+        {
+            unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
+            pendingUnlockSetting = null;
+        };
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
             replay.OnReturnedToTitle();
-            catalog.Invalidate();
+            catalog.Reset();
             unlockAll = false;
+            pendingUnlockSetting = null;
             rollbackWarningShown = false;
             screenshotReplayIdentity = null;
             photos.Dispose();
         };
         helper.Events.Content.LocaleChanged += (_, _) => catalog.Invalidate();
+        helper.Events.Content.AssetReady += (_, e) => catalog.ObserveAsset(e.NameWithoutLocale.Name);
         helper.Events.Content.AssetsInvalidated += (_, e) =>
         {
             if (e.NamesWithoutLocale.Any(name =>
@@ -86,7 +93,7 @@ internal sealed class ModEntry : Mod
         {
             if (e.OldMenu is GalleryPhotoMenu)
                 photos.ReleasePreviews();
-            if (e.NewMenu is not (GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu))
+            if (e.NewMenu is not (GalleryMenu or GalleryDirectoryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu))
                 photos.ClearTextures();
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
@@ -127,16 +134,17 @@ internal sealed class ModEntry : Mod
             replay.CycleSpeed();
             return;
         }
-        bool searchSelected = Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true };
+        bool searchSelected = Game1.activeClickableMenu is IGallerySearchMenu { IsSearchSelected: true };
         if (GalleryUiRules.ShouldCloseFromShortcut(galleryPressed, searchSelected)
-            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu)
+            && Game1.activeClickableMenu is GalleryMenu or GalleryDirectoryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu)
         {
             Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
+            (Game1.activeClickableMenu as IGallerySearchMenu)?.DeselectSearch();
             Game1.activeClickableMenu = null;
             Game1.playSound("bigDeSelect");
             return;
         }
-        if (e.Button == SButton.ControllerB && Game1.activeClickableMenu is GalleryMenu homeMenu)
+        if (e.Button == SButton.ControllerB && Game1.activeClickableMenu is IGallerySearchMenu homeMenu)
         {
             Helper.Input.Suppress(e.Button);
             homeMenu.HandleControllerBack();
@@ -160,7 +168,7 @@ internal sealed class ModEntry : Mod
             photoMenu.HandleControllerBack();
             return;
         }
-        if (Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true } home)
+        if (Game1.activeClickableMenu is IGallerySearchMenu { IsSearchSelected: true } home)
         {
             if (e.Button == SButton.Escape)
                 home.DeselectSearch();
@@ -272,22 +280,25 @@ internal sealed class ModEntry : Mod
     {
         try
         {
-            GalleryCatalog snapshot = catalog.Get();
+            GalleryCatalog snapshot = RuntimeReplayEligibility.Analyze(catalog.Get());
+            if (Config.DebugDiagnostics)
+                GalleryDiagnostics.Write("replay-compatibility-latest.json", new
+                {
+                    Timestamp = DateTimeOffset.Now,
+                    OrdinarySupported = snapshot.ExcludedEvents.Count(entry => entry.OrdinaryReplaySupported),
+                    Events = snapshot.Events.Concat(snapshot.ExcludedEvents).Select(entry => new
+                        { entry.Identity, entry.OrdinaryReplaySupported, entry.ReplayUnavailableReason, entry.ReplayDiagnostic })
+                }, Monitor);
             Game1.activeClickableMenu = new GalleryMenu(
                 snapshot,
                 Helper.Translation,
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/GalleryHome.png"),
-                Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>(GalleryUiAssets.EventAlbum),
-                Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>("assets/CharacterScene-day-v2.png"),
                 Helper.ModContent.Load<Microsoft.Xna.Framework.Graphics.Texture2D>(EventThumbnailAsset.For()),
-                Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ReplayGlyph),
-                Helper.ModContent.Load<Texture2D>(GalleryUiAssets.EventSlotFrame),
                 Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
                 () => unlockAll,
-                ToggleUnlock,
-                (character, entry, scroll, returnHome) => RequestReplay(snapshot, character, entry, scroll, returnHome),
-                (character, entry, scroll, conditions, returnHome) => OpenEventDetail(snapshot, character, entry, scroll, conditions, returnHome), photos,
-                (entry, returnHome) => OpenDetailNavigation(snapshot, entry, null, returnHome, returnHome, null, "detail.back"));
+                photos,
+                (entry, returnHome) => OpenDetailNavigation(snapshot, entry, null, returnHome, returnHome, null, "detail.back"),
+                (character, query, group, returnHome) => OpenDirectory(snapshot, character, query, group, returnHome));
             Game1.playSound("bigSelect");
         }
         catch (Exception error)
@@ -296,8 +307,26 @@ internal sealed class ModEntry : Mod
         }
     }
 
-    private void RequestReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, int scroll, Action returnHome, Action? returnDetail = null)
+    private void OpenDirectory(GalleryCatalog snapshot, GalleryCharacter? character, string query, GalleryEventGroup? group, Action returnHome)
     {
+        Game1.activeClickableMenu = new GalleryDirectoryMenu(snapshot, character, Helper.Translation,
+            Helper.ModContent.Load<Texture2D>(character is null ? "assets/GalleryHome.png" : GalleryUiAssets.EventAlbum),
+            Helper.ModContent.Load<Texture2D>("assets/CharacterScene-day-v2.png"),
+            Helper.ModContent.Load<Texture2D>(EventThumbnailAsset.For()),
+            Helper.ModContent.Load<Texture2D>(GalleryUiAssets.EventSlotFrame),
+            Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
+            Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ReplayGlyph), photos, () => unlockAll, returnHome,
+            (entry, restore) => OpenDetailNavigation(snapshot, entry, character, returnHome, restore, null, "event-detail.back"),
+            (entry, restore) =>
+            {
+                GalleryCharacter? owner = GalleryEventNavigation.Owner(snapshot, entry, character?.Name);
+                RequestReplay(snapshot, owner, entry, 0, returnHome, restore);
+            }, query, group);
+    }
+
+    private void RequestReplay(GalleryCatalog snapshot, GalleryCharacter? character, GalleryEvent entry, int scroll, Action returnHome, Action? returnDetail = null)
+    {
+        if (!GalleryEventNavigation.IsReplayListed(snapshot, entry)) return;
         if (!replayProtectionReady)
         {
             Game1.addHUDMessage(new HUDMessage(Helper.Translation.Get("replay.protection-failed"), HUDMessage.error_type));
@@ -322,7 +351,7 @@ internal sealed class ModEntry : Mod
         start();
     }
 
-    private void StartReplay(GalleryCatalog snapshot, GalleryCharacter character, GalleryEvent entry, int scroll, Action returnHome, Action? returnDetail = null)
+    private void StartReplay(GalleryCatalog snapshot, GalleryCharacter? character, GalleryEvent entry, int scroll, Action returnHome, Action? returnDetail = null)
     {
         Action reopen = returnDetail ?? (() => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity, EventCardAction.Replay));
         bool ok = replay.TryStart(entry, reopen, out string error);
@@ -335,9 +364,10 @@ internal sealed class ModEntry : Mod
         }
     }
 
-    private void OpenCharacter(GalleryCatalog snapshot, GalleryCharacter character, int scroll, Action returnHome,
+    private void OpenCharacter(GalleryCatalog snapshot, GalleryCharacter? character, int scroll, Action returnHome,
         string? focusIdentity = null, EventCardAction focusAction = EventCardAction.Details)
     {
+        if (character is null) { returnHome(); return; }
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, snapshot, Helper.Translation,
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.EventAlbum),
             Helper.ModContent.Load<Texture2D>("assets/CharacterScene-day-v2.png"),
@@ -374,7 +404,7 @@ internal sealed class ModEntry : Mod
         void Show(GalleryEvent target)
         {
             GalleryCharacter? owner = GalleryEventNavigation.Owner(snapshot, target, preferredOwner?.Name);
-            bool replayListed = owner is not null && GalleryEventNavigation.IsReplayListed(snapshot, target);
+            bool replayListed = GalleryEventNavigation.IsReplayListed(snapshot, target);
             GalleryEventDetailMenu menu = trail.Open(target.Resolved.Identity, () => new GalleryEventDetailMenu(
                 owner, snapshot, target,
                 target.Resolved.Identity == initial.Resolved.Identity && initialConditions is not null ? initialConditions : GalleryConditionPresentation.Build(target, Helper.Translation),
@@ -393,10 +423,22 @@ internal sealed class ModEntry : Mod
         Show(initial);
     }
 
-    private void ToggleUnlock()
+    private void StageUnlockSetting(bool value)
     {
-        unlockAll = !unlockAll;
-        Helper.Data.WriteSaveData("gallery-state", new GallerySaveData { UnlockAll = unlockAll });
+        pendingUnlockSetting = Context.IsWorldReady && Context.IsMainPlayer && !replay.IsActive
+            ? (new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID), value) : null;
+    }
+
+    private void SaveGmcm()
+    {
+        Helper.WriteConfig(Config);
+        if (pendingUnlockSetting is { } pending && Context.IsWorldReady && Context.IsMainPlayer && !replay.IsActive
+            && pending.Profile == new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID))
+        {
+            Helper.Data.WriteSaveData("gallery-state", new GallerySaveData { UnlockAll = pending.Value });
+            unlockAll = pending.Value;
+        }
+        pendingUnlockSetting = null;
     }
 
     private void RegisterGmcm()
@@ -408,7 +450,9 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        gmcm.Register(ModManifest, () => Config = new ModConfig(), () => Helper.WriteConfig(Config));
+        gmcm.Register(ModManifest, () => { Config = new ModConfig(); StageUnlockSetting(false); }, SaveGmcm);
+        gmcm.AddBoolOption(ModManifest, () => Context.IsWorldReady && (pendingUnlockSetting?.Value ?? unlockAll), StageUnlockSetting,
+            () => Helper.Translation.Get("config.unlock.name"), () => Helper.Translation.Get("config.unlock.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.GalleryKeys, value => Config.GalleryKeys = value,
             () => Helper.Translation.Get("config.key.name"), () => Helper.Translation.Get("config.key.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.ReplaySpeedKeys, value => Config.ReplaySpeedKeys = value,

@@ -10,6 +10,8 @@ internal sealed record ResolvedEvent(
     string RootScriptHash
 )
 {
+    public bool HasLocationContext { get; init; } = true;
+
     public string AssetName => Identity.AssetName;
 
     public string EventId => Identity.EventId;

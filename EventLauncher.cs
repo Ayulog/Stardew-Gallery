@@ -30,7 +30,7 @@ internal sealed class EventLauncher
             return new EventLaunchResult(false, null,
                 new EventLaunchFailure(EventLaunchFailureKind.InvalidPlayback, "事件播放规格无效（AssetName/EventId/RootScript/LocationName 为空）。"));
 
-        GameLocation? location = Game1.getLocationFromName(playback.LocationName);
+        GameLocation? location = RuntimeReplayEligibility.ExistingLocations().GetValueOrDefault(playback.LocationName);
         if (location is null)
             return new EventLaunchResult(false, null,
                 new EventLaunchFailure(EventLaunchFailureKind.LocationMissing, $"目标地点缺失：{playback.LocationName}"));
@@ -46,11 +46,11 @@ internal sealed class EventLauncher
                 new EventLaunchFailure(EventLaunchFailureKind.ConstructionFailed, $"事件构造失败：{error.Message}"));
         }
 
-        if (location.Name != Game1.currentLocation.Name)
+        if (!ReferenceEquals(location, Game1.currentLocation))
         {
             try
             {
-                LocationRequest request = Game1.getLocationRequest(location.Name);
+                LocationRequest request = new(location.NameOrUniqueName, location.isStructure.Value, location);
                 request.OnLoad += () =>
                 {
                     prepareEnvironment?.Invoke(Game1.currentLocation);

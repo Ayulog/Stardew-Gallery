@@ -9,6 +9,8 @@ internal sealed class ReplaySnapshot
     internal string LocationName { get; private init; } = "";
     internal Vector2 Tile { get; private init; }
     private int Facing { get; init; }
+    private Vector2 DrawOffset { get; init; }
+    private bool IgnoreMovementAnimation { get; init; }
     private int Time { get; init; }
     private string Season { get; init; } = "";
     private int Day { get; init; }
@@ -51,6 +53,8 @@ internal sealed class ReplaySnapshot
         LocationName = Game1.currentLocation.NameOrUniqueName,
         Tile = Game1.player.Tile,
         Facing = Game1.player.FacingDirection,
+        DrawOffset = Game1.player.drawOffset,
+        IgnoreMovementAnimation = Game1.player.ignoreMovementAnimation,
         Time = Game1.timeOfDay,
         Season = Game1.currentSeason,
         Day = Game1.dayOfMonth,
@@ -135,6 +139,7 @@ internal sealed class ReplaySnapshot
     {
         Game1.player.Position = Tile * Game1.tileSize;
         Game1.player.faceDirection(Facing);
+        Game1.player.drawOffset = DrawOffset;
         Game1.fadeToBlack = false;
         Game1.fadeIn = false;
         Game1.globalFade = false;
@@ -151,6 +156,7 @@ internal sealed class ReplaySnapshot
         Game1.freezeControls = FreezeControls;
         Game1.player.noMovementPause = NoMovementPause;
         Game1.player.movementPause = MovementPause;
+        Game1.player.ignoreMovementAnimation = IgnoreMovementAnimation;
     }
 
     private static Item? Clone(Item? item)

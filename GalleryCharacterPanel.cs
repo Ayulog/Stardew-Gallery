@@ -21,7 +21,12 @@ internal sealed class GalleryCharacterPanel(
         b.Draw(scene, photo, Color.White);
         previewSprite ??= Game1.getCharacterFromName(character.Name)?.Sprite?.Clone();
         if (previewSprite?.Texture is null)
+        {
+            string asset = "Portraits/" + NPC.getTextureNameForCharacter(character.Name);
+            if (Game1.content.DoesAssetExist<Texture2D>(asset))
+                b.Draw(Game1.content.Load<Texture2D>(asset), new Rectangle(photo.Center.X - 64, photo.Center.Y - 64, 128, 128), new Rectangle(0, 0, 64, 64), Color.White);
             return;
+        }
 
         switch ((int)(Game1.currentGameTime.TotalGameTime.TotalMilliseconds / 1800) % 4)
         {
@@ -41,13 +46,21 @@ internal sealed class GalleryCharacterPanel(
     {
         Friendship? friendship = Game1.player.friendshipData.GetValueOrDefault(character.Name);
         NPC.TryGetData(character.Name, out CharacterData? data);
-        string birthday = data?.BirthSeason is null ? "—" : i18n.Get("detail.birthday-value", new
+        string birthday = data?.BirthSeason is null ? "-" : i18n.Get("detail.birthday-value", new
         {
             season = Translate("season", data.BirthSeason.Value.ToString()),
             day = data.BirthDay
         });
         string relationship = friendship is null ? i18n.Get("status.none") : i18n.Get($"status.{friendship.Status.ToString().ToLowerInvariant()}");
-        GalleryMenu.DrawCentered(b, character.DisplayName, Bounds(GallerySpreadLayout.LeftRowBounds(0)));
+        DrawRow(b, character.DisplayName, 0);
+        if (!character.IsSocial)
+        {
+            string[] profile = [i18n.Get("directory.non-social"), i18n.Get("detail.birthday", new { birthday }),
+                i18n.Get("directory.count", new { count = events.Count }),
+                i18n.Get("directory.watched-count", new { count = events.Count(entry => Game1.player.eventsSeen.Contains(entry.EventId)) }), ""];
+            for (int i = 0; i < profile.Length; i++) DrawRow(b, profile[i], i + 1);
+            return;
+        }
         DrawHearts(b, Bounds(GallerySpreadLayout.LeftRowBounds(1)), friendship?.Points ?? 0, data?.CanBeRomanced == true);
         string[] lines =
         [
@@ -57,7 +70,14 @@ internal sealed class GalleryCharacterPanel(
             i18n.Get("detail.seen", new { seen = events.Count(entry => Game1.player.eventsSeen.Contains(entry.EventId)), total = events.Count, relationship })
         ];
         for (int i = 0; i < lines.Length; i++)
-            GalleryMenu.DrawCentered(b, lines[i], Bounds(GallerySpreadLayout.LeftRowBounds(i + 2)));
+            DrawRow(b, lines[i], i + 2);
+    }
+
+    private static void DrawRow(SpriteBatch b, string text, int row)
+    {
+        Rectangle bounds = Bounds(GallerySpreadLayout.LeftRowBounds(row));
+        bounds.Inflate(-32, 0);
+        GalleryMenu.DrawCentered(b, text, bounds);
     }
 
     private static void DrawHearts(SpriteBatch b, Rectangle bounds, int points, bool canBeRomanced)

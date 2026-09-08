@@ -12,7 +12,10 @@ internal sealed record EventAssetSource(
     IReadOnlyList<EventAssetDefinition> Definitions,
     Func<string, IReadOnlyDictionary<string, string>?> LoadLocationEvents,
     Func<string, NativePreconditionProbeResult> ProbePrecondition
-);
+)
+{
+    public bool HasLocationContext { get; init; } = true;
+}
 
 internal interface IEventAssetSourceCatalog
 {

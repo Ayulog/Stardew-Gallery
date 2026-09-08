@@ -14,7 +14,7 @@ internal static class GalleryConditionPresentation
             (key, arguments) => i18n.Get(key, arguments),
             new ConditionDisplayResolver(NPC.GetDisplayName, id => ItemRegistry.GetData(id)?.DisplayName,
                 (key, value) => Term(key, value, i18n), Game1.getTimeOfDayString));
-        GameLocation? location = Game1.getLocationFromName(entry.LocationName);
+        GameLocation? location = entry.Resolved.HasLocationContext ? Game1.getLocationFromName(entry.LocationName) : null;
         CurrentStateSnapshot current = RuntimeStateReader.ForLocation(state ?? RuntimeStateReader.Capture(), location)
             with { Details = ConditionStateReader.Capture(parser.ParseRawKey(entry.EventKey), location) };
         return presentation.Build(entry.EventKey, current,
@@ -22,7 +22,7 @@ internal static class GalleryConditionPresentation
     }
 
     internal static string Location(GalleryEvent entry, ITranslationHelper i18n)
-        => GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
+        => !entry.Resolved.HasLocationContext ? i18n.Get("directory.no-location") : GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
             key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
 
     private static string Term(string group, string value, ITranslationHelper i18n)

@@ -64,21 +64,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         this.replay = replay;
         this.details = details;
         events = EventsFor(character, catalog);
-        CurrentStateSnapshot sharedState = RuntimeStateReader.Capture();
-        ConditionPresentationBuilder presentation = new(
-            ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
-            ConditionProduction.CreateEvaluator(null),
-            (key, arguments) => i18n.Get(key, arguments),
-            new ConditionDisplayResolver(NPC.GetDisplayName, id => ItemRegistry.GetData(id)?.DisplayName, Translate, Game1.getTimeOfDayString));
-        conditionItems = events.ToDictionary(
-            entry => entry.Resolved.Identity,
-            entry =>
-            {
-                GameLocation? location = Game1.getLocationFromName(entry.LocationName);
-                return presentation.Build(entry.EventKey, RuntimeStateReader.ForLocation(sharedState, location),
-                    GalleryLocationName.Resolve(entry.LocationName, location?.DisplayName,
-                        key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null));
-            });
+        conditionItems = [];
         leftPanel = new GalleryCharacterPanel(character, events, i18n, scene);
 
         int focusIndex = initialFocusIdentity is null ? -1 : events.FindIndex(entry => entry.Identity == initialFocusIdentity);
@@ -90,6 +76,13 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             .GetComponentId(CardComponentBase);
         RecalculateLayout();
         SnapForGamepad();
+    }
+
+    private IReadOnlyList<ConditionDisplayItem> Conditions(GalleryEvent entry)
+    {
+        if (!conditionItems.TryGetValue(entry.Resolved.Identity, out var conditions))
+            conditionItems[entry.Resolved.Identity] = conditions = GalleryConditionPresentation.Build(entry, i18n);
+        return conditions;
     }
 
     public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds)
@@ -140,7 +133,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             GalleryEvent entry = events[first + slot];
             if (DetailsBounds(slot).Contains(x, y))
             {
-                details(entry, scrollRow, conditionItems[entry.Resolved.Identity]);
+                details(entry, scrollRow, Conditions(entry));
                 return;
             }
             if (IsReplayAvailable(entry) && Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)).Contains(x, y))
@@ -201,7 +194,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             {
                 GalleryEvent entry = events[focus.EventIndex];
                 if (focus.Action == EventCardAction.Details)
-                    details(entry, scrollRow, conditionItems[entry.Resolved.Identity]);
+                    details(entry, scrollRow, Conditions(entry));
                 else if (IsReplayAvailable(entry))
                     replay(entry, scrollRow);
                 return;

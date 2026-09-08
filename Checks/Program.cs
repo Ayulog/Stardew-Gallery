@@ -5,6 +5,8 @@ using StardewGallery;
 GallerySearchChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();
+GalleryDirectoryChecks.Run();
+OrdinaryReplayChecks.Run();
 ConditionCoverageChecks.Run(FakeSplitArgs);
 if (args.Contains("--benchmark-search"))
     GallerySearchChecks.Benchmark();

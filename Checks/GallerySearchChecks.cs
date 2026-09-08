@@ -15,9 +15,9 @@ internal static class GallerySearchChecks
                  new("TwinA", "Same", true, 0), new("TwinB", "Same", false, 0)],
                 [Event("Mod.Event.ABC", "Abigail", "Leah"), Event("123", "Zed"),
                  Event("wrong-owner-case", "abigail"), Event("no-owner")],
-                [Event("excluded-only", "Abigail")]);
+                [Event("excluded-only") with { Ownership = new(OwnershipKind.Excluded, []), RelatedNpcNames = ["Abigail"] }]);
             string[] queries = ["", "  ", "\u963f\u6bd4", "abIGAiL", "mod.event", "ABC", "23", "not-found",
-                "  Leah  ", "i", "I", "\u0131", "\u0130", "same", "wrong-owner-case", "excluded-only", "no-owner"];
+                "  Leah  ", "i", "I", "\u0131", "\u0130", "same", "wrong-owner-case", "no-owner"];
             GallerySearchFilter filter = new();
             foreach (string culture in new[] { "en-US", "zh-CN", "tr-TR" })
             {
@@ -35,6 +35,8 @@ internal static class GallerySearchChecks
             }
 
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            filter.Update(catalog, "excluded-only", "en", false);
+            Check(filter.Results is [{ Name: "Abigail" }], "2.5.0 ordinary association extends character search without replay ownership");
             filter.Update(catalog, "  mod.event  ", "en", false);
             Check(filter.Results.Select(character => character.Name).ToHashSet().SetEquals(["Abigail", "Leah"]),
                 "shared event matches both owners, including an unmet character");

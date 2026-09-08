@@ -1,5 +1,13 @@
 # Changelog / 更新日志
 
+## 2.5.0 - Development / 开发版，待实测
+
+- Browse ordinary events in NPC albums and a full event catalog with type/location/search filters; group identical content while preserving precise sources and return positions. / 普通事件按明确参与关系归入 NPC，并提供完整目录、类型/地点/搜索筛选；相同内容合并展示，保留精确来源和返回位置。
+- Observe SMAPI event assets and read current patched content on demand, with cache invalidation and per-save reset. Missing location contexts remain view-only. / 补采 SMAPI 已加载事件资产，按需读取当前补丁内容、失效重读并按存档重置；缺地点上下文只读。
+- Support compatible ordinary-event replays, including events without an NPC owner. Check complete scripts, native commands and current content before launch, and isolate quest progress during newly supported replays. / 支持兼容的普通事件回放，包括无 NPC 归属事件；启动前检查完整脚本、原版指令与当前内容，隔离新增回放对真实任务进度的影响。
+- Replace the home unlock button with a page-integrated Event Catalog outline; move current-save unlock debugging into GMCM. / 首页用透出原纸纹的细边“事件目录”替代解锁按钮，当前存档解锁调试迁入 GMCM。
+- Maintain 12 languages, restore full condition-state reading in character details, and preserve the existing photo/history storage schema. / 保持12语言，补全角色详情条件状态读取，保留现有照片及历史存储格式。
+
 ## 2.4.0 - 2026-09-08 - Condition Coverage / 补齐条件判定
 
 - Read weekday, host, money, inventory, shipments, skills, dialogue records, notes, pets, walnuts, mine progress, community/Joja progress, NPC visibility, homes and festival dates without running event predicates. / 补齐星期、主机、金钱、背包、出货、技能、对话记录、纸条、宠物、核桃、矿底、社区/Joja进度、NPC可见性、住宅和节日日历的只读判定。

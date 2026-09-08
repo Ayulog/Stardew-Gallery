@@ -26,6 +26,8 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
     private PreviewInjectionScope? previewScope;
     private ReplaySceneEnvironmentScope? environmentScope;
     private bool failSafeRunning;
+    private bool ordinaryReplay;
+    internal bool SuppressQuestProgress => ordinaryReplay && IsActive;
 
     internal bool IsActive => snapshot is not null || previewScope is not null;
     internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
@@ -46,6 +48,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             error = helper.Translation.Get("replay.already-running");
             return false;
         }
+
+        ReplayCompatibility compatibility = RuntimeReplayEligibility.CheckNow(entry);
+        if (!compatibility.Supported)
+        {
+            error = helper.Translation.Get(compatibility.ReasonKey!);
+            return false;
+        }
+        ordinaryReplay = entry.Ownership.Kind == OwnershipKind.Excluded;
 
         EventPlayback playback = EventPlayback.ForCurrent(entry.Resolved);
 
@@ -94,6 +104,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             error = helper.Translation.Get("preview.not-available");
             return false;
         }
+
+        ReplayCompatibility compatibility = RuntimeReplayEligibility.CheckNow(entry);
+        if (!compatibility.Supported)
+        {
+            error = helper.Translation.Get(compatibility.ReasonKey!);
+            return false;
+        }
+        ordinaryReplay = entry.Ownership.Kind == OwnershipKind.Excluded;
 
         EventPlayback playback = EventPlayback.ForCurrent(entry.Resolved);
         try
@@ -350,6 +368,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
         PreviewInjectionScope? preview = previewScope;
         previewScope = null;
         snapshot = null;
+        ordinaryReplay = false;
         reopen = null;
         backupPath = null;
         eventId = null;
