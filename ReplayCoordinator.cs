@@ -28,6 +28,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
     private bool failSafeRunning;
 
     internal bool IsActive => snapshot is not null || previewScope is not null;
+    internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
     internal int SpeedMultiplier => speedMultiplier;
     internal int EffectiveSpeedMultiplier => !IsActive || restoring || !observed || Game1.CurrentEvent is null
         || ReplayLifecycleRules.BlocksReplaySpeed(

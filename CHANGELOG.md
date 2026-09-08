@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.2.0 - Event Photos / 事件截图
+
+- Capture the current world view during Gallery replay with the camera button, F8 or the controller's left shoulder button; bindings are configurable. Dialogue and HUD are excluded. / 回放时使用相机按钮、F8 或手柄左肩拍摄当前场景，支持改键，截图不含对话框和 HUD。
+- Manage photos from the event detail thumbnail: browse, select a cover, restore the default, or archive a photo. Covers update in both album and detail. / 从事件详情缩略图进入截图管理，浏览、选择封面、恢复默认或移除归档；相册和详情同步更新。
+- Store photos per save and event outside the game save; preserve previous indexes and removed images, and fall back when files are unavailable. / 按存档和事件独立保存，保留旧索引与移除图片，文件不可用时回退默认封面。
+
 ## 2.1.2 - Input and UI Corrections / 输入与界面修正
 
 - Isolate keyboard shortcuts before SMAPI input events while editing search; keep native text input and paste, and filter control characters. / 搜索编辑期间在 SMAPI 分发前隔离键盘快捷键，保留原生文字输入和粘贴，过滤控制字符。

@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <RootNamespace>StardewGallery</RootNamespace>
     <AssemblyName>StardewGallery</AssemblyName>
-    <Version>2.1.2</Version>
+    <Version>2.2.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,5 +26,6 @@
     <None Remove="Checks\**\*" />
     <Compile Remove="PersistenceChecks\**\*.cs" />
     <None Remove="PersistenceChecks\**\*" />
+    <None Remove="event-photos\**\*" />
   </ItemGroup>
 </Project>

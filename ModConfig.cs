@@ -14,4 +14,6 @@ internal sealed class ModConfig
     public KeybindList GalleryKeys { get; set; } = new(SButton.G);
 
     public KeybindList ReplaySpeedKeys { get; set; } = new(SButton.RightShoulder);
+
+    public KeybindList ScreenshotKeys { get; set; } = KeybindList.Parse("F8, LeftShoulder");
 }

@@ -18,6 +18,8 @@ internal sealed class ModEntry : Mod
     private ReplayCoordinator replay = null!;
     private bool rollbackWarningShown;
     private bool replayProtectionReady;
+    private GalleryPhotos photos = null!;
+    private EventIdentity? screenshotReplayIdentity;
 
     internal ModConfig Config { get; private set; } = new();
 
@@ -33,6 +35,8 @@ internal sealed class ModEntry : Mod
         }
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
+        photos = new GalleryPhotos(helper, Monitor, (key, error) =>
+            Game1.addHUDMessage(new HUDMessage(helper.Translation.Get(key), error ? HUDMessage.error_type : HUDMessage.newQuest_type)));
         try
         {
             GallerySearchInputGuard.Apply(helper, Monitor);
@@ -54,6 +58,7 @@ internal sealed class ModEntry : Mod
         }
         tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-horizontal-v5.png");
         helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); rollbackWarningShown = false; };
+        helper.Events.GameLoop.SaveLoaded += (_, _) => photos.Load(new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID));
         helper.Events.GameLoop.GameLaunched += (_, _) => RegisterGmcm();
         helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
@@ -62,6 +67,8 @@ internal sealed class ModEntry : Mod
             catalog.Invalidate();
             unlockAll = false;
             rollbackWarningShown = false;
+            screenshotReplayIdentity = null;
+            photos.Dispose();
         };
         helper.Events.Content.LocaleChanged += (_, _) => catalog.Invalidate();
         helper.Events.Content.AssetsInvalidated += (_, e) =>
@@ -73,9 +80,21 @@ internal sealed class ModEntry : Mod
         helper.Events.Input.ButtonPressed += OnButtonPressed;
         helper.Events.Display.RenderedActiveMenu += OnRenderedActiveMenu;
         helper.Events.Display.RenderedHud += OnRenderedHud;
+        helper.Events.Display.RenderedWorld += (_, e) => photos.Capture(e.SpriteBatch, replay.PlayingEvent);
+        helper.Events.Display.WindowResized += (_, _) => photos.ClearTextures();
+        helper.Events.Display.MenuChanged += (_, e) =>
+        {
+            if (e.OldMenu is GalleryPhotoMenu)
+                photos.ReleasePreviews();
+            if (e.NewMenu is not (GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu))
+                photos.ClearTextures();
+        };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
             replay.Update();
+            photos.Update(replay.PlayingEvent);
+            if (!replay.IsActive)
+                screenshotReplayIdentity = null;
             if (!pendingOpen)
                 return;
             pendingOpen = false;
@@ -88,6 +107,14 @@ internal sealed class ModEntry : Mod
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
     {
         bool galleryPressed = Config.GalleryKeys.JustPressed();
+        if (screenshotReplayIdentity is { } identity && replay.PlayingEvent is Event playing
+            && (Config.ScreenshotKeys.JustPressed() || e.Button == SButton.MouseLeft && GetScreenshotButton().Contains(Game1.getMouseX(true), Game1.getMouseY(true))))
+        {
+            Helper.Input.SuppressActiveKeybinds(Config.ScreenshotKeys);
+            Helper.Input.Suppress(e.Button);
+            photos.Request(identity, playing);
+            return;
+        }
         if (Config.ReplaySpeedKeys.JustPressed() && replay.IsActive)
         {
             Helper.Input.SuppressActiveKeybinds(Config.ReplaySpeedKeys);
@@ -102,7 +129,7 @@ internal sealed class ModEntry : Mod
         }
         bool searchSelected = Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true };
         if (GalleryUiRules.ShouldCloseFromShortcut(galleryPressed, searchSelected)
-            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu)
+            && Game1.activeClickableMenu is GalleryMenu or GalleryCharacterMenu or GalleryEventDetailMenu or GalleryPhotoMenu)
         {
             Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
             Game1.activeClickableMenu = null;
@@ -125,6 +152,12 @@ internal sealed class ModEntry : Mod
         {
             Helper.Input.Suppress(e.Button);
             eventMenu.HandleControllerBack();
+            return;
+        }
+        if (e.Button == SButton.ControllerB && Game1.activeClickableMenu is GalleryPhotoMenu photoMenu)
+        {
+            Helper.Input.Suppress(e.Button);
+            photoMenu.HandleControllerBack();
             return;
         }
         if (Game1.activeClickableMenu is GalleryMenu { IsSearchSelected: true } home)
@@ -222,9 +255,18 @@ internal sealed class ModEntry : Mod
             return;
         Rectangle button = GetReplaySpeedButton();
         GalleryMenu.DrawButton(e.SpriteBatch, button, Helper.Translation.Get("replay.speed", new { speed = replay.SpeedMultiplier }));
+        if (screenshotReplayIdentity is not null && replay.PlayingEvent is not null)
+        {
+            Rectangle camera = GetScreenshotButton();
+            IClickableMenu.drawTextureBox(e.SpriteBatch, camera.X, camera.Y, camera.Width, camera.Height, Color.White);
+            e.SpriteBatch.Draw(Game1.mouseCursors2, new Rectangle(camera.X + 10, camera.Y + 8, 36, 32), new Rectangle(72, 31, 18, 16), photos.Pending ? Color.Gray : Color.White);
+            if (camera.Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
+                IClickableMenu.drawHoverText(e.SpriteBatch, Helper.Translation.Get("photo.capture"), Game1.smallFont);
+        }
     }
 
     private static Rectangle GetReplaySpeedButton() => new(Game1.uiViewport.Width - 190, 24, 150, 48);
+    private static Rectangle GetScreenshotButton() => new(Game1.uiViewport.Width - 258, 24, 56, 48);
 
     private void OpenGallery()
     {
@@ -244,7 +286,7 @@ internal sealed class ModEntry : Mod
                 () => unlockAll,
                 ToggleUnlock,
                 (character, entry, scroll, returnHome) => RequestReplay(snapshot, character, entry, scroll, returnHome),
-                (character, entry, scroll, conditions, returnHome) => OpenEventDetail(snapshot, character, entry, scroll, conditions, returnHome));
+                (character, entry, scroll, conditions, returnHome) => OpenEventDetail(snapshot, character, entry, scroll, conditions, returnHome), photos);
             Game1.playSound("bigSelect");
         }
         catch (Exception error)
@@ -283,6 +325,7 @@ internal sealed class ModEntry : Mod
     {
         Action reopen = () => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity, EventCardAction.Replay);
         bool ok = replay.TryStart(entry, reopen, out string error);
+        screenshotReplayIdentity = ok ? entry.Resolved.Identity : null;
         if (!ok)
         {
             Game1.addHUDMessage(new HUDMessage(error, HUDMessage.error_type));
@@ -305,6 +348,7 @@ internal sealed class ModEntry : Mod
             returnHome,
             (entry, position) => RequestReplay(snapshot, character, entry, position, returnHome),
             (entry, position, conditions) => OpenEventDetail(snapshot, character, entry, position, conditions, returnHome),
+            photos,
             scroll,
             focusIdentity,
             focusAction);
@@ -333,7 +377,7 @@ internal sealed class ModEntry : Mod
             Helper.ModContent.Load<Texture2D>(GalleryUiAssets.ScrollbarTrack),
             CanReplay,
             () => OpenCharacter(snapshot, character, scroll, returnHome, entry.Identity),
-            () => RequestReplay(snapshot, character, entry, scroll, returnHome));
+            () => RequestReplay(snapshot, character, entry, scroll, returnHome), photos);
     }
 
     private void ToggleUnlock()
@@ -356,6 +400,8 @@ internal sealed class ModEntry : Mod
             () => Helper.Translation.Get("config.key.name"), () => Helper.Translation.Get("config.key.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.ReplaySpeedKeys, value => Config.ReplaySpeedKeys = value,
             () => Helper.Translation.Get("config.speed-key.name"), () => Helper.Translation.Get("config.speed-key.tooltip"));
+        gmcm.AddKeybindList(ModManifest, () => Config.ScreenshotKeys, value => Config.ScreenshotKeys = value,
+            () => Helper.Translation.Get("config.photo-key.name"), () => Helper.Translation.Get("config.photo-key.tooltip"));
         gmcm.AddBoolOption(ModManifest, () => Config.ShowRollbackWarning, value => Config.ShowRollbackWarning = value,
             () => Helper.Translation.Get("config.warning.name"), () => Helper.Translation.Get("config.warning.tooltip"));
         gmcm.AddBoolOption(ModManifest, () => Config.AutoAdvanceDialogue, value => Config.AutoAdvanceDialogue = value,

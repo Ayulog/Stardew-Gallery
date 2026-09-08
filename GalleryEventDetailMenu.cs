@@ -12,6 +12,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 {
     private const int BackComponentId = 1000;
     private const int ReplayComponentId = 1001;
+    private const int PhotosComponentId = 1002;
     private const int ScrollStep = 60;
     private const int RowPadding = 12;
     private const int StatusSize = GallerySpreadLayout.IconSize * 3;
@@ -23,6 +24,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
+    private readonly GalleryPhotos photos;
     private readonly Texture2D statusIcons;
     private readonly Texture2D scrollbarTrackTexture;
     private readonly GalleryCharacterPanel leftPanel;
@@ -57,7 +59,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Texture2D scrollbarTrackTexture,
         Func<bool> canReplay,
         Action back,
-        Action replay)
+        Action replay,
+        GalleryPhotos photos)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
         this.character = character;
@@ -71,6 +74,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.canReplay = canReplay;
         this.back = back;
         this.replay = replay;
+        this.photos = photos;
         leftPanel = new GalleryCharacterPanel(character, GalleryCharacterMenu.EventsFor(character, catalog), i18n, scene);
         RecalculateLayout();
         SnapForGamepad();
@@ -99,6 +103,11 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (canReplay() && replayBounds.Contains(x, y))
         {
             replay();
+            return;
+        }
+        if (Bounds(GallerySpreadLayout.DetailThumbnailBounds).Contains(x, y))
+        {
+            OpenPhotos();
             return;
         }
         if (scrollThumb.Contains(x, y) && MaxScroll > 0)
@@ -148,7 +157,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         }
         if (button == Buttons.A && Game1.options.snappyMenus)
         {
-            if (currentlySnappedComponent?.myID == ReplayComponentId && canReplay())
+            if (currentlySnappedComponent?.myID == PhotosComponentId)
+                OpenPhotos();
+            else if (currentlySnappedComponent?.myID == ReplayComponentId && canReplay())
                 replay();
             else if (currentlySnappedComponent?.myID == BackComponentId)
                 Return();
@@ -159,6 +170,18 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     public override void applyMovementKey(int direction)
     {
+        if (direction == 0 && scroll == 0 && currentlySnappedComponent?.myID != PhotosComponentId)
+        {
+            currentlySnappedComponent = allClickableComponents.First(component => component.myID == PhotosComponentId);
+            snapCursorToCurrentSnappedComponent();
+            return;
+        }
+        if (direction == 2 && currentlySnappedComponent?.myID == PhotosComponentId)
+        {
+            currentlySnappedComponent = allClickableComponents.First(component => component.myID == (canReplay() ? ReplayComponentId : BackComponentId));
+            snapCursorToCurrentSnappedComponent();
+            return;
+        }
         if (direction is 0 or 2)
             ScrollBy(direction == 0 ? -ScrollStep : ScrollStep);
         else if (direction is 1 or 3)
@@ -186,11 +209,14 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
-        b.Draw(thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
+        GalleryPhotos.DrawCover(b, photos.Cover(entry.Resolved.Identity) ?? thumbnail, Bounds(GallerySpreadLayout.DetailThumbnailBounds), Color.White);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
         GalleryMenu.DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
         leftPanel.DrawInformation(b);
         DrawHeader(b);
+        Rectangle photoBounds = Bounds(GallerySpreadLayout.DetailThumbnailBounds);
+        b.Draw(Game1.mouseCursors2, new Rectangle(photoBounds.Right - 58, photoBounds.Bottom - 52, 54, 48),
+            new Rectangle(72, 31, 18, 16), Focused(PhotosComponentId) ? new Color(255, 240, 160) : Color.White);
         BeginContentClip(b);
         DrawConditions(b);
         EndContentClip(b);
@@ -201,6 +227,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         GalleryMenu.DrawButton(b, backBounds, i18n.Get("event-detail.back"));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
+        if (ToScreen(photoBounds).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
+            IClickableMenu.drawHoverText(b, i18n.Get("photo.title"), Game1.smallFont);
         drawMouse(b);
     }
 
@@ -369,6 +397,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         allClickableComponents = [new ClickableComponent(ToScreen(backBounds), "back") { myID = BackComponentId, rightNeighborID = canReplay() ? ReplayComponentId : -1 }];
         if (canReplay())
             allClickableComponents.Add(new ClickableComponent(ToScreen(replayBounds), "replay") { myID = ReplayComponentId, leftNeighborID = BackComponentId });
+        allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.DetailThumbnailBounds)), "photos") { myID = PhotosComponentId });
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previous) ?? allClickableComponents[0];
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)
             snapCursorToCurrentSnappedComponent();
@@ -384,6 +413,17 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     {
         Game1.playSound("bigDeSelect");
         back();
+    }
+
+    private void OpenPhotos()
+    {
+        Game1.activeClickableMenu = new GalleryPhotoMenu(photos, entry.Resolved.Identity, i18n, () =>
+        {
+            Game1.activeClickableMenu = this;
+            currentlySnappedComponent = allClickableComponents.First(component => component.myID == PhotosComponentId);
+            if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+                snapCursorToCurrentSnappedComponent();
+        });
     }
 
     private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds) => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);

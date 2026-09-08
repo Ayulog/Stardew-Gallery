@@ -3,6 +3,8 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using StardewGallery;
 
+EventPhotoChecks.Run();
+
 static void Check(bool condition, string message = "")
 {
     if (!condition)

@@ -12,6 +12,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="EventPhotoChecks.cs" />
+    <Compile Include="..\Screenshots\EventPhotoStore.cs" Link="Screenshots\EventPhotoStore.cs" />
+    <Compile Include="..\Screenshots\PhotoImageLayout.cs" Link="Screenshots\PhotoImageLayout.cs" />
     <Compile Include="..\Domain\EventIdentity.cs" Link="Domain\EventIdentity.cs" />
     <Compile Include="..\Domain\EventHashes.cs" Link="Domain\EventHashes.cs" />
     <Compile Include="..\Domain\HistoricalPlaybackBundle.cs" Link="Domain\HistoricalPlaybackBundle.cs" />

@@ -14,3 +14,4 @@ config.json
 catalog-latest.json
 diagnostics/
 backups/
+event-photos/

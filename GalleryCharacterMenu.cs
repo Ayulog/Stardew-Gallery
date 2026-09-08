@@ -16,6 +16,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
+    private readonly GalleryPhotos photos;
     private readonly Texture2D replayGlyph;
     private readonly Texture2D slotFrame;
     private readonly Texture2D scrollbarTrackTexture;
@@ -46,6 +47,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         Texture2D scrollbarTrackTexture, Func<bool> isUnlocked, Action back,
         Action<GalleryEvent, int> replay,
         Action<GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>> details,
+        GalleryPhotos photos,
         int initialScroll = 0, string? initialFocusIdentity = null, EventCardAction initialFocusAction = EventCardAction.Details)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
@@ -53,6 +55,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         this.i18n = i18n;
         this.background = background;
         this.thumbnail = thumbnail;
+        this.photos = photos;
         this.replayGlyph = replayGlyph;
         this.slotFrame = slotFrame;
         this.scrollbarTrackTexture = scrollbarTrackTexture;
@@ -285,8 +288,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
         for (int slot = 0; slot < visible; slot++)
         {
-            b.Draw(thumbnail, Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)), null,
-                IsReplayAvailable(events[first + slot]) ? Color.White : new Color(185, 180, 167), 0f, Vector2.Zero, SpriteEffects.None, .88f);
+            GalleryPhotos.DrawCover(b, photos.Cover(events[first + slot].Resolved.Identity) ?? thumbnail,
+                Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)),
+                IsReplayAvailable(events[first + slot]) ? Color.White : new Color(185, 180, 167));
             b.Draw(slotFrame, Bounds(GallerySpreadLayout.EventCardBounds(slot)), Color.White);
         }
     }
