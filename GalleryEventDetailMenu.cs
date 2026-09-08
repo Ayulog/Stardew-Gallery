@@ -13,6 +13,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private const int BackComponentId = 1000;
     private const int ReplayComponentId = 1001;
     private const int PhotosComponentId = 1002;
+    private const int ReferenceComponentId = 5000;
+    private const int ReferenceHeight = 42;
     private const int ScrollStep = 60;
     private const int RowPadding = 12;
     private const int StatusSize = GallerySpreadLayout.IconSize * 3;
@@ -21,6 +23,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly GalleryCharacter character;
     private readonly GalleryEvent entry;
     private readonly IReadOnlyList<ConditionDisplayItem> conditions;
+    private readonly IReadOnlyDictionary<ConditionDisplayItem, IReadOnlyList<string>> conditionReferences;
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
@@ -31,6 +34,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly Func<bool> canReplay;
     private readonly Action back;
     private readonly Action replay;
+    private readonly Action<string> followReference;
+    private readonly string backLabelKey;
+    private readonly List<(string EventId, Rectangle Bounds)> referenceLinks = [];
     private Rectangle contentBounds;
     private Rectangle scrollTrack;
     private Rectangle scrollThumb;
@@ -60,12 +66,15 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Func<bool> canReplay,
         Action back,
         Action replay,
-        GalleryPhotos photos)
+        GalleryPhotos photos,
+        Action<string> followReference,
+        string backLabelKey)
         : base(0, 0, GalleryMenu.MenuWidth, GalleryMenu.MenuHeight, true)
     {
         this.character = character;
         this.entry = entry;
         this.conditions = conditions;
+        conditionReferences = conditions.Distinct().ToDictionary(item => item, item => GalleryEventNavigation.References(item.Expression));
         this.i18n = i18n;
         this.background = background;
         this.thumbnail = thumbnail;
@@ -75,6 +84,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         this.back = back;
         this.replay = replay;
         this.photos = photos;
+        this.followReference = followReference;
+        this.backLabelKey = backLabelKey;
         leftPanel = new GalleryCharacterPanel(character, GalleryCharacterMenu.EventsFor(character, catalog), i18n, scene);
         RecalculateLayout();
         SnapForGamepad();
@@ -95,6 +106,16 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
         (x, y) = ToLogical(x, y);
+        if (contentBounds.Contains(x, y))
+        {
+            for (int index = 0; index < referenceLinks.Count; index++)
+                if (ReferenceBounds(index).Contains(x, y))
+                {
+                    FocusReference(index);
+                    followReference(referenceLinks[index].EventId);
+                    return;
+                }
+        }
         if (upperRightCloseButton?.bounds.Contains(x, y) == true || backBounds.Contains(x, y))
         {
             Return();
@@ -102,6 +123,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         }
         if (canReplay() && replayBounds.Contains(x, y))
         {
+            currentlySnappedComponent = allClickableComponents.First(component => component.myID == ReplayComponentId);
             replay();
             return;
         }
@@ -128,6 +150,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         int travel = scrollTrack.Height - scrollThumb.Height;
         scroll = (int)Math.Round(Math.Clamp(y - dragOffset - scrollTrack.Y, 0, travel) / (double)travel * MaxScroll);
         UpdateScrollbar();
+        BuildClickableComponents();
     }
 
     public override void releaseLeftClick(int x, int y)
@@ -145,6 +168,21 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             Return();
             return;
         }
+        if (key is Keys.PageUp or Keys.PageDown)
+        {
+            ScrollBy(key == Keys.PageUp ? -contentBounds.Height : contentBounds.Height);
+            return;
+        }
+        if (key == Keys.Enter)
+        {
+            ActivateFocused();
+            return;
+        }
+        if (key is Keys.Up or Keys.Right or Keys.Down or Keys.Left)
+        {
+            applyMovementKey(key switch { Keys.Up => 0, Keys.Right => 1, Keys.Down => 2, _ => 3 });
+            return;
+        }
         base.receiveKeyPress(key);
     }
 
@@ -157,19 +195,50 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         }
         if (button == Buttons.A && Game1.options.snappyMenus)
         {
-            if (currentlySnappedComponent?.myID == PhotosComponentId)
-                OpenPhotos();
-            else if (currentlySnappedComponent?.myID == ReplayComponentId && canReplay())
-                replay();
-            else if (currentlySnappedComponent?.myID == BackComponentId)
-                Return();
+            ActivateFocused();
+            return;
+        }
+        if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
+        {
+            ScrollBy(button == Buttons.LeftShoulder ? -contentBounds.Height : contentBounds.Height);
             return;
         }
         base.receiveGamePadButton(button);
     }
 
+    private void ActivateFocused()
+    {
+        int reference = (currentlySnappedComponent?.myID ?? -1) - ReferenceComponentId;
+        if (reference >= 0 && reference < referenceLinks.Count)
+            followReference(referenceLinks[reference].EventId);
+        else if (currentlySnappedComponent?.myID == PhotosComponentId)
+            OpenPhotos();
+        else if (currentlySnappedComponent?.myID == ReplayComponentId && canReplay())
+            replay();
+        else if (currentlySnappedComponent?.myID == BackComponentId)
+            Return();
+    }
+
     public override void applyMovementKey(int direction)
     {
+        if (referenceLinks.Count > 0 && direction is 0 or 2)
+        {
+            int current = currentlySnappedComponent?.myID ?? BackComponentId;
+            int reference = current - ReferenceComponentId;
+            int target = direction == 0
+                ? (reference >= 0 ? reference - 1 : current == PhotosComponentId ? -1 : referenceLinks.Count - 1)
+                : (reference >= 0 ? reference + 1 : current == PhotosComponentId ? 0 : referenceLinks.Count);
+            if (target >= 0 && target < referenceLinks.Count)
+                FocusReference(target);
+            else
+            {
+                ScrollBy(target < 0 ? -MaxScroll : MaxScroll);
+                currentlySnappedComponent = allClickableComponents.First(component => component.myID ==
+                    (target < 0 ? PhotosComponentId : canReplay() ? ReplayComponentId : BackComponentId));
+                snapCursorToCurrentSnappedComponent();
+            }
+            return;
+        }
         if (direction == 0 && scroll == 0 && currentlySnappedComponent?.myID != PhotosComponentId)
         {
             currentlySnappedComponent = allClickableComponents.First(component => component.myID == PhotosComponentId);
@@ -194,6 +263,12 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     internal void HandleControllerBack() => Return();
 
+    internal void RestoreNavigationFocus()
+    {
+        EnsureLayout();
+        BuildClickableComponents();
+    }
+
     public override void snapToDefaultClickableComponent()
     {
         currentlySnappedComponent = allClickableComponents?.FirstOrDefault(component => component.myID == (canReplay() ? ReplayComponentId : BackComponentId));
@@ -203,9 +278,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     public override void draw(SpriteBatch b)
     {
         EnsureLayout();
-        contentHeight = MeasureContent();
-        scroll = Math.Clamp(scroll, 0, MaxScroll);
-        UpdateScrollbar();
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         GalleryMenu.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
@@ -224,7 +296,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             GalleryMenu.DrawScrollbar(b, scrollThumb);
         if (canReplay())
             GalleryMenu.DrawButton(b, replayBounds, i18n.Get("event.replay"));
-        GalleryMenu.DrawButton(b, backBounds, i18n.Get("event-detail.back"));
+        GalleryMenu.DrawButton(b, backBounds, i18n.Get(backLabelKey));
         upperRightCloseButton?.draw(b);
         GalleryMenu.EndScaled(b);
         if (ToScreen(photoBounds).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
@@ -268,6 +340,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     }
 
     private int MeasureRow(ConditionDisplayItem item)
+        => MeasureRowBody(item) + conditionReferences[item].Count * ReferenceHeight;
+
+    private int MeasureRowBody(ConditionDisplayItem item)
     {
         int height = LineHeight(RowText(item), RowTextWidth);
         string? reasonKey = ConditionRowPresentation.UnknownReasonKey(item);
@@ -303,8 +378,19 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             string? reasonKey = ConditionRowPresentation.UnknownReasonKey(item);
             if (reasonKey is not null)
                 DrawWrapped(b, i18n.Get(reasonKey), row.X + RowPadding, textY + textHeight + 6, RowTextWidth, new Color(125, 90, 35));
-            DrawStatus(b, ConditionRowPresentation.Status(item.Evaluation), new Rectangle(row.Right - RowPadding - StatusSize, row.Center.Y - StatusSize / 2, StatusSize, StatusSize));
+            DrawStatus(b, ConditionRowPresentation.Status(item.Evaluation), new Rectangle(row.Right - RowPadding - StatusSize, row.Y + MeasureRowBody(item) / 2 - StatusSize / 2, StatusSize, StatusSize));
             y += height;
+        }
+        for (int index = 0; index < referenceLinks.Count; index++)
+        {
+            Rectangle bounds = ReferenceBounds(index);
+            if (!bounds.Intersects(contentBounds))
+                continue;
+            bool hovered = ToScreen(Rectangle.Intersect(bounds, contentBounds)).Contains(Game1.getMouseX(true), Game1.getMouseY(true));
+            if (hovered || Focused(ReferenceComponentId + index))
+                b.Draw(Game1.staminaRect, bounds, new Color(255, 240, 165) * .7f);
+            GalleryMenu.DrawLeftFitted(b, "ID " + referenceLinks[index].EventId + " >", new Rectangle(bounds.X + 8, bounds.Y + 2, bounds.Width - 16, bounds.Height - 8));
+            b.Draw(Game1.staminaRect, new Rectangle(bounds.X + 8, bounds.Bottom - 4, bounds.Width - 16, 1), GallerySpreadDrawing.LightInk);
         }
     }
 
@@ -364,6 +450,18 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         backBounds = Bounds(GallerySpreadLayout.BackButtonBounds);
         initializeUpperRightCloseButton();
         contentHeight = MeasureContent();
+        referenceLinks.Clear();
+        int rowY = contentBounds.Y;
+        foreach (ConditionDisplayItem item in conditions)
+        {
+            int linkY = rowY + MeasureRowBody(item);
+            foreach (string id in conditionReferences[item])
+            {
+                referenceLinks.Add((id, new Rectangle(contentBounds.X + RowPadding, linkY, RowTextWidth, ReferenceHeight)));
+                linkY += ReferenceHeight;
+            }
+            rowY = linkY;
+        }
         scroll = Math.Clamp(scroll, 0, MaxScroll);
         UpdateScrollbar();
         BuildClickableComponents();
@@ -381,6 +479,24 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     {
         scroll = Math.Clamp(scroll + amount, 0, MaxScroll);
         UpdateScrollbar();
+        BuildClickableComponents();
+    }
+
+    private Rectangle ReferenceBounds(int index)
+    {
+        Rectangle bounds = referenceLinks[index].Bounds;
+        bounds.Y -= scroll;
+        return bounds;
+    }
+
+    private void FocusReference(int index)
+    {
+        Rectangle bounds = ReferenceBounds(index);
+        ScrollBy(bounds.Top < contentBounds.Top ? bounds.Top - contentBounds.Top
+            : bounds.Bottom > contentBounds.Bottom ? bounds.Bottom - contentBounds.Bottom : 0);
+        currentlySnappedComponent = allClickableComponents.First(component => component.myID == ReferenceComponentId + index);
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
     }
 
     private void UpdateScrollbar()
@@ -398,6 +514,12 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (canReplay())
             allClickableComponents.Add(new ClickableComponent(ToScreen(replayBounds), "replay") { myID = ReplayComponentId, leftNeighborID = BackComponentId });
         allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.DetailThumbnailBounds)), "photos") { myID = PhotosComponentId });
+        for (int index = 0; index < referenceLinks.Count; index++)
+        {
+            Rectangle visible = Rectangle.Intersect(ReferenceBounds(index), contentBounds);
+            if (visible.Width > 0 && visible.Height > 0)
+                allClickableComponents.Add(new ClickableComponent(ToScreen(visible), referenceLinks[index].EventId) { myID = ReferenceComponentId + index });
+        }
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previous) ?? allClickableComponents[0];
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)
             snapCursorToCurrentSnappedComponent();

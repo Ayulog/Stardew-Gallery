@@ -1,4 +1,12 @@
 {
+  "nav.search-events": "Buscar eventos",
+  "nav.results": "Eventos: {{query}}",
+  "nav.references": "Evento {{id}}",
+  "nav.empty": "No hay eventos coincidentes.",
+  "nav.unavailable": "El evento {{id}} no está disponible en la galería actual.",
+  "nav.back": "Volver",
+  "nav.back-results": "Volver a resultados",
+  "nav.back-detail": "Volver al evento anterior",
   "photo.title": "Fotos del evento",
   "photo.capture": "Tomar foto",
   "photo.empty": "Sin fotos",

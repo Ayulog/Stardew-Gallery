@@ -1,4 +1,12 @@
 {
+  "nav.search-events": "Események keresése",
+  "nav.results": "Események: {{query}}",
+  "nav.references": "Esemény: {{id}}",
+  "nav.empty": "Nincs megfelelő esemény.",
+  "nav.unavailable": "A(z) {{id}} esemény nem érhető el a jelenlegi galériában.",
+  "nav.back": "Vissza",
+  "nav.back-results": "Vissza a találatokhoz",
+  "nav.back-detail": "Előző esemény",
   "photo.title": "Eseményfotók",
   "photo.capture": "Fotó készítése",
   "photo.empty": "Nincsenek fotók",

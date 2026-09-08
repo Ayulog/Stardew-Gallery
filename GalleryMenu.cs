@@ -18,6 +18,7 @@ internal sealed class GalleryMenu : IClickableMenu
     private const int UnlockComponentId = 1001;
     private const int YesComponentId = 1002;
     private const int NoComponentId = 1003;
+    private const int EventSearchComponentId = 1004;
     private readonly GalleryCatalog catalog;
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
@@ -28,6 +29,7 @@ internal sealed class GalleryMenu : IClickableMenu
     private readonly Texture2D slotFrame;
     private readonly Texture2D scrollbarTrackTexture;
     private readonly GalleryPhotos photos;
+    private readonly Action<string, Action> searchEvents;
     private readonly Func<bool> isUnlocked;
     private readonly Action toggleUnlock;
     private readonly Action<GalleryCharacter, GalleryEvent, int, Action> replay;
@@ -42,6 +44,7 @@ internal sealed class GalleryMenu : IClickableMenu
     private bool confirming;
     private Rectangle searchBounds;
     private Rectangle unlockBounds;
+    private Rectangle eventSearchBounds;
     private Rectangle scrollTrack;
     private Rectangle scrollThumb;
     private Rectangle yesBounds;
@@ -73,6 +76,7 @@ internal sealed class GalleryMenu : IClickableMenu
         Action<GalleryCharacter, GalleryEvent, int, Action> replay,
         Action<GalleryCharacter, GalleryEvent, int, IReadOnlyList<ConditionDisplayItem>, Action> details,
         GalleryPhotos photos,
+        Action<string, Action> searchEvents,
         string initialSearchText = "",
         int initialScrollRow = 0,
         string? initialFocusCharacterName = null)
@@ -92,6 +96,7 @@ internal sealed class GalleryMenu : IClickableMenu
         this.replay = replay;
         this.details = details;
         this.photos = photos;
+        this.searchEvents = searchEvents;
         search = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor);
         search.OnEnterPressed += _ => OpenFirstMatch();
         search.Text = initialSearchText;
@@ -178,6 +183,12 @@ internal sealed class GalleryMenu : IClickableMenu
         }
         DeselectSearch();
 
+        if (eventSearchBounds.Contains(x, y))
+        {
+            OpenEventResults();
+            return;
+        }
+
         int first = scrollRow * Columns;
         for (int slot = 0; slot < Columns * VisibleRows && first + slot < filtered.Count; slot++)
         {
@@ -192,7 +203,7 @@ internal sealed class GalleryMenu : IClickableMenu
             string returnCharacterName = character.Name;
             Action returnHome = () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene,
                 eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
-                photos, returnSearchText, returnScrollRow, returnCharacterName);
+                photos, searchEvents, returnSearchText, returnScrollRow, returnCharacterName);
             Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail, replayGlyph,
                 slotFrame, scrollbarTrackTexture,
                 isUnlocked,
@@ -301,6 +312,7 @@ internal sealed class GalleryMenu : IClickableMenu
         SpriteText.drawStringHorizontallyCenteredAt(b, i18n.Get("home.title"), xPositionOnScreen + width / 2, yPositionOnScreen + 40, maxWidth: 430);
         DrawButton(b, unlockBounds, i18n.Get(isUnlocked() ? "menu.restore-locks" : "menu.unlock-all"));
         search.Draw(b);
+        DrawButton(b, eventSearchBounds, i18n.Get("nav.search-events"));
         if (search.Text.Length == 0 && !search.Selected)
             DrawLeftFitted(b, i18n.Get(GallerySearchInputGuard.Ready ? "home.search" : "home.search-unavailable"),
                 new Rectangle(searchBounds.X + 12, searchBounds.Y + 8, searchBounds.Width - 24, searchBounds.Height - 16));
@@ -340,6 +352,7 @@ internal sealed class GalleryMenu : IClickableMenu
         search.Y = searchBounds.Y;
         search.Width = searchBounds.Width;
         unlockBounds = R(1180, 40, 270, 54);
+        eventSearchBounds = R(965, 146, 470, 56);
         scrollTrack = R(1534, 146, 24, 640);
         yesBounds = R(650, 540, 160, 56);
         noBounds = R(860, 540, 160, 56);
@@ -391,6 +404,11 @@ internal sealed class GalleryMenu : IClickableMenu
     internal void OpenFirstMatch()
     {
         RefreshFilter();
+        if (search.Text.Trim().Length > 0)
+        {
+            OpenEventResults();
+            return;
+        }
         GalleryCharacter? character = filtered.FirstOrDefault();
         if (character is null || !character.IsMet && !isUnlocked())
             return;
@@ -399,7 +417,7 @@ internal sealed class GalleryMenu : IClickableMenu
         string returnCharacterName = character.Name;
         Action returnHome = () => Game1.activeClickableMenu = new GalleryMenu(catalog, i18n, background, detailBackground, scene,
             eventThumbnail, replayGlyph, slotFrame, scrollbarTrackTexture, isUnlocked, toggleUnlock, replay, details,
-            photos, returnSearchText, returnScrollRow, returnCharacterName);
+            photos, searchEvents, returnSearchText, returnScrollRow, returnCharacterName);
         DeselectSearch();
         Game1.activeClickableMenu = new GalleryCharacterMenu(character, catalog, i18n, detailBackground, scene, eventThumbnail, replayGlyph,
             slotFrame, scrollbarTrackTexture,
@@ -410,6 +428,20 @@ internal sealed class GalleryMenu : IClickableMenu
     }
 
     private int MaxScroll => Math.Max(0, (filtered.Count + Columns - 1) / Columns - VisibleRows);
+
+    private void OpenEventResults()
+    {
+        RefreshFilter();
+        DeselectSearch();
+        searchEvents(search.Text, () =>
+        {
+            Game1.activeClickableMenu = this;
+            RecalculateLayout();
+            currentlySnappedComponent = allClickableComponents.First(component => component.myID == EventSearchComponentId);
+            if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+                snapCursorToCurrentSnappedComponent();
+        });
+    }
 
     private void UpdateScrollbar()
     {
@@ -437,7 +469,7 @@ internal sealed class GalleryMenu : IClickableMenu
             searchComponent = new ClickableComponent(ToScreen(searchBounds), "search")
             {
                 myID = SearchComponentId,
-                rightNeighborID = UnlockComponentId,
+                rightNeighborID = EventSearchComponentId,
                 downNeighborID = 0
             };
             unlockComponent = new ClickableComponent(ToScreen(unlockBounds), "unlock")
@@ -450,6 +482,11 @@ internal sealed class GalleryMenu : IClickableMenu
             };
             allClickableComponents.Add(searchComponent);
             allClickableComponents.Add(unlockComponent);
+            allClickableComponents.Add(new ClickableComponent(ToScreen(eventSearchBounds), "event-search")
+            {
+                myID = EventSearchComponentId, leftNeighborID = SearchComponentId,
+                upNeighborID = UnlockComponentId, downNeighborID = Math.Min(3, Math.Max(0, filtered.Count - 1))
+            });
             int visible = Math.Min(Columns * VisibleRows, Math.Max(0, filtered.Count - scrollRow * Columns));
             for (int slot = 0; slot < visible; slot++)
             {
@@ -460,7 +497,7 @@ internal sealed class GalleryMenu : IClickableMenu
                     myID = slot,
                     leftNeighborID = col > 0 ? slot - 1 : -1,
                     rightNeighborID = col < Columns - 1 && slot + 1 < visible ? slot + 1 : -1,
-                    upNeighborID = row > 0 ? slot - Columns : col < 3 ? SearchComponentId : UnlockComponentId,
+                    upNeighborID = row > 0 ? slot - Columns : col < 3 ? SearchComponentId : EventSearchComponentId,
                     downNeighborID = slot + Columns < visible ? slot + Columns : -1
                 };
                 cardComponents.Add(card);

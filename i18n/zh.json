@@ -1,4 +1,12 @@
 {
+  "nav.search-events": "搜索事件",
+  "nav.results": "事件：{{query}}",
+  "nav.references": "事件 {{id}}",
+  "nav.empty": "没有匹配的事件。",
+  "nav.unavailable": "当前画廊中找不到事件 {{id}}。",
+  "nav.back": "返回",
+  "nav.back-results": "返回搜索结果",
+  "nav.back-detail": "返回上一事件",
   "photo.title": "事件截图",
   "photo.capture": "拍摄截图",
   "photo.empty": "暂无截图",

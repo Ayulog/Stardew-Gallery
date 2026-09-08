@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.3.0 - Event Navigation / 事件导航
+
+- Follow event IDs under prerequisite conditions, with a source picker for ambiguous IDs and a message for unavailable targets. Original condition meanings and replay permissions stay unchanged. / 点击前置条件下的事件 ID 跳转详情；同 ID 多来源时选择目标，缺失时提示。保留原条件含义与回放权限。
+- Search by NPC, event ID or location and open exact event results. Back navigation preserves the source view, scroll and focus, including multi-hop references and replay return. / 按角色、事件 ID 或地点搜索并直达具体事件；多级跳转与回放返回保留来源页面、滚动与焦点。
+- Fit navigation controls for all 12 maintained languages and support mouse, keyboard and controller input. / 导航控件适配现有 12 种语言，支持鼠标、键盘与手柄操作。
+
 ## 2.2.0 - Event Photos / 事件截图
 
 - Capture the current world view during Gallery replay with the camera button, F8 or the controller's left shoulder button; bindings are configurable. Dialogue and HUD are excluded. / 回放时使用相机按钮、F8 或手柄左肩拍摄当前场景，支持改键，截图不含对话框和 HUD。

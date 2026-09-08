@@ -11,6 +11,8 @@
     <Compile Include="Program.cs" />
     <Compile Include="GallerySearchChecks.cs" />
     <Compile Include="GalleryCorrectionChecks.cs" />
+    <Compile Include="GalleryNavigationChecks.cs" />
+    <Compile Include="..\Navigation\GalleryEventNavigation.cs" Link="GalleryEventNavigation.cs" />
     <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
     <Compile Include="..\GalleryLocationName.cs" Link="GalleryLocationName.cs" />
     <Compile Include="..\GalleryTextFit.cs" Link="GalleryTextFit.cs" />

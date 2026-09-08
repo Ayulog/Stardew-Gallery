@@ -1,4 +1,12 @@
 {
+  "nav.search-events": "Поиск событий",
+  "nav.results": "События: {{query}}",
+  "nav.references": "Событие {{id}}",
+  "nav.empty": "Подходящих событий нет.",
+  "nav.unavailable": "Событие {{id}} недоступно в текущей галерее.",
+  "nav.back": "Назад",
+  "nav.back-results": "К результатам поиска",
+  "nav.back-detail": "К предыдущему событию",
   "photo.title": "Снимки события",
   "photo.capture": "Сделать снимок",
   "photo.empty": "Нет снимков",

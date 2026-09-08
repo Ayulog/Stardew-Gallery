@@ -1,4 +1,12 @@
 {
+  "nav.search-events": "Etkinlik ara",
+  "nav.results": "Etkinlikler: {{query}}",
+  "nav.references": "Etkinlik {{id}}",
+  "nav.empty": "Eşleşen etkinlik yok.",
+  "nav.unavailable": "{{id}} etkinliği mevcut galeride bulunamadı.",
+  "nav.back": "Geri",
+  "nav.back-results": "Sonuçlara dön",
+  "nav.back-detail": "Önceki etkinliğe dön",
   "photo.title": "Etkinlik fotoğrafları",
   "photo.capture": "Fotoğraf çek",
   "photo.empty": "Fotoğraf yok",

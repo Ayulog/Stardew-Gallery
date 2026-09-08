@@ -11,7 +11,8 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 ### 当前功能
 
 - 按角色浏览当前游戏与已安装 Mod 实际生效的好感事件。
-- 搜索角色或事件 ID，查看事件条件、当前观看状态与角色关系。
+- 搜索角色、事件 ID 或地点，直达具体事件；从条件下的事件 ID 跳转前置事件，逐层返回原位置。
+- 回放截图按存档保存，可选封面、替换封面、恢复默认或移除归档。
 - 阅读型条件说明与进度缺口：好感/心数、看过事件、邮件、季节、日期、时间等用可读文本呈现；无法安全解析的模组条件会明确标注，而不是猜测。
 - 当前状态回放：所有回放都从当前已解析的事件内容与当前游戏状态启动，不再使用历史冻结版本。
 - 已观看的事件可直接回放，也可用“一键解锁全部”临时开放画廊回放。
@@ -19,7 +20,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 - 回放全程禁止保存，并保留故障恢复备份。
 - 回放速度可在 1x、2x、4x 之间切换；普通对话可选择自动继续，选项不会自动选择。
 - 支持键鼠和手柄操作，快捷键可配置多个单键或组合键。
-- 支持简体中文和英文，界面随分辨率与 UI 缩放自动适配。
+- 支持现有 12 种游戏语言，界面随分辨率与 UI 缩放自动适配。
 - 可选支持 Generic Mod Config Menu（GMCM）。
 
 ### 安装
@@ -35,6 +36,8 @@ GMCM 不是必需依赖；安装后可在游戏内配置快捷键、回放安全
 - 默认按 `G` 打开或关闭画廊，也可点击原版菜单中的画廊标签。
 - 选择角色，查看事件的可读条件和缺失/未知要求；已解锁事件可点击“回放”。
 - 回放右上角按钮或配置的快捷键可循环切换 1x / 2x / 4x。
+- 回放时按 F8、手柄左肩或点击相机截图；从详情缩略图管理截图与封面。截图不含对话框和 HUD，保存在本 Mod 的 `event-photos/` 内，卸载前可保留此目录。
+- 首页输入后按 Enter 或点“搜索事件”；前置条件下的 ID 可点击，多个来源会显示列表供选择。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
 ### 兼容性与限制
@@ -60,7 +63,8 @@ Stardew Gallery is a current-state event album and planning tool: it discovers t
 ### Features
 
 - Browse the heart events actually active in the base game and installed mods, by character.
-- Search by character or event ID, with readable conditions, watched status, and relationship details.
+- Search by character, event ID or location to open an exact event. Follow prerequisite IDs and return through previous views with their positions preserved.
+- Capture replay photos per save, choose or replace covers, restore defaults, and archive removed photos.
 - Readable condition explanation with progress gaps: friendship/hearts, seen events, mail, season, day, time, and more are shown in plain text; mod conditions that can't be parsed safely are labeled as unknown rather than guessed.
 - Current-state replay: every replay launches from currently resolved event content and current game state, not from a frozen historical version.
 - Replay events you've seen, or temporarily expose all gallery replays with Unlock All.
@@ -68,7 +72,7 @@ Stardew Gallery is a current-state event album and planning tool: it discovers t
 - Saving is blocked during replay, with a recovery backup kept for failures.
 - Cycle replay speed between 1x, 2x, and 4x. Optional auto-advance applies only to normal dialogue; choices always wait for the player.
 - Keyboard, mouse, and controller navigation, with multiple configurable single-key or chord bindings.
-- Simplified Chinese and English, with automatic fitting for screen resolution and UI scale.
+- All 12 maintained game languages, with automatic fitting for screen resolution and UI scale.
 - Optional Generic Mod Config Menu support.
 
 ### Installation
@@ -84,6 +88,8 @@ GMCM is optional. When installed, it provides in-game settings for keybinds, rep
 - Press `G` by default to toggle the gallery, or use its tab in the vanilla game menu.
 - Choose a character, review readable conditions and missing/unknown requirements, then click "Replay" on an unlocked event.
 - Use the top-right replay button or the configured binding to cycle 1x / 2x / 4x.
+- During replay, press F8, the controller's left shoulder, or the camera button to capture the scene without dialogue/HUD. Open the detail thumbnail to manage photos/covers. Photos live in this mod's `event-photos/` folder; keep it when uninstalling to retain your pictures.
+- Enter a query and press Enter or Search events. Click IDs below prerequisite conditions; ambiguous sources appear in a selection list.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
 ### Compatibility and limitations
