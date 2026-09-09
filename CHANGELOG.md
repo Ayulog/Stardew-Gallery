@@ -2,6 +2,8 @@
 
 ## 2.5.0 - Story Gallery / 剧情画廊（开发中）
 
+- Remove definition-origin labels and the duplicate all-entry filter. Clean up actor/location choices, handle missing-name translations, and expand weather filters. / 移除定义来源及重复的全部类型选项，清理演员/地点筛选与缺译标记，补齐天气选择。
+
 - Add read-only prerequisite records, controller-friendly query filters, character-only home search and personal event names. Improve location names and retain shared friendship owners. Definition origins use a limited verified table and explicitly preserve unknowns. / 新增只读前置事件、手柄筛选和自定义事件名，首页仅搜索角色；完善地点译名与共同好感主体，来源采用有限已核查资料并明确保留未知。
 
 - Polish negative requirement wording, use consistent album title sizing with full-ID tooltips, and align query/unlock actions at the bottom right. Explain unresolved IDs without assuming content-loading failure. / 明确否定要求文案，相册标题统一字号并提供完整ID提示；查询/解锁按钮并排放在右下，缺项ID不再直接断言未加载。

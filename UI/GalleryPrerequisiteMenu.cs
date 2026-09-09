@@ -15,7 +15,6 @@ internal sealed class GalleryPrerequisiteMenu : GalleryToolMenu
         bool obtained = Game1.player.eventsSeen.Contains(entry.EventId);
         Rows.Add(new(context.I18n.Get(obtained ? "prerequisite.complete" : "prerequisite.incomplete"),
             Status: obtained ? ConditionStatusIcon.Check : ConditionStatusIcon.Cross));
-        Rows.Add(new(context.I18n.Get("query.source", new { source = context.SourceLabel(context.Sources.Get(entry.Identity)) })));
         foreach (MarkerAction source in entry.Sources)
         {
             Rows.Add(new(context.I18n.Get(source.SetsMarker ? "prerequisite.set" : "prerequisite.remove", new { rule = source.RuleId })));

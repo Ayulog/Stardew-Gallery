@@ -36,14 +36,14 @@ internal static class QueryUpgradeChecks
         var index = new StorySearchIndex(catalog, e => e.LocationName == "Mountain" ? "山区" : "小镇", n => n == "Sam" ? "山姆" : "阿比盖尔",
             identity => identity.EventId == "1" ? "雨天约会" : null, completed: new HashSet<string> { "1", "2111294" }, parser: parser,
             conditionState: row => row.EventId == "1" ? ConditionTruth.True : ConditionTruth.Unknown);
-        Check(index.Search("山", new QueryFilter { Npc = "Sam" }).Single().Event == sam, "exact NPC avoids location substring collisions");
+        Check(index.Search("山", new QueryFilter { Kind = QueryKind.Heart, Npc = "Sam" }).Single().Event == sam, "exact NPC avoids location substring collisions");
         Check(index.Search("山", new QueryFilter { Location = "Data/Events/Mountain" }).Single().Event == mountain, "exact location avoids NPC substring collisions");
         Check(index.Search("雨天约会").Single().EventId == "1" && index.Search("1").First().EventId == "1", "alias and original ID searchable, exact ID first");
         Check(index.Search("", new QueryFilter { Kind = QueryKind.Prerequisite, Completion = QueryCompletion.Complete }).Single().EventId == "2111294", "marker completion uses seen state");
         Check(index.Search("", new QueryFilter { Conditions = QueryConditionState.Met }).Single().EventId == "1", "unknown never passes met filter");
         Check(index.Search("", new QueryFilter { Season = "winter" }).Single().EventId == "2", "season restriction and unrestricted story");
         Check(index.Search("", new QueryFilter { MinimumHearts = 3 }).Single().EventId == "2", "heart requirement filter");
-        Check(index.Search("2111294").Single().Prerequisite is not null && index.Search("").Count == 2, "exact marker ID resolves without mixing default story browse");
+        Check(index.Search("2111294").Single().Prerequisite is not null && index.Search("").Count == 4, "all events includes stories and prerequisites");
         foreach (string query in new[] { "PLAYER_HEARTS Current Emily 8", "PLAYER_FRIENDSHIP_POINTS Current Emily 2502", "PLAYER_NPC_RELATIONSHIP Current Emily Dating Engaged Married",
             "PLAYER_HAS_SEEN_EVENT Current 2123243", "WEATHER Woods Sun", "PLAYER_HAS_MAIL Current letter Received", "!PLAYER_HAS_CONVERSATION_TOPIC Current ElliottGone1" })
         {
@@ -54,10 +54,26 @@ internal static class QueryUpgradeChecks
             Check(SafeGameQuery.Evaluate(clauses, context with { Details = new() }) is null, "missing facts remain unknown");
         }
         Check(!SafeGameQuery.TryParse("CustomAuthor.UnsafeQuery foo", out _), "unknown third-party query is not invoked");
-        var knownSources = new EventSourceCatalog([new("Data/Events/Town", "1", "Author.Pack", "Known pack", "2.0.0")], _ => "2.0.0");
-        Check(knownSources.Get(new("data/events/town", "1")) == "Author.Pack" && knownSources.Get(new("Data/Events/Farm", "1")) == "unknown", "origins bind exact asset and ID");
-        var changedVersion = new EventSourceCatalog([new("Data/Events/Town", "1", "Author.Pack", "Known pack", "2.0.0")], _ => "3.0.0");
-        Check(changedVersion.Get(new("Data/Events/Town", "1")) == "unknown", "unverified pack version never inherits origin claim");
+        Check(Enum.GetValues<QueryKind>().Length == 4 && new QueryFilter().Kind == QueryKind.All, "one all-events option includes every query category");
+        Check(GalleryNameText.IsMissing("(no translation:Name.JunimoJade)")
+            && GalleryNameText.IsMissing("{{i18n:missing}}"), "translation diagnostics are not player-facing names");
+        Check(GalleryLocationName.Resolve("Custom_TestRoom", "(no translation:TestRoom.Name)", _ => "测试房间") == "测试房间", "missing display name uses translation fallback");
+        Check(GalleryLocationName.Resolve("Custom_TestRoom", "(no translation:TestRoom.Name)", _ => null) == "Test Room", "missing locale still has a readable fallback");
+        var rainy = new WeatherCondition(WeatherKind.Rainy, "rainy", ConditionSource.LegacyEventPrecondition, "w rainy", false);
+        var dry = rainy with { Kind = WeatherKind.Sunny, WeatherId = "sunny" };
+        foreach (string weather in new[] { "Rain", "Storm", "GreenRain" })
+            Check(QueryWeather.Matches(rainy, weather) == true && QueryWeather.Matches(dry, weather) == false, "rain includes storms and green rain");
+        foreach (string weather in new[] { "Sun", "Snow", "Wind" })
+            Check(QueryWeather.Matches(dry, weather) == true && QueryWeather.Matches(rainy, weather) == false, "legacy sunny means not raining");
+        Check(QueryWeather.Matches(rainy with { Kind = WeatherKind.Custom, WeatherId = "CustomBlizzard" }, "CustomBlizzard") == true,
+            "custom weather keeps exact identity");
+        var clones = sam with { RelatedNpcNames = ["Sam", "Sam·", "SpriteOnly"] };
+        var otherMap = clones with { Resolved = clones.Resolved with { Identity = new("Data/Events/CopyTown", "1") } };
+        var grouped = new StorySearchIndex(new([], [clones, otherMap], []), _ => "小镇", _ => "山姆",
+            characterKey: (_, id) => id.StartsWith("Sam") ? "Sam" : null, locationKey: _ => "Data/Events/Town");
+        Check(grouped.Rows.All(row => row.Npcs.SequenceEqual(["Sam"]) && row.Characters == "山姆"), "actor projection removes sprite-only choices and duplicate aliases");
+        Check(grouped.Search("", new QueryFilter { Location = "Data/Events/Town" }).Count == 2
+            && grouped.Rows.Select(row => row.Identity).Distinct().Count() == 2, "one location filter retains independent underlying event identities");
         Console.WriteLine("Query upgrade checks passed.");
     }
     private static void Check(bool value, string label) { if (!value) throw new InvalidOperationException(label); }

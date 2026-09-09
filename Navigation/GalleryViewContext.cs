@@ -10,9 +10,7 @@ internal sealed record GalleryViewContext(GalleryCatalog Catalog, ITranslationHe
     GalleryPhotos Photos, IGalleryNavigation Navigation, Func<bool> IsUnlocked, Func<GalleryEvent, ReplayAccess> ReplayAccess)
 {
     internal EventNameStore? Names { get; init; }
-    internal EventSourceCatalog Sources { get; init; } = new([], _ => null);
     internal GalleryLocationNames Locations { get; } = new(I18n);
+    internal GalleryCharacterNames Characters { get; } = new(Catalog, I18n);
     internal string Name(EventIdentity identity) => Names?.Get(identity) ?? identity.EventId;
-    internal string SourceLabel(string source) => source switch
-        { "base" => I18n.Get("source.base"), "unknown" => I18n.Get("source.unknown"), _ => Sources.Name(source) };
 }

@@ -41,7 +41,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 选择角色，查看事件的可读条件和缺失/未知要求；已解锁事件可点击“回放”。
 - 回放右上角按钮或配置的快捷键可循环切换 1x / 2x / 4x。
 - 回放时按 F8、手柄左肩或点击相机截图；从详情缩略图管理截图与封面。截图不含对话框和 HUD，保存在本 Mod 的 `event-photos/` 内，卸载前可保留此目录。
-- 首页搜索框只找角色；事件查询提供筛选面板。手柄Y打开筛选，确认进入角色/地点列表，肩键翻页，B返回上一级，应用后统一更新结果。默认浏览剧情，选择前置类型或输入准确前置ID可查对应资料。
+- 首页搜索框只找角色；事件查询提供筛选面板。手柄Y打开筛选，确认进入角色/地点列表，肩键翻页，B返回上一级，应用后统一更新结果。类型为全部事件、好感剧情、普通剧情、前置事件；全部事件包含后三类。
 - 详情中的“自定义事件名”可保存或恢复默认名称。更新或卸载前保留`user-data/`及`event-photos/`，即可保留个人命名和截图。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
@@ -50,7 +50,8 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 事件目录取决于当前存档状态、已安装 Mod 及其条件，因此不同存档可能看到不同的当前版本。
 - 回放使用当前生效内容，不是历史回放。
 - 查询范围是当前可发现的地点事件内容，不保证覆盖未生效CP分支、夜间FarmEvent、节日主流程或纯C#事件；好感剧情分类依据正向关系证据与可确认的续篇，非社交NPC关联不等于主相册收录。
-- 前置资料读取当前TriggerActions的直接标记动作和明确内部依赖，不执行动作来探测。条件现在满足不代表标记已生成；未知条件不计为满足。来源首版只有14条已核查身份资料，其余明确未确认，不声称追踪当前完整修改链。
+- 前置资料读取当前TriggerActions的直接标记动作和明确内部依赖，不执行动作来探测。条件现在满足不代表标记已生成；未知条件不计为满足。
+- 角色筛选合并有明确依据的演员别名，忽略纯动画角色和误解析文本；地点合并作者声明的旧名及已核实场景副本，保留真实事件身份与回放地点。缺译标记回退为已维护译名或可读名称。天气包含六种原版天气及事件明确使用的自定义天气。
 - 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内；新版本回放需按开发包实测说明验证。
 - 未观看事件保持锁定；条件说明不会自动修改存档进度。
 - 事件回放目前仅支持单人模式。多人模式未实测。
@@ -101,7 +102,7 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - Choose a character, review readable conditions and missing/unknown requirements, then click "Replay" on an unlocked event.
 - Use the top-right replay button or the configured binding to cycle 1x / 2x / 4x.
 - During replay, press F8, the controller's left shoulder, or the camera button to capture the scene without dialogue/HUD. Open the detail thumbnail to manage photos/covers. Photos live in this mod's `event-photos/` folder; keep it when uninstalling to retain your pictures.
-- Home search finds characters only. Event Search contains the filter panel: Y opens filters, confirm opens a character/location picker, shoulder buttons page through lists, B returns one level, and Apply updates the results. Select the prerequisite type or enter an exact prerequisite ID to find its record.
+- Home search finds characters only. Event Search contains the filter panel: Y opens filters, confirm opens a character/location picker, shoulder buttons page through lists, B returns one level, and Apply updates the results. All Events includes heart stories, ordinary stories, and prerequisites.
 - Use Rename Event in details to save a personal name or restore the default. Preserve `user-data/` and `event-photos/` when updating or uninstalling.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
@@ -114,7 +115,8 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - Unseen events remain locked; condition explanations never rewrite save progress.
 - Event replay currently supports single-player only. Multiplayer has not been tested.
 - The mod does not access the internet or modify game files or other mods.
-- Prerequisites come from current direct TriggerActions marker writes and known internal dependencies; actions are never executed for analysis. Matching conditions do not imply an obtained marker. Definition origins currently cover only 14 verified identities; other entries remain unconfirmed, and later edits are not traced.
+- Prerequisites come from current direct TriggerActions marker writes and known internal dependencies; actions are never executed for analysis. Matching conditions do not imply an obtained marker.
+- Character filters combine confirmed actor aliases and omit animation-only actors or malformed names. Location groups use declared former names and verified scene copies without changing event identities or replay locations. Missing translation markers fall back to maintained or readable names. Weather filters include six vanilla types and explicitly referenced custom weather.
 
 ### Uninstall
 

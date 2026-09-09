@@ -40,14 +40,14 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     {
         this.context = context;
         this.state = state;
-        index = new StorySearchIndex(context.Catalog, entry => context.Locations.Get(entry.LocationName), NPC.GetDisplayName,
+        index = new StorySearchIndex(context.Catalog, entry => context.Locations.Get(entry.LocationName), context.Characters.Get,
             identity => context.Catalog.FindPrerequisite(identity.EventId) is { } prerequisite && prerequisite.Identity == identity
-                ? PrerequisitePresentation.Title(prerequisite, context) : context.Name(identity), context.Sources.Get,
+                ? PrerequisitePresentation.Title(prerequisite, context) : context.Name(identity),
             Game1.player.eventsSeen.ToHashSet(StringComparer.Ordinal), new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
             row => row.Event is { } story ? PrerequisitePresentation.Truth(GalleryConditionPresentation.Build(story, context.I18n, locationName: context.Locations.Get(story.LocationName)))
-                : PrerequisitePresentation.Truth(row.Prerequisite!, context.I18n));
+                : PrerequisitePresentation.Truth(row.Prerequisite!, context.I18n), (entry, id) => context.Characters.Key(id, entry), entry => context.Locations.Key(entry.LocationName));
         search = new GalleryTextBox { Height = SearchBounds.Height };
-        rowTextScale = Math.Min(1f, 29f / index.Rows.Select(row => Game1.smallFont.MeasureString(row.Title + row.Characters + row.Location + context.SourceLabel(row.Source)).Y)
+        rowTextScale = Math.Min(1f, 29f / index.Rows.Select(row => Game1.smallFont.MeasureString(row.Title + row.Characters + row.Location).Y)
             .Append((float)Game1.smallFont.LineSpacing).Max());
         search.OnEnterPressed += _ => OpenFirstMatch();
         search.Text = GallerySearchInput.CleanText(state.SearchText);
@@ -338,10 +338,9 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         GalleryDrawing.DrawButton(b, FilterBounds, context.I18n.Get("filter.title"));
         if (state.Filter != new QueryFilter() || currentlySnappedComponent?.myID == KindBase)
             b.Draw(Game1.staminaRect, new Rectangle(FilterBounds.X + 20, FilterBounds.Bottom - 7, FilterBounds.Width - 40, 3), new Color(66, 112, 76));
-        Column(b, "query.column-event", 158, 240);
-        Column(b, "query.column-npc", 410, 234);
-        Column(b, "query.column-location", 666, 242);
-        Column(b, "query.column-source", 930, 350);
+        Column(b, "query.column-event", 158, 382);
+        Column(b, "query.column-npc", 568, 332);
+        Column(b, "query.column-location", 928, 352);
         string? tooltip = null;
         (int mouseX, int mouseY) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
         for (int slot = 0; slot < VisibleRows && scroll + slot < rows.Count; slot++)
@@ -361,19 +360,17 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
                 var icon = Game1.player.eventsSeen.Contains(row.EventId) ? GallerySpreadLayout.ConditionCheckSource : GallerySpreadLayout.ConditionCrossSource;
                 b.Draw(context.Textures.ConditionIcons, new Rectangle(80, bounds.Y + 14, 40, 40), new Rectangle(icon.X, icon.Y, icon.Width, icon.Height), Color.White);
             }
-            GalleryDrawing.DrawEllipsized(b, row.Title, new Rectangle(158, bounds.Y + 6, 240, 29), rowTextScale);
+            GalleryDrawing.DrawEllipsized(b, row.Title, new Rectangle(158, bounds.Y + 6, 382, 29), rowTextScale);
             GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(entry is null ? "query.kind-prerequisite" : entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"),
                 new Rectangle(158, bounds.Y + 37, 240, 23), GallerySpreadDrawing.Ink);
-            GalleryDrawing.DrawEllipsized(b, row.Characters.Length == 0 ? "-" : row.Characters, new Rectangle(410, bounds.Y + 8, 234, 52), rowTextScale);
-            GalleryDrawing.DrawEllipsized(b, row.Location, new Rectangle(666, bounds.Y + 8, 242, 52), rowTextScale);
-            string source = context.SourceLabel(row.Source);
-            GalleryDrawing.DrawEllipsized(b, source, new Rectangle(930, bounds.Y + 8, 350, 52), rowTextScale);
+            GalleryDrawing.DrawEllipsized(b, row.Characters.Length == 0 ? "-" : row.Characters, new Rectangle(568, bounds.Y + 8, 332, 52), rowTextScale);
+            GalleryDrawing.DrawEllipsized(b, row.Location, new Rectangle(928, bounds.Y + 8, 352, 52), rowTextScale);
             ReplayAccess? access = entry is null ? null : context.ReplayAccess(entry);
             if (access is not null) b.Draw(context.Textures.Replay, ReplayBounds(slot), access.Allowed ? Color.White : Color.Gray * .5f);
             if (access is not null && ReplayBounds(slot).Contains(mouseX, mouseY))
                 tooltip = context.I18n.Get(access.Allowed ? "event.replay" : access.ReasonKey ?? "event.locked");
             else if (hovered)
-                tooltip = $"{row.Title}\nID {row.EventId}\n{row.Characters}\n{row.Location}\n{context.I18n.Get("query.source", new { source })}\n{context.I18n.Get("source.note")}";
+                tooltip = $"{row.Title}\nID {row.EventId}\n{row.Characters}\n{row.Location}";
         }
         if (rows.Count == 0)
             GalleryDrawing.DrawCentered(b, context.I18n.Get("nav.no-results"), new Rectangle(240, 370, 960, 160));

@@ -17,8 +17,9 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
     internal GalleryFilterMenu(GalleryViewContext context, GalleryPageState state) : base(context, state)
     {
         draft = state.Filter;
-        index = new StorySearchIndex(context.Catalog, e => context.Locations.Get(e.LocationName), NPC.GetDisplayName,
-            source: context.Sources.Get);
+        index = new StorySearchIndex(context.Catalog, e => context.Locations.Get(e.LocationName), context.Characters.Get,
+            parser: new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
+            characterKey: (entry, id) => context.Characters.Key(id, entry), locationKey: e => context.Locations.Key(e.LocationName));
         Rebuild();
     }
     private string T(string key) => Context.I18n.Get(key);
@@ -32,11 +33,11 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         }
         else
         {
-            fields.AddRange(["kind", "npc", "location", "state", "source", "conditions", "more"]);
+            fields.AddRange(["kind", "npc", "location", "state", "conditions", "more"]);
             if (more) fields.AddRange(["season", "weather", "time", "min", "max"]);
             foreach (string field in fields)
             {
-                if (field == "more") { Rows.Add(new(T(more ? "filter.less" : "filter.more"), () => { more = !more; Rebuild(RowId + 6); })); continue; }
+                if (field == "more") { Rows.Add(new(T(more ? "filter.less" : "filter.more"), () => { more = !more; Rebuild(RowId + fields.IndexOf("more")); })); continue; }
                 string value = Choices(field).FirstOrDefault(choice => choice.Id == Value(field))?.Label ?? T("filter.any");
                 Rows.Add(new(T("filter." + field) + ": " + value, () =>
                 {
@@ -52,7 +53,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
     {
         if (picker is not null || FocusId < RowId || FocusId - RowId >= fields.Count) return;
         string field = fields[FocusId - RowId];
-        if (field is "npc" or "location" or "source" or "more") { Activate(FocusId); return; }
+        if (field is "npc" or "location" or "more") { Activate(FocusId); return; }
         var choices = Choices(field); int selected = Array.FindIndex(choices, choice => choice.Id == Value(field));
         Set(field, choices[Math.Clamp(selected + direction, 0, choices.Length - 1)].Id); Rebuild(FocusId);
     }
@@ -68,7 +69,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
     }
     private string? Value(string field) => field switch
     {
-        "kind" => ((int)draft.Kind).ToString(), "npc" => draft.Npc, "location" => draft.Location, "source" => draft.Source,
+        "kind" => ((int)draft.Kind).ToString(), "npc" => draft.Npc, "location" => draft.Location,
         "state" => ((int)draft.Completion).ToString(), "conditions" => ((int)draft.Conditions).ToString(),
         "season" => draft.Season, "weather" => draft.Weather, "time" => draft.Time?.ToString(),
         "min" => draft.MinimumHearts?.ToString(), "max" => draft.MaximumHearts?.ToString(), _ => null
@@ -79,7 +80,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         draft = field switch
         {
             "kind" => draft with { Kind = (QueryKind)(number ?? 0) }, "npc" => draft with { Npc = value },
-            "location" => draft with { Location = value }, "source" => draft with { Source = value },
+            "location" => draft with { Location = value },
             "state" => draft with { Completion = (QueryCompletion)(number ?? 0) }, "conditions" => draft with { Conditions = (QueryConditionState)(number ?? 0) },
             "season" => draft with { Season = value }, "weather" => draft with { Weather = value }, "time" => draft with { Time = number },
             "min" => draft with { MinimumHearts = number, MaximumHearts = number > draft.MaximumHearts ? number : draft.MaximumHearts },
@@ -91,22 +92,27 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         Choice any = new(null, T("filter.any"));
         IEnumerable<Choice> values = field switch
         {
-            "kind" => new[] { "query.kind-all", "filter.all-records", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" }
+            "kind" => new[] { "query.kind-all", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" }
                 .Select((key, i) => new Choice(i.ToString(), T(key))),
             "state" => new[] { "filter.any", draft.Kind == QueryKind.All ? "filter.done" : draft.Kind == QueryKind.Prerequisite ? "prerequisite.complete" : "filter.seen",
                 draft.Kind == QueryKind.All ? "filter.pending" : draft.Kind == QueryKind.Prerequisite ? "prerequisite.incomplete" : "filter.unseen" }.Select((key, i) => new Choice(i.ToString(), T(key))),
             "conditions" => new[] { "filter.any", "filter.met", "filter.unmet", "filter.unknown" }.Select((key, i) => new Choice(i.ToString(), T(key))),
             "npc" => new[] { any }.Concat(index.Rows.SelectMany(row => row.Npcs).Distinct(StringComparer.Ordinal)
-                .Select(id => new Choice(id, NPC.GetDisplayName(id))).OrderBy(choice => choice.Label, StringComparer.CurrentCulture)),
-            "location" => new[] { any }.Concat(index.Rows.Where(row => row.Event is not null).DistinctBy(row => row.Event!.AssetName)
-                .Select(row => new Choice(row.Event!.AssetName, row.Location)).OrderBy(choice => choice.Label, StringComparer.CurrentCulture)),
-            "source" => new[] { any }.Concat(index.Rows.Select(row => row.Source).Distinct().Select(id => new Choice(id, Context.SourceLabel(id)))),
+                .Select(id => new Choice(id, Context.Characters.Get(id))).OrderBy(choice => choice.Label, StringComparer.CurrentCulture)),
+            "location" => new[] { any }.Concat(index.Rows.Where(row => row.Event is not null).DistinctBy(row => row.LocationKey, StringComparer.OrdinalIgnoreCase)
+                .Select(row => new Choice(row.LocationKey, row.Location)).OrderBy(choice => choice.Label, StringComparer.CurrentCulture)),
             "season" => new[] { any }.Concat(new[] { "spring", "summer", "fall", "winter" }.Select(id => new Choice(id, T("season." + id)))),
-            "weather" => new[] { any }.Concat(new[] { "sunny", "rainy" }.Select(id => new Choice(id, T("weather." + id)))),
+            "weather" => new[] { any }.Concat(QueryWeather.Standard.Concat(index.Rows.SelectMany(row => row.Requirements).SelectMany(QueryWeather.Mentioned))
+                .Distinct(StringComparer.Ordinal).Select(id => new Choice(id, WeatherName(id)))),
             "time" => new[] { any }.Concat(Enumerable.Range(6, 21).Select(hour => new Choice((hour * 100).ToString(), Game1.getTimeOfDayString(hour * 100)))),
             "min" or "max" => new[] { any }.Concat(Enumerable.Range(0, 15).Select(hearts => new Choice(hearts.ToString(), Context.I18n.Get("event.hearts", new { hearts }).ToString()))),
             _ => []
         };
         return values.ToArray();
+    }
+    private string WeatherName(string id)
+    {
+        var text = Context.I18n.Get("weather." + ConditionDescriber.NormalizeWeather(id).ToLowerInvariant());
+        return text.HasValue() ? text.ToString() : GalleryLocationName.Resolve(id, null, _ => null);
     }
 }

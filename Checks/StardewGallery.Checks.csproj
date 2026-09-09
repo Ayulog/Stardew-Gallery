@@ -16,8 +16,8 @@
     <Compile Include="StoryQueryChecks.cs" />
     <Compile Include="QueryUpgradeChecks.cs" />
     <Compile Include="..\Navigation\QueryFilter.cs" Link="Navigation\QueryFilter.cs" />
+    <Compile Include="..\Navigation\QueryWeather.cs" Link="Navigation\QueryWeather.cs" />
     <Compile Include="..\Catalog\PrerequisiteCatalog.cs" Link="Catalog\PrerequisiteCatalog.cs" />
-    <Compile Include="..\Catalog\EventSourceCatalog.cs" Link="Catalog\EventSourceCatalog.cs" />
     <Compile Include="..\Conditions\ConditionEventReferences.cs" Link="Conditions\ConditionEventReferences.cs" />
     <Compile Include="StoryCatalogChecks.cs" />
     <Compile Include="StoryReplayChecks.cs" />
@@ -28,6 +28,7 @@
     <Compile Include="..\Navigation\GalleryEventNavigation.cs" Link="GalleryEventNavigation.cs" />
     <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
     <Compile Include="..\GalleryLocationName.cs" Link="GalleryLocationName.cs" />
+    <Compile Include="..\GalleryNameText.cs" Link="GalleryNameText.cs" />
     <Compile Include="..\GalleryTextFit.cs" Link="GalleryTextFit.cs" />
     <Compile Include="..\GallerySearchFilter.cs" Link="GallerySearchFilter.cs" />
     <Compile Include="EventCardFocusChecks.cs" />

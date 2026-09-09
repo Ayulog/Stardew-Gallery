@@ -350,7 +350,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         ReplayAccess access = context.ReplayAccess(entry);
         string[] lines = [i18n.Get(entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"), "ID " + entry.EventId,
             GalleryConditionPresentation.Location(entry, i18n),
-            i18n.Get("query.source", new { source = context.SourceLabel(context.Sources.Get(entry.Resolved.Identity)) }),
             access.Allowed ? i18n.Get("event.replay") : access.ReasonKey is null ? "-" : i18n.Get(access.ReasonKey)];
         for (int row = 0; row < lines.Length; row++)
             GalleryDrawing.DrawCentered(b, lines[row], GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(row)), 40));

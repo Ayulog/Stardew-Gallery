@@ -8,11 +8,37 @@ internal sealed class GalleryLocationNames(ITranslationHelper i18n)
 {
     private Dictionary<string, string>? mapNames;
     private readonly Dictionary<string, string> cache = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string>? aliases;
+    private static readonly Dictionary<string, string> SceneAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Custom_Ridgeside_Ridge_KennethDate_OFF"] = "Custom_Ridgeside_Ridge",
+        ["Custom_Ridgeside_Ridge_KennethDate_ON"] = "Custom_Ridgeside_Ridge",
+        ["Custom_Ridgeside_RSVCliff_AlissaDate"] = "Custom_Ridgeside_RSVCliff"
+    };
+    internal string Key(string id) => "Data/Events/" + Canonical(id);
+    private string Canonical(string id)
+    {
+        if (aliases is null)
+        {
+            aliases = new(SceneAliases, StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var (current, data) in DataLoader.Locations(Game1.content))
+                    foreach (string former in data.FormerLocationNames ?? [])
+                        aliases.TryAdd(former, current);
+            }
+            catch { }
+        }
+        HashSet<string> visited = new(StringComparer.OrdinalIgnoreCase);
+        while (visited.Add(id) && aliases.TryGetValue(id, out string? target)) id = target;
+        return id;
+    }
     internal string Get(string id)
     {
+        id = Canonical(id);
         if (cache.TryGetValue(id, out string? name)) return name;
         string? display = Game1.getLocationFromName(id)?.DisplayName;
-        if (string.IsNullOrWhiteSpace(display) || display.Equals(id, StringComparison.OrdinalIgnoreCase) || display.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
+        if (GalleryNameText.IsMissing(display) || display.Equals(id, StringComparison.OrdinalIgnoreCase) || display.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase))
         {
             if (mapNames is null)
             {
@@ -40,7 +66,7 @@ internal sealed class GalleryLocationNames(ITranslationHelper i18n)
                 // An area caption covering several locations is too broad to rename each room.
                 if (position.ScrollText is null && (ids.Length != 1 || (area.WorldPositions?.Count ?? 0) != 1)) continue;
                 string value = TokenParser.ParseText(text).Replace('\n', ' ').Trim();
-                if (value.Length == 0) continue;
+                if (GalleryNameText.IsMissing(value)) continue;
                 foreach (string id in ids)
                 {
                     if (!candidates.TryGetValue(id, out var values)) candidates[id] = values = new(StringComparer.CurrentCulture);

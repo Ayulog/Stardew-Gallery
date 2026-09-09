@@ -12,7 +12,6 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
     private GalleryViewContext? view;
     private GalleryTextures? textures;
     private EventNameStore? names;
-    private EventSourceCatalog? sources;
 
     internal static bool OwnsMenu(IClickableMenu? menu) => menu is GalleryMenu or GalleryCharacterMenu or GalleryQueryMenu or GalleryEventDetailMenu or GalleryPhotoMenu or GalleryToolMenu;
 
@@ -25,9 +24,7 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
                 Load("assets/CharacterScene-day-v2.png"), Load(EventThumbnailAsset.For()), Load(GalleryUiAssets.ReplayGlyph),
                 Load(GalleryUiAssets.EventSlotFrame), Load(GalleryUiAssets.ScrollbarTrack), Load(GalleryUiAssets.ConditionStatusIcons));
             names ??= new EventNameStore(Path.Combine(helper.DirectoryPath, "user-data"), warning => monitor.Log(warning, LogLevel.Warn));
-            sources ??= new EventSourceCatalog(helper.ModContent.Load<EventSourceRecord[]>("assets/event-sources.json"),
-                id => helper.ModRegistry.Get(id)?.Manifest.Version.ToString());
-            view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access) { Names = names, Sources = sources };
+            view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access) { Names = names };
             history.Reset(); ShowCurrent(); Game1.playSound("bigSelect");
         }
         catch (Exception error) { monitor.Log($"Gallery open failed: {error}", LogLevel.Error); }
