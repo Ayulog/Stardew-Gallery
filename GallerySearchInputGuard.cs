@@ -33,7 +33,7 @@ internal static class GallerySearchInputGuard
 
     private static void AfterInputUpdate(object __instance)
     {
-        GalleryMenu? home = Game1.activeClickableMenu as GalleryMenu;
+        IGallerySearchMenu? home = Game1.activeClickableMenu as IGallerySearchMenu;
         bool editing = Ready && home?.IsSearchSelected == true;
         Captures.TryGetValue(__instance, out GalleryKeyboardCapture? capture);
         if (!editing && capture?.HasCapturedKeys != true)

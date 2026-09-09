@@ -25,6 +25,20 @@ internal static class GalleryConditionPresentation
         => GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
             key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
 
+    internal static string InternalStep(StoryDependencyResult dependency, string eventId, ITranslationHelper i18n)
+    {
+        string heading = i18n.Get("nav.internal-step", new { id = eventId });
+        List<string> lines = [];
+        foreach (GalleryEvent step in dependency.InternalSteps)
+        {
+            IReadOnlyList<ConditionDisplayItem> conditions = Build(step, i18n);
+            string requirements = conditions.Count == 0 ? i18n.Get("condition.none")
+                : string.Join("; ", conditions.Select(item => item.Description.Replace("≥", ">=").Replace("≤", "<=").Replace("≠", "!=")));
+            lines.Add(Location(step, i18n) + ": " + requirements);
+        }
+        return lines.Count == 0 ? heading : heading + "\n" + string.Join("\n", lines.Distinct(StringComparer.Ordinal));
+    }
+
     private static string Term(string group, string value, ITranslationHelper i18n)
     {
         if (group == "festival")

@@ -23,7 +23,8 @@ internal sealed record EventLaunchResult(
 
 internal sealed class EventLauncher
 {
-    internal EventLaunchResult TryLaunch(EventPlayback playback, Action<GameLocation>? prepareEnvironment = null)
+    internal EventLaunchResult TryLaunch(EventPlayback playback, Action<GameLocation>? prepareEnvironment = null,
+        Action<Event>? prepared = null, Func<bool>? stillActive = null, Action<Exception>? failed = null)
     {
         if (string.IsNullOrWhiteSpace(playback.AssetName) || string.IsNullOrWhiteSpace(playback.EventId)
             || string.IsNullOrWhiteSpace(playback.RootScript) || string.IsNullOrWhiteSpace(playback.LocationName))
@@ -39,6 +40,9 @@ internal sealed class EventLauncher
         try
         {
             replayEvent = new Event(playback.RootScript, playback.AssetName, playback.EventId, Game1.player);
+            replayEvent.isMemory = true;
+            replayEvent.markEventSeen = false;
+            prepared?.Invoke(replayEvent);
         }
         catch (Exception error)
         {
@@ -46,19 +50,35 @@ internal sealed class EventLauncher
                 new EventLaunchFailure(EventLaunchFailureKind.ConstructionFailed, $"事件构造失败：{error.Message}"));
         }
 
-        if (location.Name != Game1.currentLocation.Name)
+        void Start(Action start)
+        {
+            if (stillActive?.Invoke() == false)
+                return;
+            try
+            {
+                if (!ReferenceEquals(Game1.currentLocation, location))
+                    throw new InvalidOperationException($"Replay destination changed: {location.NameOrUniqueName}.");
+                Game1.player.positionBeforeEvent = Game1.player.Tile;
+                Game1.player.orientationBeforeEvent = Game1.player.FacingDirection;
+                prepareEnvironment?.Invoke(location);
+                start();
+            }
+            catch (Exception error)
+            {
+                if (failed is null) throw;
+                failed(error);
+            }
+        }
+
+        if (!ReferenceEquals(location, Game1.currentLocation))
         {
             try
             {
-                LocationRequest request = Game1.getLocationRequest(location.Name);
-                request.OnLoad += () =>
-                {
-                    prepareEnvironment?.Invoke(Game1.currentLocation);
-                    Game1.currentLocation.currentEvent = replayEvent;
-                };
+                LocationRequest request = RequestFor(location);
+                request.OnLoad += () => Start(() => location.currentEvent = replayEvent);
                 int x = 8;
                 int y = 8;
-                Utility.getDefaultWarpLocation(request.Name, ref x, ref y);
+                Utility.getDefaultWarpLocation(location.Name, ref x, ref y);
                 Game1.warpFarmer(request, x, y, Game1.player.FacingDirection);
                 return new EventLaunchResult(true, replayEvent, null);
             }
@@ -73,9 +93,9 @@ internal sealed class EventLauncher
         {
             Game1.globalFadeToBlack(() =>
             {
+                if (stillActive?.Invoke() == false) return;
                 Game1.forceSnapOnNextViewportUpdate = true;
-                prepareEnvironment?.Invoke(Game1.currentLocation);
-                Game1.currentLocation.startEvent(replayEvent);
+                Start(() => location.startEvent(replayEvent));
                 Game1.globalFadeToClear();
             });
             return new EventLaunchResult(true, replayEvent, null);
@@ -86,4 +106,7 @@ internal sealed class EventLauncher
                 new EventLaunchFailure(EventLaunchFailureKind.SchedulingFailed, $"同地点调度失败：{error.Message}"));
         }
     }
+
+    internal static LocationRequest RequestFor(GameLocation location)
+        => new(location.NameOrUniqueName, location.isStructure.Value, location);
 }

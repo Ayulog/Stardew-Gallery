@@ -47,7 +47,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             .ToList();
 
         monitor.Log(
-            $"画廊扫描完成：角色候选 {characters.Count}，正式角色 {catalog.Characters.Count}，当前事件 {events.Count}，正式收录 {catalog.Events.Count}，直接归属 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Direct)}，前置继承 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Inherited)}，对白推定 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Inferred)}，排除 {events.Count(entry => entry.Ownership.Kind == OwnershipKind.Excluded)}。",
+            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}。",
             LogLevel.Info
         );
         if (debugDiagnostics())
@@ -62,6 +62,9 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     CurrentEvents = events.Count,
                     IncludedEvents = catalog.Events.Count,
                     ExcludedEvents = catalog.ExcludedEvents.Count,
+                    HeartEvents = catalog.Events.Count,
+                    OrdinaryEvents = events.Count(entry => entry.Kind == StoryKind.Ordinary),
+                    InternalEvents = events.Count(entry => entry.Kind == StoryKind.Internal),
                     IdentityConflicts = conflicts.Count,
                     MissingFragments = events.Count(entry => entry.Fragments.MissingKeys.Count > 0)
                 },

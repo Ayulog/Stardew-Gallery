@@ -13,7 +13,8 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
     private readonly GalleryPhotos photos;
     private readonly EventIdentity identity;
     private readonly ITranslationHelper i18n;
-    private readonly Action back;
+    private readonly GalleryViewContext context;
+    private readonly GalleryPageState state;
     private EventPhotoSet set;
     private int selected;
     private float scale;
@@ -26,15 +27,19 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
     private EventPhoto? Selected => selected >= 0 && selected < set.Photos.Count ? set.Photos[selected] : null;
     private bool CanSelectCover => !set.ReadOnly && Selected is { } photo && photos.Image(identity, photo.Id, preview: true) is not null;
 
-    internal GalleryPhotoMenu(GalleryPhotos photos, EventIdentity identity, ITranslationHelper i18n, Action back)
+    internal GalleryPhotoMenu(GalleryViewContext context, GalleryPageState state)
         : base(0, 0, LogicalWidth, LogicalHeight, true)
     {
-        this.photos = photos; this.identity = identity; this.i18n = i18n; this.back = back;
+        this.context = context; this.state = state;
+        photos = context.Photos; i18n = context.I18n;
+        identity = state.Event ?? throw new ArgumentException("An event identity is required.", nameof(state));
         set = photos.Read(identity);
-        selected = Math.Max(0, set.Photos.Count - 1);
+        selected = state.Focus < 0 ? Math.Max(0, set.Photos.Count - 1) : Math.Clamp(state.Scroll, 0, Math.Max(0, set.Photos.Count - 1));
+        int initialFocus = state.Focus;
         Layout();
+        Focus(initialFocus >= 0 ? initialFocus : Selected is null ? 100 : 300 + selected % 3);
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)
-            snapToDefaultClickableComponent();
+            snapCursorToCurrentSnappedComponent();
     }
 
     public override void draw(SpriteBatch batch)
@@ -42,10 +47,10 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
         if (oldWidth != Game1.uiViewport.Width || oldHeight != Game1.uiViewport.Height)
             Layout();
         batch.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .65f);
-        GalleryMenu.BeginScaled(batch, scale, offsetX, offsetY);
+        GalleryDrawing.BeginScaled(batch, scale, offsetX, offsetY);
         IClickableMenu.drawTextureBox(batch, 0, 0, LogicalWidth, LogicalHeight, Color.White);
-        GalleryMenu.DrawCentered(batch, i18n.Get("photo.title"), new Rectangle(80, 22, 1040, 52));
-        GalleryMenu.DrawLeftFitted(batch, i18n.Get("event-detail.event-id", new { id = identity.EventId }), new Rectangle(40, 78, 840, 28));
+        GalleryDrawing.DrawCentered(batch, i18n.Get("photo.title"), new Rectangle(80, 22, 1040, 52));
+        GalleryDrawing.DrawLeftFitted(batch, i18n.Get("event-detail.event-id", new { id = identity.EventId }), new Rectangle(40, 78, 840, 28));
         batch.Draw(Game1.staminaRect, Preview, new Color(31, 35, 31));
         Texture2D? image = Selected is { } photo ? photos.Image(identity, photo.Id, preview: true) : null;
         if (image is not null)
@@ -53,7 +58,7 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
         else
         {
             batch.Draw(Game1.staminaRect, Preview, new Color(239, 219, 174));
-            GalleryMenu.DrawCentered(batch, i18n.Get(Selected is null ? "photo.empty" : "photo.image-unavailable"), Preview);
+            GalleryDrawing.DrawCentered(batch, i18n.Get(Selected is null ? "photo.empty" : "photo.image-unavailable"), Preview);
         }
         for (int slot = 0; slot < 3; slot++)
         {
@@ -72,30 +77,33 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
             {
                 Rectangle badge = new(bounds.X, bounds.Bottom - 32, bounds.Width, 32);
                 batch.Draw(Game1.staminaRect, badge, new Color(239, 227, 184));
-                GalleryMenu.DrawCentered(batch, i18n.Get("photo.current-cover"), badge);
+                GalleryDrawing.DrawCentered(batch, i18n.Get("photo.current-cover"), badge);
             }
         }
         batch.Draw(Game1.mouseCursors, Previous, new Rectangle(352, 495, 12, 11), selected > 0 ? Color.White : Color.Gray);
         batch.Draw(Game1.mouseCursors, Next, new Rectangle(365, 495, 12, 11), selected + 1 < set.Photos.Count ? Color.White : Color.Gray);
-        GalleryMenu.DrawCentered(batch, $"{(set.Photos.Count == 0 ? 0 : selected + 1)} / {set.Photos.Count}", new Rectangle(285, 607, 350, 44));
+        GalleryDrawing.DrawCentered(batch, $"{(set.Photos.Count == 0 ? 0 : selected + 1)} / {set.Photos.Count}", new Rectangle(285, 607, 350, 44));
         for (int index = 0; index < 4; index++)
         {
             Rectangle bounds = Footer(index);
-            GalleryMenu.DrawButton(batch, bounds, i18n.Get(new[] { "photo.back", "photo.set-cover", "photo.default", "photo.remove" }[index]));
+            GalleryDrawing.DrawButton(batch, bounds, i18n.Get(new[] { "photo.back", "photo.set-cover", "photo.default", "photo.remove" }[index]));
             if (!Enabled(index))
                 batch.Draw(Game1.staminaRect, bounds, Color.Gray * .4f);
             if (currentlySnappedComponent?.myID == 100 + index && Game1.options.snappyMenus && Game1.options.gamepadControls)
                 Border(batch, bounds, new Color(225, 172, 52));
         }
         upperRightCloseButton?.draw(batch);
-        GalleryMenu.EndScaled(batch);
+        GalleryDrawing.EndScaled(batch);
         drawMouse(batch);
     }
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
         Point cursor = new((int)Math.Round((x - offsetX) / scale), (int)Math.Round((y - offsetY) / scale));
-        if (upperRightCloseButton?.bounds.Contains(cursor) == true) { Return(); return; }
+        if (upperRightCloseButton?.bounds.Contains(cursor) == true)
+        {
+            SaveState(); photos.ReleasePreviews(); context.Navigation.Close(); return;
+        }
         for (int index = 0; index < 4; index++)
             if (Footer(index).Contains(cursor)) { Activate(100 + index); return; }
         if (Previous.Contains(cursor)) { Select(selected - 1); return; }
@@ -106,8 +114,12 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
 
     public override void receiveScrollWheelAction(int direction) => Select(selected + (direction < 0 ? 1 : -1));
     public override void receiveRightClick(int x, int y, bool playSound = true) => Return();
-    public override void receiveKeyPress(Keys key) { if (key == Keys.Escape) Return(); else base.receiveKeyPress(key); }
-    internal void HandleControllerBack() => Return();
+    public override void receiveKeyPress(Keys key)
+    {
+        if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key)) Return();
+        else base.receiveKeyPress(key);
+    }
+    public override void update(GameTime time) { base.update(time); SaveState(); }
     public override void receiveGamePadButton(Buttons button)
     {
         if (button == Buttons.B) Return();
@@ -190,14 +202,17 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
         for (int slot = 0; slot < 3 && selected / 3 * 3 + slot < set.Photos.Count; slot++)
             allClickableComponents.Add(new(ToScreen(Slot(slot)), "photo") { myID = 300 + slot });
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(item => item.myID == oldId) ?? allClickableComponents[0];
+        SaveState();
     }
     private void Focus(int id)
     {
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(item => item.myID == id) ?? allClickableComponents[0];
+        SaveState();
         if (Game1.options.snappyMenus && Game1.options.gamepadControls) snapCursorToCurrentSnappedComponent();
     }
-    private void Return() { photos.ReleasePreviews(); back(); Game1.playSound("bigDeSelect"); }
-    private Rectangle ToScreen(Rectangle bounds) => GalleryMenu.ScaleRectangle(bounds, scale, offsetX, offsetY);
+    private void SaveState() { state.Scroll = selected; state.Focus = currentlySnappedComponent?.myID ?? 100; }
+    private void Return() { SaveState(); photos.ReleasePreviews(); context.Navigation.Back(); Game1.playSound("bigDeSelect"); }
+    private Rectangle ToScreen(Rectangle bounds) => GalleryDrawing.ScaleRectangle(bounds, scale, offsetX, offsetY);
     private static void Border(SpriteBatch batch, Rectangle bounds, Color color)
     {
         batch.Draw(Game1.staminaRect, new Rectangle(bounds.X, bounds.Y, bounds.Width, 3), color);

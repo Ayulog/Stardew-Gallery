@@ -28,6 +28,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
     private bool failSafeRunning;
 
     internal bool IsActive => snapshot is not null || previewScope is not null;
+    internal bool OwnsEvent(Event value) => IsActive && ReferenceEquals(value, activeReplayEvent);
     internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
     internal int SpeedMultiplier => speedMultiplier;
     internal int EffectiveSpeedMultiplier => !IsActive || restoring || !observed || Game1.CurrentEvent is null
@@ -39,9 +40,32 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
         ? 1 : speedMultiplier;
 
     internal bool TryStart(GalleryEvent entry, Action reopenMenu, out string error)
+        => TryStartCore(entry, null, reopenMenu, out error);
+
+    internal bool TryStartPreview(GalleryEvent entry, PreviewState state, Action reopenMenu, out string error)
+    {
+        if (state is null)
+        {
+            error = helper.Translation.Get("preview.not-available");
+            return false;
+        }
+        return TryStartCore(entry, state, reopenMenu, out error);
+    }
+
+    private bool TryStartCore(GalleryEvent entry, PreviewState? preview, Action reopenMenu, out string error)
     {
         error = string.Empty;
-        if (IsActive)
+        if (entry.Kind == StoryKind.Internal || Context.IsMultiplayer)
+        {
+            error = helper.Translation.Get(entry.Kind == StoryKind.Internal ? "replay.internal" : "replay.multiplayer");
+            return false;
+        }
+        if (!ReplaySaveGuard.IsReady)
+        {
+            error = helper.Translation.Get("replay.protection-failed");
+            return false;
+        }
+        if (IsActive || Game1.eventUp || Game1.CurrentEvent is not null)
         {
             error = helper.Translation.Get("replay.already-running");
             return false;
@@ -56,13 +80,18 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             Trace($"回放备份完成：{backupPath}");
             snapshot = ReplaySnapshot.Capture();
             reopen = reopenMenu;
+            if (preview is not null)
+                previewScope = PreviewInjectionScope.Apply(new RuntimePreviewStateAccessor(), preview);
             eventId = playback.EventId;
             targetLocationName = playback.LocationName;
             speedMultiplier = 1;
             WriteDiagnostics("requested");
             Game1.activeClickableMenu = null;
-            EventLaunchResult launch = eventLauncher.TryLaunch(playback, location => PrepareEnvironment(entry, location));
-            if (launch.Accepted)
+            Event? scheduledEvent = null;
+            EventLaunchResult launch = eventLauncher.TryLaunch(playback, location => PrepareEnvironment(entry, location),
+                value => activeReplayEvent = scheduledEvent = value,
+                () => snapshot is not null && !restoring && ReferenceEquals(activeReplayEvent, scheduledEvent), FailSafe);
+            if (launch.Accepted && snapshot is not null)
             {
                 Trace($"事件回放已接受：地点={playback.LocationName}，事件={playback.EventId}。");
                 WriteDiagnostics("accepted");
@@ -75,53 +104,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
         {
             monitor.Log($"回放启动失败：地点={playback.LocationName}，事件={playback.EventId}。\n{ex}", LogLevel.Error);
             error = helper.Translation.Get("replay.failed");
-        }
-
-        Restore(error);
-        return false;
-    }
-
-    internal bool TryStartPreview(GalleryEvent entry, PreviewState state, Action reopenMenu, out string error)
-    {
-        error = string.Empty;
-        if (IsActive)
-        {
-            error = helper.Translation.Get("replay.already-running");
-            return false;
-        }
-        if (state is null)
-        {
-            error = helper.Translation.Get("preview.not-available");
-            return false;
-        }
-
-        EventPlayback playback = EventPlayback.ForCurrent(entry.Resolved);
-        try
-        {
-            Trace($"预览请求：地点={playback.LocationName}，事件={playback.EventId}。");
-            backupPath = ReplayBackup.Create();
-            Trace($"预览备份完成：{backupPath}");
-            snapshot = ReplaySnapshot.Capture();
-            previewScope = PreviewInjectionScope.Apply(new RuntimePreviewStateAccessor(), state);
-            reopen = reopenMenu;
-            eventId = playback.EventId;
-            targetLocationName = playback.LocationName;
-            speedMultiplier = 1;
-            WriteDiagnostics("preview-requested");
-            Game1.activeClickableMenu = null;
-            EventLaunchResult launch = eventLauncher.TryLaunch(playback);
-            if (launch.Accepted)
-            {
-                Trace($"事件预览已接受：地点={playback.LocationName}，事件={playback.EventId}。");
-                WriteDiagnostics("preview-accepted");
-                return true;
-            }
-            error = MapLaunchFailure(launch.Failure, playback.LocationName);
-        }
-        catch (Exception ex)
-        {
-            monitor.Log($"预览启动失败：地点={playback.LocationName}，事件={playback.EventId}。\n{ex}", LogLevel.Error);
-            error = helper.Translation.Get("preview.failed");
         }
 
         Restore(error);
@@ -186,12 +168,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             {
                 if (ReplayLifecycleRules.CanApplyRestore(transitionPending, fading))
                 {
+                    previewScope?.Dispose();
                     activeSnapshot.RestorePlayer();
                     restorePlayerApplied = true;
-                    bool alreadyThere = Game1.currentLocation?.NameOrUniqueName.Equals(activeSnapshot.LocationName, StringComparison.OrdinalIgnoreCase) == true;
+                    bool alreadyThere = ReferenceEquals(Game1.currentLocation, activeSnapshot.Location);
                     if (!alreadyThere)
                     {
-                        Game1.warpFarmer(activeSnapshot.LocationName, (int)activeSnapshot.Tile.X, (int)activeSnapshot.Tile.Y, false);
+                        Game1.warpFarmer(EventLauncher.RequestFor(activeSnapshot.Location), (int)activeSnapshot.Tile.X,
+                            (int)activeSnapshot.Tile.Y, Game1.player.FacingDirection);
                     }
                 }
                 if (++ticks >= StartTimeoutTicks)
@@ -199,10 +183,12 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
                 return;
             }
 
-            bool locationMatches = Game1.currentLocation?.NameOrUniqueName.Equals(activeSnapshot.LocationName, StringComparison.OrdinalIgnoreCase) == true;
+            bool locationMatches = ReferenceEquals(Game1.currentLocation, activeSnapshot.Location);
             restoreStableTicks = locationMatches && !transitionPending && !fading ? restoreStableTicks + 1 : 0;
             if (ReplayLifecycleRules.CanFinishRestore(locationMatches, transitionPending, fading, restoreStableTicks))
             {
+                // Warping home may itself enqueue quest/dialogue notifications or new event marks.
+                activeSnapshot.RestorePlayer();
                 activeSnapshot.RestorePositionAndPresentation();
                 FinishRestore();
             }
@@ -226,7 +212,12 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             }
             if (!observed)
             {
-                activeReplayEvent = Game1.CurrentEvent;
+                if (activeReplayEvent is not null && !ReferenceEquals(activeReplayEvent, Game1.CurrentEvent))
+                {
+                    Game1.CurrentEvent?.exitEvent();
+                    Restore(helper.Translation.Get("replay.not-started"));
+                    return;
+                }
                 Trace($"已观察到事件实际开始：地点={Game1.currentLocation?.NameOrUniqueName}，事件={eventId}。");
                 if (Game1.currentLocation is GameLocation current)
                     Trace($"回放地图诊断：实际地点={current.NameOrUniqueName}，地图={current.mapPath.Value}，尺寸={current.Map.Layers[0].LayerWidth}x{current.Map.Layers[0].LayerHeight}，玩家地块={Game1.player.Tile}，房屋等级={Game1.player.HouseUpgradeLevel}。");
@@ -287,7 +278,8 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             monitor.Log($"回放成功后清理临时备份失败（保留为 stale）：{completedBackup}", LogLevel.Warn);
         Action? open = reopen;
         Clear();
-        open?.Invoke();
+        try { open?.Invoke(); }
+        catch (Exception error) { SafeLog($"Replay restored, but the completion callback failed: {error}", LogLevel.Error); }
     }
 
     private void FailSafe(Exception error)

@@ -1,5 +1,14 @@
 # Changelog / 更新日志
 
+## 2.5.0 - Story Gallery / 剧情画廊（开发中）
+
+- Keep the album focused on heart stories and add separate ID/NPC/location story search. Internal workflows remain hidden. / 主相册聚焦好感剧情，新增独立ID/NPC/地点自助查询，内部流程不展示。
+- Gate ordinary story replays behind an optional GMCM setting; unseen stories still require Unlock All. / 普通剧情回放增加默认关闭的GMCM开关；未经历剧情仍需一键解锁。
+- Separate story data, condition explanation, views, navigation, replay and photos. Reuse page state and one replay permission policy. / 事件资料、条件解释、视图、导航、回放与照片各自维护，统一页面状态和回放权限。
+- Read conditions consistently from every detail entry point and repair native replay restoration and effect protection. / 统一详情条件状态读取，修复原版回放状态恢复和结果保护。
+
+Development validation and in-game status are recorded in `docs/RELEASE_2.5.0_STORY_DEVELOPMENT.md`. / 开发验证及实机状态见对应开发文档。
+
 ## 2.4.0 - 2026-09-08 - Condition Coverage / 补齐条件判定
 
 - Read weekday, host, money, inventory, shipments, skills, dialogue records, notes, pets, walnuts, mine progress, community/Joja progress, NPC visibility, homes and festival dates without running event predicates. / 补齐星期、主机、金钱、背包、出货、技能、对话记录、纸条、宠物、核桃、矿底、社区/Joja进度、NPC可见性、住宅和节日日历的只读判定。

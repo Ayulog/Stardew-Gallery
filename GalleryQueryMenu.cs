@@ -1,0 +1,390 @@
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using StardewValley;
+using StardewValley.BellsAndWhistles;
+using StardewValley.Menus;
+
+namespace StardewGallery;
+
+internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
+{
+    private const int LogicalWidth = 1440, LogicalHeight = 850;
+    private const int VisibleRows = 8, RowHeight = 68;
+    private const int SearchId = 1000, BackId = 1001, LocationId = 1002, KindBase = 1100, RowBase = 2000;
+    private readonly GalleryViewContext context;
+    private readonly GalleryPageState state;
+    private readonly StorySearchIndex index;
+    private readonly TextBox search;
+    private IReadOnlyList<StorySearchRow> rows = [];
+    private string lastSearch = "";
+    private int scroll;
+    private float scale;
+    private int offsetX, offsetY, viewportWidth, viewportHeight;
+    private bool dragging;
+    private int dragOffset;
+    private Rectangle scrollThumb;
+    private static Rectangle SearchBounds => new(48, 102, 660, 48);
+    private static Rectangle BackBounds => new(48, 784, 280, 48);
+    private static Rectangle LocationBounds => new(888, 784, 480, 48);
+    private static Rectangle ScrollTrack => new(1384, 214, 24, VisibleRows * RowHeight);
+    private static Rectangle KindBounds(int option) => new(758 + option * 204, 100, 194, 50);
+    private static Rectangle RowBounds(int slot) => new(48, 214 + slot * RowHeight, 1320, RowHeight);
+    private static Rectangle ReplayBounds(int slot) => new(1304, 224 + slot * RowHeight, 48, 48);
+    private int MaxScroll => Math.Max(0, rows.Count - VisibleRows);
+    public bool IsSearchSelected => search.Selected;
+
+    internal GalleryQueryMenu(GalleryViewContext context, GalleryPageState state)
+        : base(0, 0, LogicalWidth, LogicalHeight, true)
+    {
+        this.context = context;
+        this.state = state;
+        index = new StorySearchIndex(context.Catalog, entry => GalleryConditionPresentation.Location(entry, context.I18n), NPC.GetDisplayName);
+        search = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor);
+        search.OnEnterPressed += _ => OpenFirstMatch();
+        search.Text = GallerySearchInput.CleanText(state.SearchText);
+        lastSearch = search.Text;
+        if (state.KindFilter == StoryKind.Internal)
+            state.KindFilter = null;
+        rows = index.Search(search.Text, state.KindFilter, state.LocationFilter);
+        scroll = Math.Clamp(state.Scroll, 0, MaxScroll);
+        int initialFocus = state.Focus;
+        Layout();
+        Focus(initialFocus >= 0 ? initialFocus : rows.Count > 0 ? RowBase + scroll * 2 : SearchId);
+    }
+
+    public override void update(GameTime time)
+    {
+        base.update(time);
+        RefreshSearch();
+        SaveState();
+    }
+
+    private void RefreshSearch(bool force = false)
+    {
+        search.Text = GallerySearchInput.CleanText(search.Text);
+        if (!force && lastSearch == search.Text)
+            return;
+        lastSearch = search.Text;
+        rows = index.Search(search.Text, state.KindFilter, state.LocationFilter);
+        scroll = 0;
+        BuildComponents();
+    }
+
+    public void DeselectSearch()
+    {
+        search.Selected = false;
+        if (Game1.keyboardDispatcher.Subscriber == search)
+            Game1.keyboardDispatcher.Subscriber = null;
+    }
+
+    public void OpenFirstMatch()
+    {
+        RefreshSearch();
+        if (rows.Count == 0)
+            return;
+        scroll = 0;
+        OpenRow(0, replay: false);
+    }
+
+    public void HandleControllerBack()
+    {
+        if (search.Selected)
+        {
+            DeselectSearch();
+            Focus(SearchId);
+            Game1.playSound("bigDeSelect");
+        }
+        else
+            Return();
+    }
+
+    public override void receiveLeftClick(int x, int y, bool playSound = true)
+    {
+        (x, y) = ToLogical(x, y);
+        if (upperRightCloseButton?.bounds.Contains(x, y) == true)
+        {
+            SaveState(); DeselectSearch(); context.Navigation.Close(); return;
+        }
+        if (SearchBounds.Contains(x, y))
+        {
+            if (GallerySearchInputGuard.Ready)
+                search.SelectMe();
+            Focus(SearchId);
+            return;
+        }
+        DeselectSearch();
+        if (BackBounds.Contains(x, y)) { Return(); return; }
+        for (int option = 0; option < 3; option++)
+            if (KindBounds(option).Contains(x, y)) { SelectKind(option); return; }
+        if (state.LocationFilter is not null && LocationBounds.Contains(x, y))
+        {
+            state.LocationFilter = null; RefreshSearch(force: true); return;
+        }
+        if (MaxScroll > 0 && scrollThumb.Contains(x, y))
+        {
+            dragging = true; dragOffset = y - scrollThumb.Y; return;
+        }
+        if (MaxScroll > 0 && ScrollTrack.Contains(x, y))
+        {
+            ScrollBy(y < scrollThumb.Y ? -VisibleRows : VisibleRows); return;
+        }
+        for (int slot = 0; slot < VisibleRows && scroll + slot < rows.Count; slot++)
+        {
+            if (ReplayBounds(slot).Contains(x, y)) { OpenRow(scroll + slot, replay: true); return; }
+            if (RowBounds(slot).Contains(x, y)) { OpenRow(scroll + slot, replay: false); return; }
+        }
+    }
+
+    public override void receiveRightClick(int x, int y, bool playSound = true) => HandleControllerBack();
+    public override void receiveScrollWheelAction(int direction) => ScrollBy(direction < 0 ? 1 : -1);
+    public override void leftClickHeld(int x, int y)
+    {
+        if (!dragging || MaxScroll == 0) return;
+        (_, y) = ToLogical(x, y);
+        int travel = ScrollTrack.Height - scrollThumb.Height;
+        int target = (int)Math.Round(Math.Clamp(y - dragOffset - ScrollTrack.Y, 0, travel) / (double)travel * MaxScroll);
+        ScrollBy(target - scroll);
+    }
+    public override void releaseLeftClick(int x, int y) => dragging = false;
+
+    public override void receiveKeyPress(Keys key)
+    {
+        if (search.Selected)
+        {
+            if (key == Keys.Escape) DeselectSearch();
+            return;
+        }
+        if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key)) { Return(); return; }
+        if (key is Keys.PageUp or Keys.PageDown) { ScrollBy(key == Keys.PageUp ? -VisibleRows : VisibleRows); return; }
+        if (key == Keys.Enter) { Activate(currentlySnappedComponent?.myID ?? SearchId); return; }
+        if (key is Keys.Up or Keys.Right or Keys.Down or Keys.Left)
+        {
+            applyMovementKey(key switch { Keys.Up => 0, Keys.Right => 1, Keys.Down => 2, _ => 3 }); return;
+        }
+        base.receiveKeyPress(key);
+    }
+
+    public override void receiveGamePadButton(Buttons button)
+    {
+        if (button == Buttons.B) { HandleControllerBack(); return; }
+        if (button == Buttons.A) { Activate(currentlySnappedComponent?.myID ?? SearchId); return; }
+        if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
+        {
+            ScrollBy(button == Buttons.LeftShoulder ? -VisibleRows : VisibleRows); return;
+        }
+        base.receiveGamePadButton(button);
+    }
+
+    private void Activate(int id)
+    {
+        if (id >= RowBase) { OpenRow((id - RowBase) / 2, (id - RowBase) % 2 == 1); return; }
+        if (id is >= KindBase and < KindBase + 3) { DeselectSearch(); SelectKind(id - KindBase); return; }
+        if (id == SearchId) { if (GallerySearchInputGuard.Ready) search.SelectMe(); return; }
+        if (id == BackId) { HandleControllerBack(); return; }
+        if (id == LocationId) { state.LocationFilter = null; RefreshSearch(force: true); }
+    }
+
+    public override void applyMovementKey(int direction)
+    {
+        if (search.Selected || direction is < 0 or > 3) return;
+        int id = currentlySnappedComponent?.myID ?? SearchId;
+        if (id >= RowBase)
+        {
+            int row = (id - RowBase) / 2;
+            bool replay = (id - RowBase) % 2 == 1;
+            if (direction is 0 or 2)
+            {
+                int target = row + (direction == 0 ? -1 : 1);
+                if (target < 0) Focus(SearchId);
+                else if (target >= rows.Count) Focus(BackId);
+                else FocusRow(target, replay);
+            }
+            else if (direction == 1 && context.ReplayAccess(rows[row].Event).Allowed) FocusRow(row, true);
+            else if (direction == 3) FocusRow(row, false);
+            return;
+        }
+        if (id == BackId || id == LocationId)
+        {
+            if (direction == 0 && rows.Count > 0) FocusRow(Math.Min(rows.Count - 1, scroll + VisibleRows - 1), false);
+            else if (direction == 1 && state.LocationFilter is not null) Focus(LocationId);
+            else if (direction == 3) Focus(BackId);
+            return;
+        }
+        if (direction == 2) { if (rows.Count > 0) FocusRow(scroll, false); else Focus(BackId); return; }
+        if (direction == 1) Focus(id == SearchId ? KindBase : Math.Min(KindBase + 2, id + 1));
+        else if (direction == 3) Focus(id <= KindBase ? SearchId : id - 1);
+    }
+
+    private void FocusRow(int row, bool replay)
+    {
+        scroll = Math.Clamp(row < scroll ? row : row >= scroll + VisibleRows ? row - VisibleRows + 1 : scroll, 0, MaxScroll);
+        BuildComponents();
+        Focus(RowBase + row * 2 + (replay && context.ReplayAccess(rows[row].Event).Allowed ? 1 : 0));
+    }
+
+    private void Focus(int id)
+    {
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == id)
+            ?? allClickableComponents.First(component => component.myID == SearchId);
+        SaveState();
+        if (!dragging && Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
+    }
+
+    public override void snapToDefaultClickableComponent() => Focus(rows.Count == 0 ? SearchId : RowBase + scroll * 2);
+
+    private void SelectKind(int option)
+    {
+        state.KindFilter = option switch { 1 => StoryKind.Heart, 2 => StoryKind.Ordinary, _ => null };
+        RefreshSearch(force: true);
+        Focus(KindBase + option);
+        Game1.playSound("smallSelect");
+    }
+
+    private void OpenRow(int row, bool replay)
+    {
+        if (row < 0 || row >= rows.Count) return;
+        GalleryEvent entry = rows[row].Event;
+        if (replay && !context.ReplayAccess(entry).Allowed) return;
+        Focus(RowBase + row * 2 + (replay ? 1 : 0));
+        SaveState();
+        DeselectSearch();
+        if (replay) context.Navigation.Replay(entry.Resolved.Identity);
+        else context.Navigation.OpenEvent(entry.Resolved.Identity);
+    }
+
+    private void ScrollBy(int amount)
+    {
+        scroll = Math.Clamp(scroll + amount, 0, MaxScroll);
+        BuildComponents();
+    }
+
+    private void SaveState()
+    {
+        state.SearchText = search.Text;
+        state.Scroll = scroll;
+        state.Focus = currentlySnappedComponent?.myID ?? SearchId;
+    }
+
+    private void Return()
+    {
+        SaveState(); DeselectSearch(); context.Navigation.Back(); Game1.playSound("bigDeSelect");
+    }
+
+    protected override void cleanupBeforeExit()
+    {
+        SaveState(); DeselectSearch(); base.cleanupBeforeExit();
+    }
+
+    public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds)
+    {
+        base.gameWindowSizeChanged(oldBounds, newBounds); Layout();
+    }
+
+    private void Layout()
+    {
+        width = LogicalWidth; height = LogicalHeight; xPositionOnScreen = yPositionOnScreen = 0;
+        viewportWidth = Game1.uiViewport.Width; viewportHeight = Game1.uiViewport.Height;
+        scale = (float)GalleryLayout.ScaleToFit(viewportWidth, viewportHeight, width, height, 24);
+        offsetX = (int)Math.Round((viewportWidth - width * scale) / 2); offsetY = (int)Math.Round((viewportHeight - height * scale) / 2);
+        search.X = SearchBounds.X; search.Y = SearchBounds.Y; search.Width = SearchBounds.Width;
+        initializeUpperRightCloseButton();
+        BuildComponents();
+    }
+
+    private void BuildComponents()
+    {
+        int previous = currentlySnappedComponent?.myID ?? SearchId;
+        int thumbHeight = Math.Max(40, ScrollTrack.Height * VisibleRows / Math.Max(VisibleRows, rows.Count));
+        scrollThumb = new Rectangle(ScrollTrack.X, ScrollTrack.Y + (MaxScroll == 0 ? 0
+            : (int)Math.Round((ScrollTrack.Height - thumbHeight) * scroll / (double)MaxScroll)), ScrollTrack.Width, thumbHeight);
+        allClickableComponents = [new(ToScreen(SearchBounds), "search") { myID = SearchId }, new(ToScreen(BackBounds), "back") { myID = BackId }];
+        for (int option = 0; option < 3; option++)
+            allClickableComponents.Add(new(ToScreen(KindBounds(option)), "kind") { myID = KindBase + option });
+        if (state.LocationFilter is not null)
+            allClickableComponents.Add(new(ToScreen(LocationBounds), "location") { myID = LocationId });
+        for (int slot = 0; slot < VisibleRows && scroll + slot < rows.Count; slot++)
+        {
+            Rectangle detail = RowBounds(slot); detail.Width -= 76;
+            allClickableComponents.Add(new(ToScreen(detail), "event") { myID = RowBase + (scroll + slot) * 2 });
+            if (context.ReplayAccess(rows[scroll + slot].Event).Allowed)
+                allClickableComponents.Add(new(ToScreen(ReplayBounds(slot)), "replay") { myID = RowBase + (scroll + slot) * 2 + 1 });
+        }
+        int fallback = previous >= RowBase && rows.Count > 0 ? RowBase + Math.Clamp((previous - RowBase) / 2, scroll, Math.Min(rows.Count - 1, scroll + VisibleRows - 1)) * 2 : SearchId;
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previous)
+            ?? allClickableComponents.First(component => component.myID == fallback);
+        SaveState();
+    }
+
+    public override void draw(SpriteBatch b)
+    {
+        if (viewportWidth != Game1.uiViewport.Width || viewportHeight != Game1.uiViewport.Height) Layout();
+        b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .55f);
+        GalleryDrawing.BeginScaled(b, scale, offsetX, offsetY);
+        drawTextureBox(b, 0, 0, width, height, Color.White);
+        SpriteText.drawStringHorizontallyCenteredAt(b, context.I18n.Get("query.title"), width / 2, 30, maxWidth: 900);
+        search.Draw(b);
+        if (search.Text.Length == 0 && !search.Selected)
+            GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(GallerySearchInputGuard.Ready ? "query.search" : "home.search-unavailable"), GalleryDrawing.Inset(SearchBounds, 12, 8));
+        int selectedKind = state.KindFilter switch { StoryKind.Heart => 1, StoryKind.Ordinary => 2, _ => 0 };
+        for (int option = 0; option < 3; option++)
+        {
+            Rectangle bounds = KindBounds(option);
+            GalleryDrawing.DrawButton(b, bounds, context.I18n.Get(option switch { 1 => "query.kind-heart", 2 => "query.kind-ordinary", _ => "query.kind-all" }));
+            if (selectedKind == option)
+                b.Draw(Game1.staminaRect, new Rectangle(bounds.X + 20, bounds.Bottom - 7, bounds.Width - 40, 3), new Color(66, 112, 76));
+        }
+        Column(b, "query.column-event", 158, 240);
+        Column(b, "query.column-npc", 410, 234);
+        Column(b, "query.column-location", 666, 242);
+        Column(b, "query.column-source", 930, 350);
+        string? tooltip = null;
+        (int mouseX, int mouseY) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
+        for (int slot = 0; slot < VisibleRows && scroll + slot < rows.Count; slot++)
+        {
+            StorySearchRow row = rows[scroll + slot];
+            GalleryEvent entry = row.Event;
+            Rectangle bounds = RowBounds(slot);
+            bool hovered = bounds.Contains(mouseX, mouseY);
+            bool focused = Game1.options.snappyMenus && Game1.options.gamepadControls
+                && (currentlySnappedComponent?.myID - RowBase) / 2 == scroll + slot;
+            b.Draw(Game1.staminaRect, bounds, hovered || focused ? new Color(204, 221, 187) * .65f
+                : slot % 2 == 0 ? Color.White * .2f : new Color(101, 85, 68) * .07f);
+            GalleryPhotos.DrawCover(b, context.Photos.Cover(entry.Resolved.Identity) ?? context.Textures.Thumbnail,
+                new Rectangle(58, bounds.Y + 9, 90, 50), Color.White);
+            GalleryDrawing.DrawLeftFitted(b, entry.EventId, new Rectangle(158, bounds.Y + 6, 240, 29));
+            GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"),
+                new Rectangle(158, bounds.Y + 37, 240, 23), GallerySpreadDrawing.Ink);
+            GalleryDrawing.DrawLeftFitted(b, row.Characters.Length == 0 ? "-" : row.Characters, new Rectangle(410, bounds.Y + 8, 234, 52));
+            GalleryDrawing.DrawLeftFitted(b, row.Location, new Rectangle(666, bounds.Y + 8, 242, 52));
+            GalleryDrawing.DrawLeftFitted(b, entry.AssetName, new Rectangle(930, bounds.Y + 8, 350, 52));
+            ReplayAccess access = context.ReplayAccess(entry);
+            b.Draw(context.Textures.Replay, ReplayBounds(slot), access.Allowed ? Color.White : Color.Gray * .5f);
+            if (ReplayBounds(slot).Contains(mouseX, mouseY))
+                tooltip = context.I18n.Get(access.Allowed ? "event.replay" : access.ReasonKey ?? "event.locked");
+            else if (hovered)
+                tooltip = $"ID {entry.EventId}\n{row.Characters}\n{row.Location}\n{context.I18n.Get("query.source", new { source = entry.AssetName })}";
+        }
+        if (rows.Count == 0)
+            GalleryDrawing.DrawCentered(b, context.I18n.Get("nav.no-results"), new Rectangle(240, 370, 960, 160));
+        if (MaxScroll > 0)
+        {
+            GalleryDrawing.DrawScrollbarTrack(b, context.Textures.Scrollbar, ScrollTrack);
+            GalleryDrawing.DrawScrollbar(b, scrollThumb);
+        }
+        GalleryDrawing.DrawButton(b, BackBounds, context.I18n.Get("nav.back"));
+        GalleryDrawing.DrawCentered(b, context.I18n.Get("query.count", new { count = rows.Count }), new Rectangle(352, 784, 492, 48));
+        if (state.LocationFilter is not null)
+            GalleryDrawing.DrawButton(b, LocationBounds, context.I18n.Get("query.location-filter", new { location = state.LocationFilter }));
+        upperRightCloseButton?.draw(b);
+        GalleryDrawing.EndScaled(b);
+        if (tooltip is not null) drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, 620), Game1.smallFont);
+        drawMouse(b);
+    }
+
+    private void Column(SpriteBatch b, string key, int x, int columnWidth)
+        => GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(key), new Rectangle(x, 172, columnWidth, 34));
+    private Rectangle ToScreen(Rectangle bounds) => GalleryDrawing.ScaleRectangle(bounds, scale, offsetX, offsetY);
+    private (int X, int Y) ToLogical(int x, int y) => ((int)Math.Round((x - offsetX) / scale), (int)Math.Round((y - offsetY) / scale));
+}

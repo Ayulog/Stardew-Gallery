@@ -23,7 +23,10 @@ internal sealed record EventEvidence(
     IReadOnlyList<string> PrerequisiteEventIds,
     IReadOnlySet<string> Actors,
     IReadOnlyDictionary<string, int> DialogueCounts
-);
+)
+{
+    internal IReadOnlyList<string> RelationshipNpcNames { get; init; } = [];
+}
 
 internal static class OwnershipResolver
 {

@@ -5,6 +5,9 @@ using StardewGallery;
 GallerySearchChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();
+StoryQueryChecks.Run();
+StoryCatalogChecks.Run();
+StoryReplayChecks.Run();
 ConditionCoverageChecks.Run(FakeSplitArgs);
 if (args.Contains("--benchmark-search"))
     GallerySearchChecks.Benchmark();
@@ -540,20 +543,22 @@ GalleryCatalogBuildResult galleryBuild = testBuilder.Build(
 Check(galleryIndex.CurrentEvents.Count == 4);
 Check(galleryIndex.CurrentEvents.Single(entry => entry.EventId == "root").LocationName == "SelectedTown");
 Check(galleryBuild.AnalyzedEvents.Count == 4);
-Check(galleryBuild.Catalog.Events.Count == 3);
-Check(galleryBuild.Catalog.ExcludedEvents.Count == 1);
+Check(galleryBuild.Catalog.Events.Count == 1, "Only the confirmed heart story enters the album");
+Check(galleryBuild.Catalog.ExcludedEvents.Count == 3);
 Check(galleryBuild.Catalog.Characters.Select(character => character.Name).SequenceEqual(["Bert"]));
 GalleryEvent rootGalleryEvent = galleryBuild.Catalog.Events.Single(entry => entry.EventId == "root");
 Check(rootGalleryEvent.Identity == "data/events/town\u001froot");
 Check(rootGalleryEvent.Ownership.Kind == OwnershipKind.Direct);
 Check(rootGalleryEvent.Ownership.Owners.Single().Name == "Bert");
-GalleryEvent childGalleryEvent = galleryBuild.Catalog.Events.Single(entry => entry.EventId == "child");
+GalleryEvent childGalleryEvent = galleryBuild.Catalog.AllEntries.Single(entry => entry.EventId == "child");
 Check(childGalleryEvent.Ownership.Kind == OwnershipKind.Inherited);
 Check(childGalleryEvent.Ownership.Owners.Single().Name == "Bert");
-GalleryEvent spouseGalleryEvent = galleryBuild.Catalog.Events.Single(entry => entry.EventId == "spouse-event");
+Check(childGalleryEvent.Kind == StoryKind.Ordinary, "A prerequisite alone does not establish narrative continuation");
+GalleryEvent spouseGalleryEvent = galleryBuild.Catalog.AllEntries.Single(entry => entry.EventId == "spouse-event");
 Check(spouseGalleryEvent.Ownership.Kind == OwnershipKind.Inferred);
 Check(spouseGalleryEvent.Ownership.Owners.Single().Name == "Bert");
-Check(galleryBuild.Catalog.ExcludedEvents.Single().EventId == "silent");
+Check(spouseGalleryEvent.Kind == StoryKind.Ordinary, "Speaking actor ownership does not make an event a heart story");
+Check(galleryBuild.Catalog.ExcludedEvents.Any(entry => entry.EventId == "silent"));
 
 HashSet<string> characters = ["Torts", "Lenny", "Alissa", "Bert"];
 List<EventEvidence> events =

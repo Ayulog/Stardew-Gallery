@@ -13,6 +13,13 @@
     <Compile Include="GallerySearchChecks.cs" />
     <Compile Include="GalleryCorrectionChecks.cs" />
     <Compile Include="GalleryNavigationChecks.cs" />
+    <Compile Include="StoryQueryChecks.cs" />
+    <Compile Include="StoryCatalogChecks.cs" />
+    <Compile Include="StoryReplayChecks.cs" />
+    <Compile Include="..\Navigation\GalleryPageState.cs" Link="Navigation\GalleryPageState.cs" />
+    <Compile Include="..\Navigation\StorySearchIndex.cs" Link="Navigation\StorySearchIndex.cs" />
+    <Compile Include="..\Conditions\StoryDependencyLookup.cs" Link="Conditions\StoryDependencyLookup.cs" />
+    <Compile Include="..\Preview\ReplayAccess.cs" Link="Preview\ReplayAccess.cs" />
     <Compile Include="..\Navigation\GalleryEventNavigation.cs" Link="GalleryEventNavigation.cs" />
     <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
     <Compile Include="..\GalleryLocationName.cs" Link="GalleryLocationName.cs" />

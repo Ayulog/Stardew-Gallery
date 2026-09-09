@@ -22,8 +22,6 @@ internal static class GalleryNavigationChecks
         Check(GalleryEventNavigation.SearchOtherIds(catalog, "  ").Count == 0, "empty home query keeps character gallery");
         Check(GalleryEventNavigation.SearchOtherIds(catalog, "123").Count == 0, "heart events keep the existing character search route");
         Check(GalleryEventNavigation.Owner(catalog, excluded) is null, "other event does not invent a character owner");
-        Check(!GalleryEventNavigation.IsReplayListed(catalog, excluded), "readable excluded event does not gain replay permission");
-        Check(GalleryEventNavigation.IsReplayListed(catalog, locked), "heart event retains existing replay eligibility checks");
         Check(GalleryEventNavigation.Owner(catalog, beach) == abigail, "target owner comes from target ownership");
 
         SawEventCondition any = new(["123", "456", "123"], ConditionSource.LegacyEventPrecondition, "e unrelated raw text", false);
@@ -32,16 +30,21 @@ internal static class GalleryNavigationChecks
         Check(GalleryEventNavigation.References(new ConditionSet([any, negated])).SequenceEqual(["123", "456"]), "nested and negated links");
         Check(any.EventIds.Count == 3 && negated.Negated, "navigation does not mutate conditions");
 
-        GalleryNavigationTrail<object> trail = new();
-        object a = trail.Open(town.Resolved.Identity, () => new());
-        object b = trail.Open(beach.Resolved.Identity, () => new());
-        Check(trail.Count == 2 && !ReferenceEquals(a, b), "same ID different asset is a different view");
-        Check(ReferenceEquals(trail.Open(town.Resolved.Identity, () => throw new Exception("must reuse view")), a) && trail.Count == 1,
-            "cycle returns existing source with its state, truncating descendants");
-        trail.Open(beach.Resolved.Identity, () => b);
-        try { trail.Open(locked.Resolved.Identity, () => throw new InvalidOperationException()); } catch (InvalidOperationException) { }
-        Check(trail.Count == 2 && ReferenceEquals(trail.Current, b), "failed target construction preserves source");
-        Check(ReferenceEquals(trail.Back(), a) && trail.Back() is null && trail.Count == 0, "back unwinds then returns root");
+        GalleryPageHistory trail = new(); trail.Reset();
+        GalleryPageState home = trail.Current!; home.Scroll = 4; home.Focus = 7;
+        GalleryPageState a = new(GalleryPage.Detail) { Event = town.Resolved.Identity, Scroll = 180 };
+        GalleryPageState b = new(GalleryPage.Detail) { Event = beach.Resolved.Identity };
+        trail.Open(a); trail.Open(b);
+        Check(trail.Count == 3 && ReferenceEquals(trail.Current, b), "same ID different asset is a different page");
+        try { trail.Open(new(GalleryPage.Detail) { Event = town.Resolved.Identity }, () => throw new InvalidOperationException("bad target data")); }
+        catch (InvalidOperationException) { }
+        Check(trail.Count == 3 && ReferenceEquals(trail.Current, b), "failed construction rolls back even when navigating into a previous page");
+        trail.Open(new(GalleryPage.Detail) { Event = town.Resolved.Identity });
+        Check(ReferenceEquals(trail.Current, a) && trail.Current.Scroll == 180 && trail.Count == 2,
+            "cycle returns explicit page state, truncating descendants");
+        Check(trail.Back() && ReferenceEquals(trail.Current, home) && home.Scroll == 4 && home.Focus == 7,
+            "back restores scroll/focus without retaining a concrete menu");
+        Check(!trail.Back() && trail.Current is null, "root back closes navigation");
         Console.WriteLine("Gallery 2.3.1 navigation checks passed.");
     }
 

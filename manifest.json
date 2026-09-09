@@ -1,8 +1,8 @@
 {
   "Name": "Stardew Gallery",
   "Author": "sjt38",
-  "Version": "2.4.0",
-  "Description": "Browse current NPC heart events, understand their requirements, and safely replay unlocked events in their intended scene environment.",
+  "Version": "2.5.0",
+  "Description": "Collect NPC heart stories, look up story prerequisites, and revisit experienced stories with replay photos and covers.",
   "UniqueID": "sjt38.StardewGallery",
   "EntryDll": "StardewGallery.dll",
   "MinimumApiVersion": "4.5.2",

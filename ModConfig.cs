@@ -11,6 +11,8 @@ internal sealed class ModConfig
 
     public bool DebugDiagnostics { get; set; }
 
+    public bool EnableOrdinaryEventReplay { get; set; }
+
     public KeybindList GalleryKeys { get; set; } = new(SButton.G);
 
     public KeybindList ReplaySpeedKeys { get; set; } = new(SButton.RightShoulder);

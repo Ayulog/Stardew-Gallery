@@ -19,7 +19,7 @@ For an upload archive including the README, changelog and license notices, run t
 正式上传包需附带使用说明、更新日志和许可声明。构建后运行：
 
 ```powershell
-./tools/Package-Release.ps1 -Destination ./release/StardewGallery-2.4.0-Nexus.zip
+./tools/Package-Release.ps1 -Destination ./release/StardewGallery-2.5.0-Nexus.zip
 ```
 
 The destination must be new; archive an old package before replacing it. / 目标文件必须尚不存在；替换旧包前先留档。
