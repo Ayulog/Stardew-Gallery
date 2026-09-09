@@ -2,6 +2,8 @@
 
 ## 2.5.0 - Story Gallery / 剧情画廊（开发中）
 
+- Merge registered cosmetic NPC copies and identical location labels in query filters; expand readable location fallbacks and simplify progress labels. / 合并查询中的注册外观分身与同名地点，遍历当前地点清单补充可读译名，简化进度状态文案。
+
 - Remove definition-origin labels and the duplicate all-entry filter. Clean up actor/location choices, handle missing-name translations, and expand weather filters. / 移除定义来源及重复的全部类型选项，清理演员/地点筛选与缺译标记，补齐天气选择。
 
 - Add read-only prerequisite records, controller-friendly query filters, character-only home search and personal event names. Improve location names and retain shared friendship owners. Definition origins use a limited verified table and explicitly preserve unknowns. / 新增只读前置事件、手柄筛选和自定义事件名，首页仅搜索角色；完善地点译名与共同好感主体，来源采用有限已核查资料并明确保留未知。

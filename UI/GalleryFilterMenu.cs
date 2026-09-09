@@ -94,8 +94,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         {
             "kind" => new[] { "query.kind-all", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" }
                 .Select((key, i) => new Choice(i.ToString(), T(key))),
-            "state" => new[] { "filter.any", draft.Kind == QueryKind.All ? "filter.done" : draft.Kind == QueryKind.Prerequisite ? "prerequisite.complete" : "filter.seen",
-                draft.Kind == QueryKind.All ? "filter.pending" : draft.Kind == QueryKind.Prerequisite ? "prerequisite.incomplete" : "filter.unseen" }.Select((key, i) => new Choice(i.ToString(), T(key))),
+            "state" => new[] { "filter.any", "filter.done", "filter.pending" }.Select((key, i) => new Choice(i.ToString(), T(key))),
             "conditions" => new[] { "filter.any", "filter.met", "filter.unmet", "filter.unknown" }.Select((key, i) => new Choice(i.ToString(), T(key))),
             "npc" => new[] { any }.Concat(index.Rows.SelectMany(row => row.Npcs).Distinct(StringComparer.Ordinal)
                 .Select(id => new Choice(id, Context.Characters.Get(id))).OrderBy(choice => choice.Label, StringComparer.CurrentCulture)),

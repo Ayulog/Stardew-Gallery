@@ -29,7 +29,7 @@ internal sealed class StorySearchIndex
         this.conditionState = conditionState;
         string[] Npcs(GalleryEvent? entry, IEnumerable<string> ids) => ids.Select(id => characterKey is null ? id : characterKey(entry, id))
             .Where(id => id is not null).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
-        rows = catalog.StoryEntries.DistinctBy(entry => entry.Resolved.Identity)
+        var projected = catalog.StoryEntries.DistinctBy(entry => entry.Resolved.Identity)
             .Select(entry => new StorySearchRow(entry, locationName(entry), string.Join(", ", Npcs(entry, entry.RelatedNpcNames).Select(characterName)))
             {
                 Title = names?.Invoke(entry.Resolved.Identity) ?? entry.EventId,
@@ -43,11 +43,16 @@ internal sealed class StorySearchIndex
                 { Prerequisite = entry, Npcs = npcs, Title = names?.Invoke(entry.Identity) ?? entry.EventId };
             }))
             .OrderBy(row => row.EventId, StringComparer.Ordinal).ThenBy(row => row.Identity.AssetName, StringComparer.OrdinalIgnoreCase).ToArray();
+        var locationGroups = projected.Where(row => row.Event is not null && !GalleryNameText.IsMissing(row.Location) && row.Location != "-")
+            .GroupBy(row => row.Location.Trim(), StringComparer.CurrentCulture)
+            .ToDictionary(group => group.Key, group => group.Select(row => row.LocationKey).OrderBy(key => key, StringComparer.OrdinalIgnoreCase).First(), StringComparer.CurrentCulture);
+        rows = projected.Select(row => row.Event is not null && locationGroups.TryGetValue(row.Location.Trim(), out string? groupKey)
+            ? row with { LocationKey = groupKey } : row).ToArray();
     }
 
     internal IReadOnlyList<StorySearchRow> Search(string text, StoryKind? kind = null, string? location = null)
         => Search(text, new QueryFilter { Kind = kind switch { StoryKind.Heart => QueryKind.Heart, StoryKind.Ordinary => QueryKind.Ordinary,
-            _ => QueryKind.All }, Location = location });
+            _ => QueryKind.All } }).Where(row => location is null || string.Equals(row.Event?.AssetName, location, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     internal IReadOnlyList<StorySearchRow> Search(string text, QueryFilter filter)
     {

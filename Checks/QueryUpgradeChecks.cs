@@ -74,6 +74,11 @@ internal static class QueryUpgradeChecks
         Check(grouped.Rows.All(row => row.Npcs.SequenceEqual(["Sam"]) && row.Characters == "山姆"), "actor projection removes sprite-only choices and duplicate aliases");
         Check(grouped.Search("", new QueryFilter { Location = "Data/Events/Town" }).Count == 2
             && grouped.Rows.Select(row => row.Identity).Distinct().Count() == 2, "one location filter retains independent underlying event identities");
+        var sameName = new StorySearchIndex(new([], [clones, otherMap], []), _ => "同名地点", _ => "Sam");
+        string groupKey = sameName.Rows[0].LocationKey;
+        Check(sameName.Rows.Select(row => row.LocationKey).Distinct().Count() == 1
+            && sameName.Search("", new QueryFilter { Location = groupKey }).Count == 2, "identical location labels form one selectable group across assets");
+        Check(sameName.Search("", location: otherMap.AssetName).Single().Event == otherMap, "explicit asset lookup stays exact after display grouping");
         Console.WriteLine("Query upgrade checks passed.");
     }
     private static void Check(bool value, string label) { if (!value) throw new InvalidOperationException(label); }
