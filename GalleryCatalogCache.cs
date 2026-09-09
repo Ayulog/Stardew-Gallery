@@ -35,7 +35,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
         IReadOnlyList<GalleryCharacter> characters = ScanCharacters();
         GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents);
         IReadOnlyList<GalleryEvent> events = build.AnalyzedEvents;
-        GalleryCatalog catalog = build.Catalog;
+        GalleryCatalog catalog = build.Catalog with { Prerequisites = PrerequisiteAssetReader.Read(build.Catalog, monitor) };
         List<IdentityConflict> conflicts = index.Groups
             .Where(group => group.Candidates.Count > 1)
             .Select(group => new IdentityConflict(
@@ -47,7 +47,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             .ToList();
 
         monitor.Log(
-            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}。",
+            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}，前置事件资料 {catalog.Prerequisites.Count}。",
             LogLevel.Info
         );
         if (debugDiagnostics())
@@ -65,10 +65,12 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     HeartEvents = catalog.Events.Count,
                     OrdinaryEvents = events.Count(entry => entry.Kind == StoryKind.Ordinary),
                     InternalEvents = events.Count(entry => entry.Kind == StoryKind.Internal),
+                    PrerequisiteEvents = catalog.Prerequisites.Count,
                     IdentityConflicts = conflicts.Count,
                     MissingFragments = events.Count(entry => entry.Fragments.MissingKeys.Count > 0)
                 },
                 Conflicts = conflicts,
+                OmittedCharacters = characters.Where(character => !catalog.Characters.Any(included => included.Name == character.Name)),
                 MissingFragments = events.Where(entry => entry.Fragments.MissingKeys.Count > 0).Select(entry => new
                 {
                     entry.LocationName,

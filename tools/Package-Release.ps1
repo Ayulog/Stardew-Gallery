@@ -22,7 +22,7 @@ try {
     foreach ($entry in $source.Entries) {
         if (-not $entry.FullName.StartsWith('StardewGallery/', [StringComparison]::Ordinal) -or
             $entry.FullName.Contains('..') -or $entry.FullName.Contains('\') -or
-            $entry.FullName -match '(?i)(^|/)(config\.json|event-photos|diagnostics|backups|catalog-latest\.json|\.env)(/|$)' -or
+            $entry.FullName -match '(?i)(^|/)(config\.json|event-photos|user-data|diagnostics|backups|catalog-latest\.json|\.env)(/|$)' -or
             $entry.FullName -match '(?i)\.(cs|pdb|db|sqlite)$') {
             throw "Unexpected build entry: $($entry.FullName)"
         }

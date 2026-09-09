@@ -27,5 +27,6 @@
     <Compile Remove="PersistenceChecks\**\*.cs" />
     <None Remove="PersistenceChecks\**\*" />
     <None Remove="event-photos\**\*" />
+    <None Remove="user-data\**\*" />
   </ItemGroup>
 </Project>

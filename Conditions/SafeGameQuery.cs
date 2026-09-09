@@ -22,6 +22,16 @@ internal static class SafeGameQuery
             string[] args = tokens[1..];
             bool valid = name switch
             {
+                "TRUE" or "FALSE" => args.Length == 0,
+                "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" => args.Length is 3 or 4 && IsPlayer(args[0])
+                    && !args[1].Equals("Any", StringComparison.OrdinalIgnoreCase) && !args[1].Equals("AnyDateable", StringComparison.OrdinalIgnoreCase)
+                    && Int(args[2], out _) && (args.Length == 3 || Int(args[3], out _)),
+                "PLAYER_NPC_RELATIONSHIP" => args.Length >= 3 && IsPlayer(args[0])
+                    && args.Skip(2).All(value => value.ToLowerInvariant() is "friendly" or "dating" or "engaged" or "married" or "roommate" or "divorced"),
+                "PLAYER_HAS_SEEN_EVENT" or "PLAYER_HAS_CONVERSATION_TOPIC" or "PLAYER_HAS_RUN_TRIGGER_ACTION" => args.Length >= 2 && IsPlayer(args[0]),
+                "PLAYER_HAS_MAIL" => args.Length is 2 or 3 && IsPlayer(args[0])
+                    && (args.Length == 2 || args[2].ToLowerInvariant() is "any" or "received" or "mailbox" or "tomorrow"),
+                "WEATHER" => args.Length >= 2,
                 "IS_PASSIVE_FESTIVAL_TODAY" => args.Length == 1,
                 "SEASON_DAY" => args.Length > 0 && args.Length % 2 == 0
                     && Enumerable.Range(0, args.Length / 2).All(index => IsSeason(args[index * 2]) && Int(args[index * 2 + 1], out _)),
@@ -43,12 +53,14 @@ internal static class SafeGameQuery
             string[] a = clause.Arguments;
             bool? matches = clause.Name switch
             {
+                "TRUE" => true,
+                "FALSE" => false,
                 "IS_PASSIVE_FESTIVAL_TODAY" => context.Details?.PassiveFestivals?.Contains(a[0]),
                 "SEASON_DAY" => context.Season is not null && context.DayOfMonth is int day
                     ? Enumerable.Range(0, a.Length / 2).Any(index => a[index * 2].Equals(context.Season, StringComparison.OrdinalIgnoreCase)
                         && ParseInt(a[index * 2 + 1]) == day) : null,
                 "PLAYER_STAT" => EvaluateStat(a, context.Details),
-                _ => null
+                _ => context.Details?.QueryFacts?.GetValueOrDefault(FactKey(clause))
             };
             if (clause.Negated && matches is not null) matches = !matches.Value;
             if (matches == false) return false;
@@ -67,6 +79,7 @@ internal static class SafeGameQuery
     }
 
     internal static string StatKey(string player, string stat) => player.ToUpperInvariant() + ":" + stat;
+    internal static string FactKey(SafeQueryClause clause) => clause.Name + "\u001f" + string.Join("\u001f", clause.Arguments);
     private static bool IsPlayer(string value) => value.ToUpperInvariant() is "CURRENT" or "TARGET" or "HOST" or "ANY" or "ALL" || long.TryParse(value, out _);
     private static bool IsSeason(string value) => value.ToLowerInvariant() is "spring" or "summer" or "fall" or "winter";
     private static bool Int(string text, out int value) => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);

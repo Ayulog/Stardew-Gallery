@@ -13,6 +13,7 @@ internal static class ConditionStateReader
         Dictionary<string, int?> skills = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, IReadOnlyList<uint>> stats = new(StringComparer.Ordinal);
         HashSet<string> errors = new(StringComparer.Ordinal);
+        Dictionary<string, bool?> queryFacts = new(StringComparer.Ordinal);
         foreach (ConditionExpression condition in conditions.Conditions.Distinct())
         {
             try
@@ -59,6 +60,7 @@ internal static class ConditionStateReader
                     case NativeQueryCondition query when SafeGameQuery.TryParse(query.Query, out var clauses):
                         foreach (SafeQueryClause clause in clauses)
                         {
+                            queryFacts[SafeGameQuery.FactKey(clause)] = SafeQueryStateReader.Read(clause, location);
                             if (clause.Name == "IS_PASSIVE_FESTIVAL_TODAY")
                                 state = state with { PassiveFestivals = Game1.netWorldState.Value.ActivePassiveFestivals.ToHashSet(StringComparer.Ordinal) };
                             else if (clause.Name == "PLAYER_STAT")
@@ -76,7 +78,7 @@ internal static class ConditionStateReader
                 errors.Add(condition.RawSegment);
             }
         }
-        return state with { Items = items, Skills = skills, VisibleNpcs = visible, PlayerStats = stats, Errors = errors };
+        return state with { Items = items, Skills = skills, VisibleNpcs = visible, PlayerStats = stats, Errors = errors, QueryFacts = queryFacts };
     }
 
     private static TilePosition? EntryTile(GameLocation? location, Farmer player)

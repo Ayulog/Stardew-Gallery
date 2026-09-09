@@ -13,6 +13,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private const int BackComponentId = 1000;
     private const int ReplayComponentId = 1001;
     private const int PhotosComponentId = 1002;
+    private const int RenameComponentId = 1003;
+    private static Rectangle RenameBounds => new(238, 810, 368, 72);
     private const int ReferenceComponentId = 5000;
     private const int ReferenceHeight = 42;
     private const int ScrollStep = 60;
@@ -20,7 +22,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private const int StatusSize = GallerySpreadLayout.IconSize * 3;
     private const int StatusGap = 16;
     private static readonly RasterizerState ClipRasterizer = new() { ScissorTestEnable = true };
-    private sealed record ReferenceItem(string EventId, GalleryEvent? Target, string Label, string? Message);
+    private sealed record ReferenceItem(string EventId, GalleryEvent? Target, string Label, string? Message, string? PrerequisiteId = null);
     private readonly GalleryViewContext context;
     private readonly GalleryPageState state;
     private readonly GalleryCharacter? character;
@@ -65,13 +67,16 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         var references = conditions.Distinct().ToDictionary(item => item, item => GalleryEventNavigation.References(item.Expression)
             .Select(id => (Id: id, Result: StoryDependencyLookup.Find(context.Catalog, id))).ToArray());
         internalNotes = references.ToDictionary(pair => pair.Key, pair => string.Join("\n", pair.Value
-            .Where(reference => reference.Result.HasInternalStep)
+            .Where(reference => reference.Result.HasInternalStep && reference.Result.Prerequisite is null)
             .Select(reference => GalleryConditionPresentation.InternalStep(reference.Result, reference.Id, i18n))));
         conditionReferences = conditions.Distinct().ToDictionary(item => item, item => (IReadOnlyList<ReferenceItem>)GalleryEventNavigation.References(item.Expression)
             .SelectMany(id =>
             {
                 StoryDependencyResult result = references[item].First(reference => reference.Id == id).Result;
                 IReadOnlyList<GalleryEvent> targets = result.Stories;
+                if (result.Prerequisite is { } prerequisite)
+                    return new[] { new ReferenceItem(id, null, PrerequisitePresentation.Title(prerequisite, context) + " >",
+                        i18n.Get("query.kind-prerequisite"), id) };
                 return result.Missing
                     ? new[] { new ReferenceItem(id, null, "ID " + id, i18n.Get("nav.unavailable", new { id }).ToString()) }
                     : targets.Select(target => new ReferenceItem(id, target, "ID " + id + " >", targets.Count > 1
@@ -120,8 +125,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
                 if (ReferenceBounds(index).Contains(x, y))
                 {
                     FocusReference(index);
-                    if (referenceLinks[index].Item.Target is GalleryEvent target)
-                        FollowReference(target);
+                    FollowItem(referenceLinks[index].Item);
                     return;
                 }
         }
@@ -136,6 +140,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             Return();
             return;
         }
+        if (RenameBounds.Contains(x, y)) { Rename(); return; }
         if (CanReplay() && replayBounds.Contains(x, y))
         {
             currentlySnappedComponent = allClickableComponents.First(component => component.myID == ReplayComponentId);
@@ -226,9 +231,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         int reference = (currentlySnappedComponent?.myID ?? -1) - ReferenceComponentId;
         if (reference >= 0 && reference < referenceLinks.Count)
         {
-            if (referenceLinks[reference].Item.Target is GalleryEvent target)
-                FollowReference(target);
+            FollowItem(referenceLinks[reference].Item);
         }
+        else if (currentlySnappedComponent?.myID == RenameComponentId) Rename();
         else if (currentlySnappedComponent?.myID == PhotosComponentId)
             OpenPhotos();
         else if (currentlySnappedComponent?.myID == ReplayComponentId && CanReplay())
@@ -273,7 +278,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             ScrollBy(direction == 0 ? -ScrollStep : ScrollStep);
         else if (direction is 1 or 3)
         {
-            int target = direction == 1 && CanReplay() ? ReplayComponentId : BackComponentId;
+            int[] footer = CanReplay() ? [RenameComponentId, BackComponentId, ReplayComponentId] : [RenameComponentId, BackComponentId];
+            int current = Array.IndexOf(footer, currentlySnappedComponent?.myID ?? BackComponentId);
+            int target = footer[Math.Clamp(current + (direction == 1 ? 1 : -1), 0, footer.Length - 1)];
             currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target);
             SnapCurrent();
         }
@@ -314,6 +321,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (CanReplay())
             GalleryDrawing.DrawButton(b, replayBounds, i18n.Get("event.replay"));
         GalleryDrawing.DrawButton(b, backBounds, i18n.Get("nav.back"));
+        GalleryDrawing.DrawButton(b, RenameBounds, i18n.Get("name.edit"));
         upperRightCloseButton?.draw(b);
         GalleryDrawing.EndScaled(b);
         if (ToScreen(photoBounds).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
@@ -329,9 +337,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         string hearts = owner?.FriendshipPoints is int points
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
-        DrawHeaderText(b, owner is null ? "ID " + entry.EventId : hearts + GalleryDrawing.TextSeparator + $"ID {entry.EventId}", Bounds(GallerySpreadLayout.DetailEventIdBounds));
-        string location = GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
-            key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
+        string titleText = context.Names?.Get(entry.Resolved.Identity) is { } name ? name + GalleryDrawing.TextSeparator + "ID " + entry.EventId
+            : owner is null ? "ID " + entry.EventId : hearts + GalleryDrawing.TextSeparator + $"ID {entry.EventId}";
+        DrawHeaderText(b, titleText, Bounds(GallerySpreadLayout.DetailEventIdBounds));
+        string location = context.Locations.Get(entry.LocationName);
         DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
         DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
     }
@@ -341,7 +350,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         ReplayAccess access = context.ReplayAccess(entry);
         string[] lines = [i18n.Get(entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"), "ID " + entry.EventId,
             GalleryConditionPresentation.Location(entry, i18n),
-            i18n.Get("query.source", new { source = entry.AssetName }),
+            i18n.Get("query.source", new { source = context.SourceLabel(context.Sources.Get(entry.Resolved.Identity)) }),
             access.Allowed ? i18n.Get("event.replay") : access.ReasonKey is null ? "-" : i18n.Get(access.ReasonKey)];
         for (int row = 0; row < lines.Length; row++)
             GalleryDrawing.DrawCentered(b, lines[row], GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(row)), 40));
@@ -553,6 +562,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (CanReplay())
             allClickableComponents.Add(new ClickableComponent(ToScreen(replayBounds), "replay") { myID = ReplayComponentId, leftNeighborID = BackComponentId });
         allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.DetailThumbnailBounds)), "photos") { myID = PhotosComponentId });
+        allClickableComponents.Add(new ClickableComponent(ToScreen(RenameBounds), "rename") { myID = RenameComponentId });
         for (int index = 0; index < referenceLinks.Count; index++)
         {
             Rectangle visible = Rectangle.Intersect(ReferenceBounds(index), contentBounds);
@@ -603,6 +613,12 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         SaveState();
         context.Navigation.OpenEvent(target.Resolved.Identity);
     }
+    private void FollowItem(ReferenceItem item)
+    {
+        if (item.Target is { } target) FollowReference(target);
+        else if (item.PrerequisiteId is { } id) { SaveState(); context.Navigation.OpenPrerequisite(id); }
+    }
+    private void Rename() { SaveState(RenameComponentId); context.Navigation.Rename(entry.Resolved.Identity); }
 
     private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds) => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
     private Rectangle ToScreen(Rectangle bounds) => GalleryDrawing.ScaleRectangle(bounds, menuScale, drawOffsetX, drawOffsetY);

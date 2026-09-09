@@ -38,6 +38,8 @@ internal sealed record GalleryCatalog(
     IReadOnlyList<GalleryEvent> ExcludedEvents
 )
 {
+    internal IReadOnlyList<PrerequisiteEvent> Prerequisites { get; init; } = [];
+    internal PrerequisiteEvent? FindPrerequisite(string id) => Prerequisites.FirstOrDefault(entry => entry.EventId == id);
     internal IEnumerable<GalleryEvent> AllEntries => Events.Concat(ExcludedEvents);
     internal IEnumerable<GalleryEvent> StoryEntries => AllEntries.Where(entry => entry.Kind != StoryKind.Internal);
     internal GalleryEvent? Find(EventIdentity identity) => AllEntries.FirstOrDefault(entry => entry.Resolved.Identity == identity);

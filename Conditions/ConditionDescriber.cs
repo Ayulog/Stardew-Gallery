@@ -69,7 +69,7 @@ internal static class ConditionDescriber
     private static ConditionTextSpec DescribeQuery(NativeQueryCondition condition)
     {
         if (!SafeGameQuery.TryParse(condition.Query, out var clauses))
-            return Named(condition with { Negated = false }, "condition.game-query");
+            return Named(condition, "condition.native-query", ("query", Text(condition.Query)));
         List<ConditionTextSpec> specs = [];
         foreach (SafeQueryClause clause in clauses)
         {
@@ -77,6 +77,22 @@ internal static class ConditionDescriber
             ConditionExpression source = condition with { Negated = clause.Negated };
             specs.Add(clause.Name switch
             {
+                "TRUE" => Named(source, "condition.always"),
+                "FALSE" => Named(source, "condition.never"),
+                "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" => a.Length == 3 ? Named(source,
+                    clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts" : "condition.query-points",
+                    ("player", Term("player", a[0])), ("npc", Npc(a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))))
+                    : Named(source, clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts-range" : "condition.query-points-range",
+                    ("player", Term("player", a[0])), ("npc", Npc(a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))), ("max", Num(SafeGameQuery.ParseInt(a[3])))),
+                "PLAYER_NPC_RELATIONSHIP" => Named(source, "condition.query-relationship", ("player", Term("player", a[0])),
+                    ("npc", Npc(a[1])), ("states", List(a.Skip(2).Select(value => Term("relationship", value))))),
+                "PLAYER_HAS_SEEN_EVENT" => Named(source, "condition.query-seen", ("player", Term("player", a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+                "PLAYER_HAS_CONVERSATION_TOPIC" => Named(source, "condition.query-topic", ("player", Term("player", a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+                "PLAYER_HAS_RUN_TRIGGER_ACTION" => Named(source, "condition.query-run", ("player", Term("player", a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+                "PLAYER_HAS_MAIL" => Named(source, "condition.query-mail", ("player", Term("player", a[0])), ("id", Id(a[1])),
+                    ("state", Term("mail-state", a.Length > 2 ? a[2] : "any"))),
+                "WEATHER" => Named(source, "condition.query-weather", ("location", Term("location", a[0])),
+                    ("weather", List(a.Skip(1).Select(value => Term("weather", NormalizeWeather(value)))))),
                 "IS_PASSIVE_FESTIVAL_TODAY" => Named(source, "condition.passive-festival", ("festival", Term("festival", a[0]))),
                 "SEASON_DAY" => Named(source, "condition.season-dates", ("dates", List(Enumerable.Range(0, a.Length / 2)
                     .Select(index => new CalendarDateTextValue(a[index * 2], SafeGameQuery.ParseInt(a[index * 2 + 1])))))),

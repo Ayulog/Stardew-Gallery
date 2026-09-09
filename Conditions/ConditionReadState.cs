@@ -31,4 +31,5 @@ internal sealed record ConditionReadState
     internal TilePosition? EntryTile { get; init; }
     internal IReadOnlyDictionary<string, IReadOnlyList<uint>>? PlayerStats { get; init; }
     internal IReadOnlySet<string>? Errors { get; init; }
+    internal IReadOnlyDictionary<string, bool?>? QueryFacts { get; init; }
 }

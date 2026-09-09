@@ -58,4 +58,12 @@ internal static class GalleryDrawing
         b.DrawString(Game1.smallFont, text, new Vector2(bounds.X, bounds.Center.Y - size.Y * scale / 2),
             color ?? Game1.textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
+
+    internal static void DrawEllipsized(SpriteBatch b, string text, Rectangle bounds, float scale)
+    {
+        string label = GalleryTextFit.Ellipsize(text, bounds.Width / scale, value => Game1.smallFont.MeasureString(value).X);
+        Vector2 size = Game1.smallFont.MeasureString(label) * scale;
+        b.DrawString(Game1.smallFont, label, new Vector2(bounds.X, bounds.Center.Y - size.Y / 2), Game1.textColor,
+            0, Vector2.Zero, scale, SpriteEffects.None, 0);
+    }
 }

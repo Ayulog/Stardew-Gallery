@@ -67,7 +67,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         background = context.Textures.Home;
         scrollbarTrackTexture = context.Textures.Scrollbar;
         isUnlocked = context.IsUnlocked;
-        search = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor);
+        search = new GalleryTextBox();
         search.OnEnterPressed += _ => OpenFirstMatch();
         search.Text = state.SearchText;
         RecalculateLayout();
@@ -311,6 +311,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         search.X = searchBounds.X;
         search.Y = searchBounds.Y;
         search.Width = searchBounds.Width;
+        search.Height = searchBounds.Height;
         queryBounds = R(938, 818, 260, 58);
         unlockBounds = R(1220, 818, queryBounds.Width, queryBounds.Height);
         scrollTrack = R(1534, 146, 24, 640);

@@ -1,0 +1,90 @@
+[
+  {
+    "Asset": "Data/Events/HaleyHouse",
+    "EventId": "195012",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/Events/Saloon",
+    "EventId": "195013",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "2111194",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "2111294",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "3912126",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "3912127",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "3912128",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "3912129",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "3912130",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/TriggerActions",
+    "EventId": "3912131",
+    "OwnerUniqueID": null,
+    "OwnerName": "Stardew Valley"
+  },
+  {
+    "Asset": "Data/Events/Farm",
+    "EventId": "7776004",
+    "OwnerUniqueID": "FlashShifter.StardewValleyExpandedCP",
+    "OwnerName": "Stardew Valley Expanded",
+    "Version": "1.15.11"
+  },
+  {
+    "Asset": "Data/Events/Farm",
+    "EventId": "5978938",
+    "OwnerUniqueID": "FlashShifter.StardewValleyExpandedCP",
+    "OwnerName": "Stardew Valley Expanded",
+    "Version": "1.15.11"
+  },
+  {
+    "Asset": "Data/Events/EastScarp_VillageInn",
+    "EventId": "57871603",
+    "OwnerUniqueID": "Lemurkat.EastScarpNPCs",
+    "OwnerName": "East Scarp: NPCs",
+    "Version": "3.0.9"
+  },
+  {
+    "Asset": "Data/Events/EastScarp_FairyPool",
+    "EventId": "57871207",
+    "OwnerUniqueID": "Lemurkat.EastScarpNPCs",
+    "OwnerName": "East Scarp: NPCs",
+    "Version": "3.0.9"
+  }
+]

@@ -36,8 +36,7 @@ internal static class GallerySearchChecks
 
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
             filter.Update(catalog, "  mod.event  ", "en", false);
-            Check(filter.Results.Select(character => character.Name).ToHashSet().SetEquals(["Abigail", "Leah"]),
-                "shared event matches both owners, including an unmet character");
+            Check(filter.Results.Count == 0, "home searches characters only, not shared event IDs");
             List<GalleryCharacter> previous = filter.Results;
             for (int frame = 0; frame < 300; frame++)
                 Check(!filter.Update(catalog, "  mod.event  ", "en", false)
@@ -52,9 +51,9 @@ internal static class GallerySearchChecks
             Check(!ReferenceEquals(previous, filter.Results), "new catalog instance invalidates even if values compare equal");
             GalleryCatalog newOwners = catalog with { Events = [Event("Mod.Event.ABC", "Zed")] };
             filter.Update(newOwners, "ABC", "en", false);
-            Check(filter.Results is [{ Name: "Zed" }], "new catalog uses current event owners");
+            Check(filter.Results.Count == 0, "event ownership changes do not broaden home search");
             GalleryCatalog newCharacters = newOwners with { Characters = [new("Zed", "Renamed", false, 250)] };
-            filter.Update(newCharacters, "ABC", "en", false);
+            filter.Update(newCharacters, "Zed", "en", false);
             Check(ReferenceEquals(filter.Results.Single(), newCharacters.Characters[0]), "new character snapshot replaces old data");
 
             previous = filter.Results;
@@ -150,7 +149,7 @@ internal static class GallerySearchChecks
         return ((Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency, GC.GetAllocatedBytesForCurrentThread() - bytes);
     }
 
-    // Frozen 2.1.0 RefreshFilter work, excluding only UI scrollbar/component updates.
+    // Uncached character-only reference for the existing cache and sorting checks.
     private static bool LegacyUpdate(GalleryCatalog catalog, string text, bool chineseSort, ref List<GalleryCharacter> results)
     {
         string previous = string.Join('\u001f', results.Select(character => character.Name));
@@ -158,9 +157,7 @@ internal static class GallerySearchChecks
         results = catalog.Characters
             .Where(character => query.Length == 0
                 || character.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
-                || character.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || catalog.Events.Any(entry => entry.EventId.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    && entry.Ownership.Owners.Any(owner => owner.Name == character.Name)))
+                || character.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderBy(character => character.DisplayName, Comparer<string>.Create((left, right) =>
                 CultureInfo.GetCultureInfo(chineseSort ? "zh-CN" : "en-US").CompareInfo.Compare(left, right,
                     CompareOptions.IgnoreCase | CompareOptions.IgnoreWidth)))

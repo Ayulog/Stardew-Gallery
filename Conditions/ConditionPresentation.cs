@@ -61,9 +61,12 @@ internal sealed class ConditionPresentationBuilder(
     ConditionDisplayResolver resolver)
 {
     internal IReadOnlyList<ConditionDisplayItem> Build(string rawEventKey, CurrentStateSnapshot state, string? eventLocation = null)
+        => Build(parser.ParseRawKey(rawEventKey), state, eventLocation);
+
+    internal IReadOnlyList<ConditionDisplayItem> Build(ConditionSet conditions, CurrentStateSnapshot state, string? eventLocation = null)
     {
         List<ConditionDisplayItem> items = [];
-        foreach (ConditionExpression expression in parser.ParseRawKey(rawEventKey).Conditions)
+        foreach (ConditionExpression expression in conditions.Conditions)
         {
             string description = ConditionTextFormatter.Format(ConditionDescriber.Describe(expression, eventLocation), translate, resolver);
             ConditionEvaluation evaluation = evaluator.Evaluate(expression, state.ToConditionContext());

@@ -45,15 +45,6 @@ internal static class OwnershipResolver
                 .Where(pair => eligibleCharacters.Contains(pair.Key))
                 .Select(pair => new EventOwner(pair.Key, pair.Value))
                 .ToList();
-            if (owners.Count > 1)
-            {
-                int maximum = owners.Max(owner => entry.DialogueCounts.GetValueOrDefault(owner.Name));
-                List<EventOwner> speakingOwners = owners
-                    .Where(owner => maximum > 0 && entry.DialogueCounts.GetValueOrDefault(owner.Name) == maximum)
-                    .ToList();
-                if (speakingOwners.Count == 1)
-                    owners = speakingOwners;
-            }
             result[entry.Identity] = owners.Count > 0
                 ? new EventOwnership(OwnershipKind.Direct, owners)
                 : new EventOwnership(OwnershipKind.Excluded, [], "friendship-subject-not-eligible");

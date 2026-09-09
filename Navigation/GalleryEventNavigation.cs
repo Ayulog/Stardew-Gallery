@@ -2,12 +2,7 @@ namespace StardewGallery;
 
 internal static class GalleryEventNavigation
 {
-    internal static IReadOnlyList<string> References(ConditionExpression expression) => expression switch
-    {
-        SawEventCondition seen => seen.EventIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToArray(),
-        ConditionSet set => set.Conditions.SelectMany(References).Distinct(StringComparer.Ordinal).ToArray(),
-        _ => []
-    };
+    internal static IReadOnlyList<string> References(ConditionExpression expression) => ConditionEventReferences.Read(expression);
 
     internal static IReadOnlyList<GalleryEvent> Resolve(GalleryCatalog catalog, string eventId)
         => StoryDependencyLookup.Find(catalog, eventId).Stories;

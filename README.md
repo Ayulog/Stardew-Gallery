@@ -11,8 +11,9 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 ### 当前功能
 
 - 按角色浏览当前游戏与已安装 Mod 实际生效的好感事件。
-- 主相册只收好感剧情；自助查询支持剧情ID、NPC与地点，并可查看前置依赖，返回保留筛选、滚动和焦点。普通剧情不计入好感剧情收藏。
-- 转场、发信、设置标记等纯内部流程不作为事件列出或回放，相关前置仅解释为解锁步骤。短但具有演出内容的剧情仍可收录。
+- 主相册只收好感剧情；查询支持名称、ID、角色与地点，以及精确角色/地点、类型、进度和更多条件筛选，返回保留筛选、滚动和焦点。普通剧情不计入好感剧情收藏。
+- 标记与明确的解锁依赖单列“前置事件”，展示条件、获得状态和关联剧情，不提供回放。纯转场继续隐藏；短但具有演出内容的剧情仍可收录。
+- 可自定义事件名称并搜索，原ID保持有效。名称在本机存档间共用，独立保存在`user-data/`。
 - 回放截图按存档保存，可选封面、替换封面、恢复默认或移除归档。
 - 阅读型条件说明与进度缺口：好感/心数、看过事件、邮件、季节、日期、时间等用可读文本呈现；无法安全解析的模组条件会明确标注，而不是猜测。
 - 支持金钱、背包、技能、对话记录、NPC可见性、住宅与节日等只读条件，以及受限的节日/日期/统计量查询。随机结果、缺少入场位置或未支持的第三方条件会说明未知原因。
@@ -40,7 +41,8 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 选择角色，查看事件的可读条件和缺失/未知要求；已解锁事件可点击“回放”。
 - 回放右上角按钮或配置的快捷键可循环切换 1x / 2x / 4x。
 - 回放时按 F8、手柄左肩或点击相机截图；从详情缩略图管理截图与封面。截图不含对话框和 HUD，保存在本 Mod 的 `event-photos/` 内，卸载前可保留此目录。
-- 首页原搜索框用于角色与好感剧情；“事件查询”入口可搜索更广的剧情。前置多来源仍分别显示，未加载时就地提示，内部解锁步骤没有单独入口。
+- 首页搜索框只找角色；事件查询提供筛选面板。手柄Y打开筛选，确认进入角色/地点列表，肩键翻页，B返回上一级，应用后统一更新结果。默认浏览剧情，选择前置类型或输入准确前置ID可查对应资料。
+- 详情中的“自定义事件名”可保存或恢复默认名称。更新或卸载前保留`user-data/`及`event-photos/`，即可保留个人命名和截图。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
 ### 兼容性与限制
@@ -48,6 +50,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 事件目录取决于当前存档状态、已安装 Mod 及其条件，因此不同存档可能看到不同的当前版本。
 - 回放使用当前生效内容，不是历史回放。
 - 查询范围是当前可发现的地点事件内容，不保证覆盖未生效CP分支、夜间FarmEvent、节日主流程或纯C#事件；好感剧情分类依据正向关系证据与可确认的续篇，非社交NPC关联不等于主相册收录。
+- 前置资料读取当前TriggerActions的直接标记动作和明确内部依赖，不执行动作来探测。条件现在满足不代表标记已生成；未知条件不计为满足。来源首版只有14条已核查身份资料，其余明确未确认，不声称追踪当前完整修改链。
 - 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内；新版本回放需按开发包实测说明验证。
 - 未观看事件保持锁定；条件说明不会自动修改存档进度。
 - 事件回放目前仅支持单人模式。多人模式未实测。
@@ -68,8 +71,9 @@ Stardew Gallery collects NPC heart stories with readable requirements, replay ph
 ### Features
 
 - Browse the heart events actually active in the base game and installed mods, by character.
-- The album contains heart stories; the separate search finds stories by ID, NPC and location. Follow prerequisites and return with filters, scroll and focus preserved. Ordinary stories do not count toward the heart-story collection.
-- Internal transitions, mail dispatch and marker-only workflows are hidden from story lists and replay. Prerequisites can still describe their unlock steps; brief scenes with narrative content remain eligible for display.
+- The album contains heart stories; the separate search supports names, IDs, characters, locations and precise filters. Follow prerequisites and return with filters, scroll and focus preserved. Ordinary stories do not count toward the collection.
+- Prerequisite records show marker conditions, progress and related stories without replay. Pure transitions stay hidden; brief scenes with narrative content remain eligible.
+- Give events personal names and search them while retaining the original IDs. Names are shared across local saves and stored separately in `user-data/`.
 - Capture replay photos per save, choose or replace covers, restore defaults, and archive removed photos.
 - Readable condition explanation with progress gaps: friendship/hearts, seen events, mail, season, day, time, and more are shown in plain text; mod conditions that can't be parsed safely are labeled as unknown rather than guessed.
 - Read-only checks cover money, inventory, skills, dialogue records, NPC visibility, homes and festivals, plus restricted festival/date/stat queries. Random outcomes, missing entry positions and unsupported third-party conditions explain why their results remain unknown.
@@ -97,7 +101,8 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - Choose a character, review readable conditions and missing/unknown requirements, then click "Replay" on an unlocked event.
 - Use the top-right replay button or the configured binding to cycle 1x / 2x / 4x.
 - During replay, press F8, the controller's left shoulder, or the camera button to capture the scene without dialogue/HUD. Open the detail thumbnail to manage photos/covers. Photos live in this mod's `event-photos/` folder; keep it when uninstalling to retain your pictures.
-- Use the home search for characters and heart stories, or open Event Search for broader story lookup. Prerequisite sources remain separate; missing content and internal unlock steps are explained without exposing workflow cards.
+- Home search finds characters only. Event Search contains the filter panel: Y opens filters, confirm opens a character/location picker, shoulder buttons page through lists, B returns one level, and Apply updates the results. Select the prerequisite type or enter an exact prerequisite ID to find its record.
+- Use Rename Event in details to save a personal name or restore the default. Preserve `user-data/` and `event-photos/` when updating or uninstalling.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
 ### Compatibility and limitations
@@ -109,6 +114,7 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - Unseen events remain locked; condition explanations never rewrite save progress.
 - Event replay currently supports single-player only. Multiplayer has not been tested.
 - The mod does not access the internet or modify game files or other mods.
+- Prerequisites come from current direct TriggerActions marker writes and known internal dependencies; actions are never executed for analysis. Matching conditions do not imply an obtained marker. Definition origins currently cover only 14 verified identities; other entries remain unconfirmed, and later edits are not traced.
 
 ### Uninstall
 

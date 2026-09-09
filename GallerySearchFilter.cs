@@ -44,9 +44,7 @@ internal sealed class GallerySearchFilter
         return catalog.Characters
             .Where(character => query.Length == 0
                 || character.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
-                || character.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || catalog.Events.Any(entry => entry.EventId.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    && entry.Ownership.Owners.Any(owner => owner.Name == character.Name)))
+                || character.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderBy(character => character.DisplayName, Comparer<string>.Create((left, right) =>
                 sortComparison.Compare(left, right, CompareOptions.IgnoreCase | CompareOptions.IgnoreWidth)))
             .ToList();

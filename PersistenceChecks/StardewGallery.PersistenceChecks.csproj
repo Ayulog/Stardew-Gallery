@@ -13,6 +13,9 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="EventPhotoChecks.cs" />
+    <Compile Include="EventNameChecks.cs" />
+    <Compile Include="..\Persistence\EventNameStore.cs" Link="Persistence\EventNameStore.cs" />
+    <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
     <Compile Include="..\Screenshots\EventPhotoStore.cs" Link="Screenshots\EventPhotoStore.cs" />
     <Compile Include="..\Screenshots\PhotoImageLayout.cs" Link="Screenshots\PhotoImageLayout.cs" />
     <Compile Include="..\Domain\EventIdentity.cs" Link="Domain\EventIdentity.cs" />

@@ -14,6 +14,11 @@
     <Compile Include="GalleryCorrectionChecks.cs" />
     <Compile Include="GalleryNavigationChecks.cs" />
     <Compile Include="StoryQueryChecks.cs" />
+    <Compile Include="QueryUpgradeChecks.cs" />
+    <Compile Include="..\Navigation\QueryFilter.cs" Link="Navigation\QueryFilter.cs" />
+    <Compile Include="..\Catalog\PrerequisiteCatalog.cs" Link="Catalog\PrerequisiteCatalog.cs" />
+    <Compile Include="..\Catalog\EventSourceCatalog.cs" Link="Catalog\EventSourceCatalog.cs" />
+    <Compile Include="..\Conditions\ConditionEventReferences.cs" Link="Conditions\ConditionEventReferences.cs" />
     <Compile Include="StoryCatalogChecks.cs" />
     <Compile Include="StoryReplayChecks.cs" />
     <Compile Include="..\Navigation\GalleryPageState.cs" Link="Navigation\GalleryPageState.cs" />

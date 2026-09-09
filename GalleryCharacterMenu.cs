@@ -302,6 +302,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     private string EventTitle(GalleryEvent entry)
     {
+        if (context.Names?.Get(entry.Resolved.Identity) is string name) return name + GalleryDrawing.TextSeparator + $"ID {entry.EventId}";
         EventOwner owner = entry.Ownership.Owners.First(value => value.Name == character.Name);
         string hearts = owner.FriendshipPoints is int points
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })

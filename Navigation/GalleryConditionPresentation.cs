@@ -5,7 +5,7 @@ namespace StardewGallery;
 
 internal static class GalleryConditionPresentation
 {
-    internal static IReadOnlyList<ConditionDisplayItem> Build(GalleryEvent entry, ITranslationHelper i18n, CurrentStateSnapshot? state = null)
+    internal static IReadOnlyList<ConditionDisplayItem> Build(GalleryEvent entry, ITranslationHelper i18n, CurrentStateSnapshot? state = null, string? locationName = null)
     {
         ConditionParser parser = ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
         ConditionPresentationBuilder presentation = new(
@@ -18,12 +18,22 @@ internal static class GalleryConditionPresentation
         CurrentStateSnapshot current = RuntimeStateReader.ForLocation(state ?? RuntimeStateReader.Capture(), location)
             with { Details = ConditionStateReader.Capture(parser.ParseRawKey(entry.EventKey), location) };
         return presentation.Build(entry.EventKey, current,
-            Location(entry, i18n));
+            locationName ?? Location(entry, i18n));
     }
 
     internal static string Location(GalleryEvent entry, ITranslationHelper i18n)
-        => GalleryLocationName.Resolve(entry.LocationName, Game1.getLocationFromName(entry.LocationName)?.DisplayName,
-            key => i18n.Get(key).HasValue() ? i18n.Get(key).ToString() : null);
+        => new GalleryLocationNames(i18n).Get(entry.LocationName);
+
+    internal static IReadOnlyList<ConditionDisplayItem> Query(string raw, ITranslationHelper i18n)
+    {
+        var parser = ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
+        var set = new ConditionSet(string.IsNullOrWhiteSpace(raw) ? [] : GameStateQuery.SplitRaw(raw)
+            .Select(clause => (ConditionExpression)new NativeQueryCondition(clause, ConditionSource.GameStateQuery, clause, false)).ToArray());
+        var state = RuntimeStateReader.Capture() with { Details = ConditionStateReader.Capture(set, Game1.currentLocation) };
+        var presentation = new ConditionPresentationBuilder(parser, new ConditionEvaluator(null), (key, args) => i18n.Get(key, args),
+            new ConditionDisplayResolver(NPC.GetDisplayName, id => ItemRegistry.GetData(id)?.DisplayName, (key, value) => Term(key, value, i18n), Game1.getTimeOfDayString));
+        return presentation.Build(set, state);
+    }
 
     internal static string InternalStep(StoryDependencyResult dependency, string eventId, ITranslationHelper i18n)
     {
@@ -41,6 +51,8 @@ internal static class GalleryConditionPresentation
 
     private static string Term(string group, string value, ITranslationHelper i18n)
     {
+        if (group == "location") return new GalleryLocationNames(i18n).Get(value);
+        if (group == "relationship") group = "status";
         if (group == "festival")
         {
             try

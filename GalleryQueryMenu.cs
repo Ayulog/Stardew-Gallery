@@ -16,6 +16,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     private readonly GalleryPageState state;
     private readonly StorySearchIndex index;
     private readonly TextBox search;
+    private readonly float rowTextScale;
     private IReadOnlyList<StorySearchRow> rows = [];
     private string lastSearch = "";
     private int scroll;
@@ -24,11 +25,11 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     private bool dragging;
     private int dragOffset;
     private Rectangle scrollThumb;
-    private static Rectangle SearchBounds => new(48, 102, 660, 48);
+    private static Rectangle SearchBounds => new(48, 92, 976, 72);
     private static Rectangle BackBounds => new(48, 784, 280, 48);
     private static Rectangle LocationBounds => new(888, 784, 480, 48);
     private static Rectangle ScrollTrack => new(1384, 214, 24, VisibleRows * RowHeight);
-    private static Rectangle KindBounds(int option) => new(758 + option * 204, 100, 194, 50);
+    private static Rectangle FilterBounds => new(1060, 96, 308, 64);
     private static Rectangle RowBounds(int slot) => new(48, 214 + slot * RowHeight, 1320, RowHeight);
     private static Rectangle ReplayBounds(int slot) => new(1304, 224 + slot * RowHeight, 48, 48);
     private int MaxScroll => Math.Max(0, rows.Count - VisibleRows);
@@ -39,14 +40,23 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     {
         this.context = context;
         this.state = state;
-        index = new StorySearchIndex(context.Catalog, entry => GalleryConditionPresentation.Location(entry, context.I18n), NPC.GetDisplayName);
-        search = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor);
+        index = new StorySearchIndex(context.Catalog, entry => context.Locations.Get(entry.LocationName), NPC.GetDisplayName,
+            identity => context.Catalog.FindPrerequisite(identity.EventId) is { } prerequisite && prerequisite.Identity == identity
+                ? PrerequisitePresentation.Title(prerequisite, context) : context.Name(identity), context.Sources.Get,
+            Game1.player.eventsSeen.ToHashSet(StringComparer.Ordinal), new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
+            row => row.Event is { } story ? PrerequisitePresentation.Truth(GalleryConditionPresentation.Build(story, context.I18n, locationName: context.Locations.Get(story.LocationName)))
+                : PrerequisitePresentation.Truth(row.Prerequisite!, context.I18n));
+        search = new GalleryTextBox { Height = SearchBounds.Height };
+        rowTextScale = Math.Min(1f, 29f / index.Rows.Select(row => Game1.smallFont.MeasureString(row.Title + row.Characters + row.Location + context.SourceLabel(row.Source)).Y)
+            .Append((float)Game1.smallFont.LineSpacing).Max());
         search.OnEnterPressed += _ => OpenFirstMatch();
         search.Text = GallerySearchInput.CleanText(state.SearchText);
         lastSearch = search.Text;
-        if (state.KindFilter == StoryKind.Internal)
-            state.KindFilter = null;
-        rows = index.Search(search.Text, state.KindFilter, state.LocationFilter);
+        if (state.KindFilter is StoryKind.Heart or StoryKind.Ordinary)
+            state.Filter = state.Filter with { Kind = state.KindFilter == StoryKind.Heart ? QueryKind.Heart : QueryKind.Ordinary };
+        if (state.LocationFilter is not null) state.Filter = state.Filter with { Location = state.LocationFilter };
+        state.KindFilter = null; state.LocationFilter = null;
+        rows = index.Search(search.Text, state.Filter);
         scroll = Math.Clamp(state.Scroll, 0, MaxScroll);
         int initialFocus = state.Focus;
         Layout();
@@ -66,7 +76,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         if (!force && lastSearch == search.Text)
             return;
         lastSearch = search.Text;
-        rows = index.Search(search.Text, state.KindFilter, state.LocationFilter);
+        rows = index.Search(search.Text, state.Filter);
         scroll = 0;
         BuildComponents();
     }
@@ -115,11 +125,10 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         }
         DeselectSearch();
         if (BackBounds.Contains(x, y)) { Return(); return; }
-        for (int option = 0; option < 3; option++)
-            if (KindBounds(option).Contains(x, y)) { SelectKind(option); return; }
-        if (state.LocationFilter is not null && LocationBounds.Contains(x, y))
+        if (FilterBounds.Contains(x, y)) { OpenFilters(); return; }
+        if (state.Filter != new QueryFilter() && LocationBounds.Contains(x, y))
         {
-            state.LocationFilter = null; RefreshSearch(force: true); return;
+            state.Filter = new(); RefreshSearch(force: true); Focus(KindBase); return;
         }
         if (MaxScroll > 0 && scrollThumb.Contains(x, y))
         {
@@ -167,6 +176,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void receiveGamePadButton(Buttons button)
     {
+        if (button == Buttons.Y) { DeselectSearch(); OpenFilters(); return; }
         if (button == Buttons.B) { HandleControllerBack(); return; }
         if (button == Buttons.A) { Activate(currentlySnappedComponent?.myID ?? SearchId); return; }
         if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
@@ -179,10 +189,10 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     private void Activate(int id)
     {
         if (id >= RowBase) { OpenRow((id - RowBase) / 2, (id - RowBase) % 2 == 1); return; }
-        if (id is >= KindBase and < KindBase + 3) { DeselectSearch(); SelectKind(id - KindBase); return; }
+        if (id == KindBase) { DeselectSearch(); OpenFilters(); return; }
         if (id == SearchId) { if (GallerySearchInputGuard.Ready) search.SelectMe(); return; }
         if (id == BackId) { HandleControllerBack(); return; }
-        if (id == LocationId) { state.LocationFilter = null; RefreshSearch(force: true); }
+        if (id == LocationId) { state.Filter = new(); RefreshSearch(force: true); Focus(KindBase); }
     }
 
     public override void applyMovementKey(int direction)
@@ -200,27 +210,27 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
                 else if (target >= rows.Count) Focus(BackId);
                 else FocusRow(target, replay);
             }
-            else if (direction == 1 && context.ReplayAccess(rows[row].Event).Allowed) FocusRow(row, true);
+            else if (direction == 1 && CanReplay(rows[row])) FocusRow(row, true);
             else if (direction == 3) FocusRow(row, false);
             return;
         }
         if (id == BackId || id == LocationId)
         {
             if (direction == 0 && rows.Count > 0) FocusRow(Math.Min(rows.Count - 1, scroll + VisibleRows - 1), false);
-            else if (direction == 1 && state.LocationFilter is not null) Focus(LocationId);
+            else if (direction == 1 && state.Filter != new QueryFilter()) Focus(LocationId);
             else if (direction == 3) Focus(BackId);
             return;
         }
         if (direction == 2) { if (rows.Count > 0) FocusRow(scroll, false); else Focus(BackId); return; }
-        if (direction == 1) Focus(id == SearchId ? KindBase : Math.Min(KindBase + 2, id + 1));
-        else if (direction == 3) Focus(id <= KindBase ? SearchId : id - 1);
+        if (direction == 1) Focus(KindBase);
+        else if (direction == 3) Focus(SearchId);
     }
 
     private void FocusRow(int row, bool replay)
     {
         scroll = Math.Clamp(row < scroll ? row : row >= scroll + VisibleRows ? row - VisibleRows + 1 : scroll, 0, MaxScroll);
         BuildComponents();
-        Focus(RowBase + row * 2 + (replay && context.ReplayAccess(rows[row].Event).Allowed ? 1 : 0));
+        Focus(RowBase + row * 2 + (replay && CanReplay(rows[row]) ? 1 : 0));
     }
 
     private void Focus(int id)
@@ -234,24 +244,23 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void snapToDefaultClickableComponent() => Focus(rows.Count == 0 ? SearchId : RowBase + scroll * 2);
 
-    private void SelectKind(int option)
+    private void OpenFilters()
     {
-        state.KindFilter = option switch { 1 => StoryKind.Heart, 2 => StoryKind.Ordinary, _ => null };
-        RefreshSearch(force: true);
-        Focus(KindBase + option);
-        Game1.playSound("smallSelect");
+        SaveState(); DeselectSearch(); context.Navigation.OpenFilters();
     }
+    private bool CanReplay(StorySearchRow row) => row.Event is { } story && context.ReplayAccess(story).Allowed;
 
     private void OpenRow(int row, bool replay)
     {
         if (row < 0 || row >= rows.Count) return;
-        GalleryEvent entry = rows[row].Event;
-        if (replay && !context.ReplayAccess(entry).Allowed) return;
+        StorySearchRow entry = rows[row];
+        if (replay && !CanReplay(entry)) return;
         Focus(RowBase + row * 2 + (replay ? 1 : 0));
         SaveState();
         DeselectSearch();
-        if (replay) context.Navigation.Replay(entry.Resolved.Identity);
-        else context.Navigation.OpenEvent(entry.Resolved.Identity);
+        if (entry.Prerequisite is not null) context.Navigation.OpenPrerequisite(entry.EventId);
+        else if (replay) context.Navigation.Replay(entry.Identity);
+        else context.Navigation.OpenEvent(entry.Identity);
     }
 
     private void ScrollBy(int amount)
@@ -300,15 +309,14 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         scrollThumb = new Rectangle(ScrollTrack.X, ScrollTrack.Y + (MaxScroll == 0 ? 0
             : (int)Math.Round((ScrollTrack.Height - thumbHeight) * scroll / (double)MaxScroll)), ScrollTrack.Width, thumbHeight);
         allClickableComponents = [new(ToScreen(SearchBounds), "search") { myID = SearchId }, new(ToScreen(BackBounds), "back") { myID = BackId }];
-        for (int option = 0; option < 3; option++)
-            allClickableComponents.Add(new(ToScreen(KindBounds(option)), "kind") { myID = KindBase + option });
-        if (state.LocationFilter is not null)
+        allClickableComponents.Add(new(ToScreen(FilterBounds), "filters") { myID = KindBase });
+        if (state.Filter != new QueryFilter())
             allClickableComponents.Add(new(ToScreen(LocationBounds), "location") { myID = LocationId });
         for (int slot = 0; slot < VisibleRows && scroll + slot < rows.Count; slot++)
         {
             Rectangle detail = RowBounds(slot); detail.Width -= 76;
             allClickableComponents.Add(new(ToScreen(detail), "event") { myID = RowBase + (scroll + slot) * 2 });
-            if (context.ReplayAccess(rows[scroll + slot].Event).Allowed)
+            if (CanReplay(rows[scroll + slot]))
                 allClickableComponents.Add(new(ToScreen(ReplayBounds(slot)), "replay") { myID = RowBase + (scroll + slot) * 2 + 1 });
         }
         int fallback = previous >= RowBase && rows.Count > 0 ? RowBase + Math.Clamp((previous - RowBase) / 2, scroll, Math.Min(rows.Count - 1, scroll + VisibleRows - 1)) * 2 : SearchId;
@@ -327,14 +335,9 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         search.Draw(b);
         if (search.Text.Length == 0 && !search.Selected)
             GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(GallerySearchInputGuard.Ready ? "query.search" : "home.search-unavailable"), GalleryDrawing.Inset(SearchBounds, 12, 8));
-        int selectedKind = state.KindFilter switch { StoryKind.Heart => 1, StoryKind.Ordinary => 2, _ => 0 };
-        for (int option = 0; option < 3; option++)
-        {
-            Rectangle bounds = KindBounds(option);
-            GalleryDrawing.DrawButton(b, bounds, context.I18n.Get(option switch { 1 => "query.kind-heart", 2 => "query.kind-ordinary", _ => "query.kind-all" }));
-            if (selectedKind == option)
-                b.Draw(Game1.staminaRect, new Rectangle(bounds.X + 20, bounds.Bottom - 7, bounds.Width - 40, 3), new Color(66, 112, 76));
-        }
+        GalleryDrawing.DrawButton(b, FilterBounds, context.I18n.Get("filter.title"));
+        if (state.Filter != new QueryFilter() || currentlySnappedComponent?.myID == KindBase)
+            b.Draw(Game1.staminaRect, new Rectangle(FilterBounds.X + 20, FilterBounds.Bottom - 7, FilterBounds.Width - 40, 3), new Color(66, 112, 76));
         Column(b, "query.column-event", 158, 240);
         Column(b, "query.column-npc", 410, 234);
         Column(b, "query.column-location", 666, 242);
@@ -344,27 +347,33 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         for (int slot = 0; slot < VisibleRows && scroll + slot < rows.Count; slot++)
         {
             StorySearchRow row = rows[scroll + slot];
-            GalleryEvent entry = row.Event;
+            GalleryEvent? entry = row.Event;
             Rectangle bounds = RowBounds(slot);
             bool hovered = bounds.Contains(mouseX, mouseY);
             bool focused = Game1.options.snappyMenus && Game1.options.gamepadControls
                 && (currentlySnappedComponent?.myID - RowBase) / 2 == scroll + slot;
             b.Draw(Game1.staminaRect, bounds, hovered || focused ? new Color(204, 221, 187) * .65f
                 : slot % 2 == 0 ? Color.White * .2f : new Color(101, 85, 68) * .07f);
-            GalleryPhotos.DrawCover(b, context.Photos.Cover(entry.Resolved.Identity) ?? context.Textures.Thumbnail,
+            if (entry is not null) GalleryPhotos.DrawCover(b, context.Photos.Cover(entry.Resolved.Identity) ?? context.Textures.Thumbnail,
                 new Rectangle(58, bounds.Y + 9, 90, 50), Color.White);
-            GalleryDrawing.DrawLeftFitted(b, entry.EventId, new Rectangle(158, bounds.Y + 6, 240, 29));
-            GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"),
+            else
+            {
+                var icon = Game1.player.eventsSeen.Contains(row.EventId) ? GallerySpreadLayout.ConditionCheckSource : GallerySpreadLayout.ConditionCrossSource;
+                b.Draw(context.Textures.ConditionIcons, new Rectangle(80, bounds.Y + 14, 40, 40), new Rectangle(icon.X, icon.Y, icon.Width, icon.Height), Color.White);
+            }
+            GalleryDrawing.DrawEllipsized(b, row.Title, new Rectangle(158, bounds.Y + 6, 240, 29), rowTextScale);
+            GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(entry is null ? "query.kind-prerequisite" : entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"),
                 new Rectangle(158, bounds.Y + 37, 240, 23), GallerySpreadDrawing.Ink);
-            GalleryDrawing.DrawLeftFitted(b, row.Characters.Length == 0 ? "-" : row.Characters, new Rectangle(410, bounds.Y + 8, 234, 52));
-            GalleryDrawing.DrawLeftFitted(b, row.Location, new Rectangle(666, bounds.Y + 8, 242, 52));
-            GalleryDrawing.DrawLeftFitted(b, entry.AssetName, new Rectangle(930, bounds.Y + 8, 350, 52));
-            ReplayAccess access = context.ReplayAccess(entry);
-            b.Draw(context.Textures.Replay, ReplayBounds(slot), access.Allowed ? Color.White : Color.Gray * .5f);
-            if (ReplayBounds(slot).Contains(mouseX, mouseY))
+            GalleryDrawing.DrawEllipsized(b, row.Characters.Length == 0 ? "-" : row.Characters, new Rectangle(410, bounds.Y + 8, 234, 52), rowTextScale);
+            GalleryDrawing.DrawEllipsized(b, row.Location, new Rectangle(666, bounds.Y + 8, 242, 52), rowTextScale);
+            string source = context.SourceLabel(row.Source);
+            GalleryDrawing.DrawEllipsized(b, source, new Rectangle(930, bounds.Y + 8, 350, 52), rowTextScale);
+            ReplayAccess? access = entry is null ? null : context.ReplayAccess(entry);
+            if (access is not null) b.Draw(context.Textures.Replay, ReplayBounds(slot), access.Allowed ? Color.White : Color.Gray * .5f);
+            if (access is not null && ReplayBounds(slot).Contains(mouseX, mouseY))
                 tooltip = context.I18n.Get(access.Allowed ? "event.replay" : access.ReasonKey ?? "event.locked");
             else if (hovered)
-                tooltip = $"ID {entry.EventId}\n{row.Characters}\n{row.Location}\n{context.I18n.Get("query.source", new { source = entry.AssetName })}";
+                tooltip = $"{row.Title}\nID {row.EventId}\n{row.Characters}\n{row.Location}\n{context.I18n.Get("query.source", new { source })}\n{context.I18n.Get("source.note")}";
         }
         if (rows.Count == 0)
             GalleryDrawing.DrawCentered(b, context.I18n.Get("nav.no-results"), new Rectangle(240, 370, 960, 160));
@@ -375,8 +384,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         }
         GalleryDrawing.DrawButton(b, BackBounds, context.I18n.Get("nav.back"));
         GalleryDrawing.DrawCentered(b, context.I18n.Get("query.count", new { count = rows.Count }), new Rectangle(352, 784, 492, 48));
-        if (state.LocationFilter is not null)
-            GalleryDrawing.DrawButton(b, LocationBounds, context.I18n.Get("query.location-filter", new { location = state.LocationFilter }));
+        if (state.Filter != new QueryFilter())
+            GalleryDrawing.DrawButton(b, LocationBounds, context.I18n.Get("filter.reset"));
         upperRightCloseButton?.draw(b);
         GalleryDrawing.EndScaled(b);
         if (tooltip is not null) drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, 620), Game1.smallFont);

@@ -13,6 +13,7 @@ static void Check(bool condition, string message = "")
 
 string tempRoot = Path.Combine(Path.GetTempPath(), "sg-persist-checks-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(tempRoot);
+EventNameChecks.Run(tempRoot);
 int failures = 0;
 
 try

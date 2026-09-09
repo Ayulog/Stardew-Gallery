@@ -6,6 +6,7 @@ GallerySearchChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();
 StoryQueryChecks.Run();
+QueryUpgradeChecks.Run();
 StoryCatalogChecks.Run();
 StoryReplayChecks.Run();
 ConditionCoverageChecks.Run(FakeSplitArgs);
@@ -577,7 +578,8 @@ Check(ownership[TestIdentity("torts8")].Kind == OwnershipKind.Inherited && owner
 Check(ownership[TestIdentity("tie")].Kind == OwnershipKind.Inferred && ownership[TestIdentity("tie")].Owners.Count == 2);
 Check(ownership[TestIdentity("silent")].Kind == OwnershipKind.Excluded);
 Check(ownership[TestIdentity("inferred-child")].Kind == OwnershipKind.Inherited && ownership[TestIdentity("inferred-child")].Owners.Single().Name == "Alissa");
-Check(ownership[TestIdentity("multi-direct")].Kind == OwnershipKind.Direct && ownership[TestIdentity("multi-direct")].Owners.Single().Name == "Alissa");
+Check(ownership[TestIdentity("multi-direct")].Kind == OwnershipKind.Direct && ownership[TestIdentity("multi-direct")].Owners.Count == 2,
+    "all explicit friendship subjects remain owners even when one speaks more");
 
 IReadOnlyDictionary<EventIdentity, EventOwnership> normalizedOwnership = OwnershipResolver.Resolve(
     [Evidence("typed", "typed", new Dictionary<string, int> { ["Alissa"] = 1000 }, [], Set("Alissa"), new Dictionary<string, int>())],
@@ -1044,7 +1046,7 @@ Check(roommateReadable.LocalizationKey == "condition.roommate-with");
 ConditionTextSpec worldReadable = ConditionDescriber.Describe(parser2.Parse(["WorldState flag"]).Conditions[0]);
 Check(worldReadable.LocalizationKey == "condition.world-state" && worldReadable.Arguments["id"] is PlainTextValue { Value: "flag" });
 ConditionTextSpec nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
-Check(nativeReadable.LocalizationKey == "condition.game-query" && nativeReadable.Arguments.Count == 0);
+Check(nativeReadable.LocalizationKey == "condition.native-query" && nativeReadable.Arguments.ContainsKey("query"));
 
 // ---------- 2.0.3 complete vanilla event-precondition domain ----------
 Dictionary<string, string> canonicalSamples = new(StringComparer.OrdinalIgnoreCase)
@@ -1192,7 +1194,7 @@ Check(presentationItems[4].Evaluation.Knowledge == ConditionKnowledge.MissingDat
 Check(presentationItems[5].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation random unsupported");
 Check(presentationItems[6].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation custom unsupported");
 Check(presentationItems[7].Evaluation.Knowledge == ConditionKnowledge.Invalid, "presentation malformed invalid");
-Check(presentationItems[8].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation GSQ without provider unsupported");
+Check(presentationItems[8].Evaluation.Knowledge == ConditionKnowledge.MissingData, "supported weather GSQ without captured location remains unknown");
 Check(presentationItems[9].Evaluation.Knowledge == ConditionKnowledge.Unsupported, "presentation SendMail unsupported");
 Check(presentationItems[10].Expression is SeasonCondition { Negated: true, Source: ConditionSource.LegacyEventPrecondition }
     && presentationItems[10].Expression.RawSegment == "!Season winter", "presentation retains raw source and negation");

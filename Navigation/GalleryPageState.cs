@@ -1,6 +1,6 @@
 namespace StardewGallery;
 
-internal enum GalleryPage { Home, Album, Query, Detail, Photos }
+internal enum GalleryPage { Home, Album, Query, Detail, Photos, Prerequisite, Rename, Filters }
 
 internal sealed class GalleryPageState(GalleryPage page)
 {
@@ -12,6 +12,8 @@ internal sealed class GalleryPageState(GalleryPage page)
     internal int Focus { get; set; } = -1;
     internal string? LocationFilter { get; set; }
     internal StoryKind? KindFilter { get; set; }
+    internal string? PrerequisiteId { get; init; }
+    internal QueryFilter Filter { get; set; } = new();
 }
 
 internal sealed class GalleryPageHistory
@@ -22,7 +24,8 @@ internal sealed class GalleryPageHistory
     internal void Reset() { pages.Clear(); pages.Add(new(GalleryPage.Home)); }
     internal void Open(GalleryPageState target)
     {
-        int previous = target.Event is null ? -1 : pages.FindIndex(page => page.Page == target.Page && page.Event == target.Event);
+        int previous = target.Event is not null ? pages.FindIndex(page => page.Page == target.Page && page.Event == target.Event)
+            : target.PrerequisiteId is not null ? pages.FindIndex(page => page.Page == target.Page && page.PrerequisiteId == target.PrerequisiteId) : -1;
         if (previous >= 0) pages.RemoveRange(previous + 1, pages.Count - previous - 1);
         else pages.Add(target);
     }
