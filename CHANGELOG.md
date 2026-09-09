@@ -1,14 +1,14 @@
 # Changelog / 更新日志
 
-## 2.5.0 - Story Gallery / 剧情画廊（开发中）
+## 2.5.0 - 2026-09-10 - Story Gallery / 剧情画廊
 
 - Add missing vanilla location names including Ginger Island; merge replacement NPC IDs and distinguish the Highlands dwarf. Ignore exact native copies of Grandpa's two global scenes outside their original farmhouse asset. / 补齐姜岛等原版地名，合并替代NPC身份并区分高地矮人；移除游戏注入各地图的爷爷两段剧情副本，保留原始农舍定义和实际覆盖变体。
 
 - Merge registered cosmetic NPC copies and identical location labels in query filters; expand readable location fallbacks and simplify progress labels. / 合并查询中的注册外观分身与同名地点，遍历当前地点清单补充可读译名，简化进度状态文案。
 
-- Remove definition-origin labels and the duplicate all-entry filter. Clean up actor/location choices, handle missing-name translations, and expand weather filters. / 移除定义来源及重复的全部类型选项，清理演员/地点筛选与缺译标记，补齐天气选择。
+- Provide four event types and precise character, location, progress, condition, time, season, weather and heart filters. / 提供四种事件类型，以及精确角色、地点、进度、条件、时间、季节、天气和好感筛选。
 
-- Add read-only prerequisite records, controller-friendly query filters, character-only home search and personal event names. Improve location names and retain shared friendship owners. Definition origins use a limited verified table and explicitly preserve unknowns. / 新增只读前置事件、手柄筛选和自定义事件名，首页仅搜索角色；完善地点译名与共同好感主体，来源采用有限已核查资料并明确保留未知。
+- Add read-only prerequisite records, controller-friendly query filters, character-only home search and personal event names. Improve location names and retain shared friendship owners. / 新增只读前置事件、手柄筛选和自定义事件名，首页仅搜索角色；完善地点译名与共同好感主体。
 
 - Polish negative requirement wording, use consistent album title sizing with full-ID tooltips, and align query/unlock actions at the bottom right. Explain unresolved IDs without assuming content-loading failure. / 明确否定要求文案，相册标题统一字号并提供完整ID提示；查询/解锁按钮并排放在右下，缺项ID不再直接断言未加载。
 
@@ -17,7 +17,7 @@
 - Separate story data, condition explanation, views, navigation, replay and photos. Reuse page state and one replay permission policy. / 事件资料、条件解释、视图、导航、回放与照片各自维护，统一页面状态和回放权限。
 - Read conditions consistently from every detail entry point and repair native replay restoration and effect protection. / 统一详情条件状态读取，修复原版回放状态恢复和结果保护。
 
-Development validation and in-game status are recorded in `docs/RELEASE_2.5.0_STORY_DEVELOPMENT.md`. / 开发验证及实机状态见对应开发文档。
+See `docs/RELEASE_2.5.0_NOTES.md` for upgrade instructions, validation and limits. / 更新方法、验证与限制见对应发布说明。
 
 ## 2.4.0 - 2026-09-08 - Condition Coverage / 补齐条件判定
 

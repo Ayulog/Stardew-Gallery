@@ -52,7 +52,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 查询范围是当前可发现的地点事件内容，不保证覆盖未生效CP分支、夜间FarmEvent、节日主流程或纯C#事件；好感剧情分类依据正向关系证据与可确认的续篇，非社交NPC关联不等于主相册收录。
 - 前置资料读取当前TriggerActions的直接标记动作和明确内部依赖，不执行动作来探测。条件现在满足不代表标记已生成；未知条件不计为满足。
 - 角色筛选合并有明确依据的演员别名，忽略纯动画角色和误解析文本；地点合并作者声明的旧名及已核实场景副本，保留真实事件身份与回放地点。缺译标记回退为已维护译名或可读名称。天气包含六种原版天气及事件明确使用的自定义天气。
-- 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内；新版本回放需按开发包实测说明验证。
+- 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内。
 - 未观看事件保持锁定；条件说明不会自动修改存档进度。
 - 事件回放目前仅支持单人模式。多人模式未实测。
 - Mod 不联网，也不会修改游戏原始文件或其他 Mod。
@@ -111,7 +111,7 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - The catalog depends on the current save state, installed mods, and their conditions, so different saves may expose different current versions.
 - Replay uses currently active content, not historical versions.
 - Search covers currently discoverable location events, not every inactive CP branch, nightly FarmEvent, festival flow or pure C# scene. Heart-story classification uses positive relationship evidence and confirmed continuations; NPC participation alone is not album membership.
-- Replay protects covered native state and rewards, suppressing some effects during presentation. Third-party commands still run through their frameworks; external files, private state and arbitrary callbacks are outside the native snapshot guarantee. New replay behavior requires the development package's in-game checks.
+- Replay protects covered native state and rewards, suppressing some effects during presentation. Third-party commands still run through their frameworks; external files, private state and arbitrary callbacks are outside the native snapshot guarantee.
 - Unseen events remain locked; condition explanations never rewrite save progress.
 - Event replay currently supports single-player only. Multiplayer has not been tested.
 - The mod does not access the internet or modify game files or other mods.
