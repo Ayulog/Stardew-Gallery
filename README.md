@@ -4,9 +4,19 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 
+[Download 2.5.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.5.0) · [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/51593) · [Changelog / 更新日志](CHANGELOG.md)
+
 ## 中文
 
 星露谷画廊以NPC好感剧情收藏为主题，提供条件说明、剧情重温、截图与封面；配套自助查询器用于查找其他剧情及前置依赖。
+
+| 内容 | 入口 | 回放 |
+| --- | --- | --- |
+| 好感剧情 | 角色相册、事件查询 | 已经历，或开启一键解锁 |
+| 普通剧情 | 事件查询 | 先开启GMCM“普通事件回放”；未经历剧情仍需一键解锁 |
+| 前置事件 | 事件查询、剧情前置链接 | 仅查看条件、触发时机、进度和关联剧情 |
+
+“全部事件”包含上述三类。纯转场不进入剧情列表，也不提供回放。
 
 ### 当前功能
 
@@ -25,6 +35,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 - 回放速度可在 1x、2x、4x 之间切换；普通对话可选择自动继续，选项不会自动选择。
 - 支持键鼠和手柄操作，快捷键可配置多个单键或组合键。
 - 支持现有 12 种游戏语言，界面随分辨率与 UI 缩放自动适配。
+- 回放确认框限制窗口宽度、自动换行，改变窗口大小后重新居中，确认和取消按钮保持可见。
 - 可选支持 Generic Mod Config Menu（GMCM）。
 
 ### 安装
@@ -35,6 +46,18 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回放提示、自动对白和调试诊断。未安装GMCM时可在config.json设置`EnableOrdinaryEventReplay`，默认false。
 
+### 从旧版更新
+
+退出游戏，先备份原`Mods/StardewGallery`，再用新版替换模组文件。保留并放回以下内容：
+
+| 文件或目录 | 玩家数据 |
+| --- | --- |
+| `config.json` | 快捷键和设置 |
+| `event-photos/` | 按存档保存的截图及封面 |
+| `user-data/` | 本机各存档共用的自定义事件名称 |
+
+2.5.0会去除爷爷评估剧情被游戏复制到各地图的重复目录项。更新后结果数量可能减少，原始农舍剧情仍保留，实际已看进度不变。
+
 ### 使用
 
 - 默认按 `G` 打开或关闭画廊，也可点击原版菜单中的画廊标签。
@@ -42,6 +65,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 回放右上角按钮或配置的快捷键可循环切换 1x / 2x / 4x。
 - 回放时按 F8、手柄左肩或点击相机截图；从详情缩略图管理截图与封面。截图不含对话框和 HUD，保存在本 Mod 的 `event-photos/` 内，卸载前可保留此目录。
 - 首页搜索框只找角色；事件查询提供筛选面板。手柄Y打开筛选，确认进入角色/地点列表，肩键翻页，B返回上一级，应用后统一更新结果。类型为全部事件、好感剧情、普通剧情、前置事件；全部事件包含后三类。
+- 筛选支持角色、地点、进度、条件满足状态，以及季节、时间、天气和好感门槛。角色／地点精确选择可避免同字匹配过多；进度显示“已达成／未达成”，不会将当前条件满足等同于已经看过剧情。
 - 详情中的“自定义事件名”可保存或恢复默认名称。更新或卸载前保留`user-data/`及`event-photos/`，即可保留个人命名和截图。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
@@ -52,6 +76,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 查询范围是当前可发现的地点事件内容，不保证覆盖未生效CP分支、夜间FarmEvent、节日主流程或纯C#事件；好感剧情分类依据正向关系证据与可确认的续篇，非社交NPC关联不等于主相册收录。
 - 前置资料读取当前TriggerActions的直接标记动作和明确内部依赖，不执行动作来探测。条件现在满足不代表标记已生成；未知条件不计为满足。
 - 角色筛选合并有明确依据的演员别名，忽略纯动画角色和误解析文本；地点合并作者声明的旧名及已核实场景副本，保留真实事件身份与回放地点。缺译标记回退为已维护译名或可读名称。天气包含六种原版天气及事件明确使用的自定义天气。
+- 姜岛等原版地点和已核查的扩展地点提供译名回退；任意新增模组不保证全部地名有翻译。相同地点显示名共用一个筛选项，各事件仍保留原始身份。矿井矮人与高地矮人是不同角色。
 - 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内。
 - 未观看事件保持锁定；条件说明不会自动修改存档进度。
 - 事件回放目前仅支持单人模式。多人模式未实测。
@@ -61,6 +86,23 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 
 删除 `Mods/StardewGallery` 文件夹即可。
 
+### 验证与构建
+
+2.5.0的Windows实机反馈已验收，包括最后修正的英文小窗口回放确认框。逻辑、本地化、存储及12语言隔离界面检查通过；不等同于所有模组组合、Linux或macOS全面实机验证。
+
+构建需要.NET SDK 8或更新兼容版本，以及已安装SMAPI的游戏目录；目标框架保持`net6.0`。在仓库根目录运行：
+
+```sh
+dotnet build StardewGallery.csproj -c Release -p:GamePath="/path/to/Stardew Valley"
+```
+
+将`GamePath`替换为实际游戏路径。产物在`bin/Release/net6.0/`，构建不会自动安装。运行检查需.NET 6运行时：
+
+```sh
+dotnet run --project Checks/StardewGallery.Checks.csproj -c Release
+dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -c Release
+```
+
 ### 许可证
 
 本项目以 GNU General Public License v3.0 发布。完整条款见 `LICENSE`。
@@ -68,6 +110,14 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 ## English
 
 Stardew Gallery collects NPC heart stories with readable requirements, replay photos and covers. A separate self-service search helps players find other stories and prerequisite events.
+
+| Content | Where to find it | Replay |
+| --- | --- | --- |
+| Heart stories | Character albums and Event Search | Seen stories, or Unlock All |
+| Ordinary stories | Event Search | Enable Ordinary Event Replay in GMCM; unseen stories still need Unlock All |
+| Prerequisite events | Event Search and prerequisite links | Reference only: conditions, timing, progress and related stories |
+
+All Events includes these three categories. Pure transitions stay outside story lists and replay.
 
 ### Features
 
@@ -86,6 +136,7 @@ Stardew Gallery collects NPC heart stories with readable requirements, replay ph
 - Cycle replay speed between 1x, 2x, and 4x. Optional auto-advance applies only to normal dialogue; choices always wait for the player.
 - Keyboard, mouse, and controller navigation, with multiple configurable single-key or chord bindings.
 - All 12 maintained game languages, with automatic fitting for screen resolution and UI scale.
+- The replay confirmation wraps long text, stays centered when resizing, and keeps both buttons visible.
 - Optional Generic Mod Config Menu support.
 
 ### Installation
@@ -96,6 +147,18 @@ Stardew Gallery collects NPC heart stories with readable requirements, replay ph
 
 GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue auto-advance and diagnostics. Without GMCM, set `EnableOrdinaryEventReplay` in config.json; its default is false.
 
+### Updating
+
+Close the game and back up `Mods/StardewGallery` before replacing the mod files. Preserve and restore:
+
+| File or folder | Player data |
+| --- | --- |
+| `config.json` | Settings and key bindings |
+| `event-photos/` | Photos and covers for each save |
+| `user-data/` | Personal event names shared across local saves |
+
+2.5.0 removes duplicate catalog entries created when the game copies Grandpa's evaluation scenes into other locations. Result counts can decrease; the original farmhouse stories and actual seen progress are retained.
+
 ### Usage
 
 - Press `G` by default to toggle the gallery, or use its tab in the vanilla game menu.
@@ -103,6 +166,7 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - Use the top-right replay button or the configured binding to cycle 1x / 2x / 4x.
 - During replay, press F8, the controller's left shoulder, or the camera button to capture the scene without dialogue/HUD. Open the detail thumbnail to manage photos/covers. Photos live in this mod's `event-photos/` folder; keep it when uninstalling to retain your pictures.
 - Home search finds characters only. Event Search contains the filter panel: Y opens filters, confirm opens a character/location picker, shoulder buttons page through lists, B returns one level, and Apply updates the results. All Events includes heart stories, ordinary stories, and prerequisites.
+- Filter by character, location, progress, requirement status, season, time, weather or heart threshold. Precise character/location choices narrow ambiguous text matches. Completed progress is separate from currently meeting trigger conditions.
 - Use Rename Event in details to save a personal name or restore the default. Preserve `user-data/` and `event-photos/` when updating or uninstalling.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
@@ -117,10 +181,28 @@ GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue au
 - The mod does not access the internet or modify game files or other mods.
 - Prerequisites come from current direct TriggerActions marker writes and known internal dependencies; actions are never executed for analysis. Matching conditions do not imply an obtained marker.
 - Character filters combine confirmed actor aliases and omit animation-only actors or malformed names. Location groups use declared former names and verified scene copies without changing event identities or replay locations. Missing translation markers fall back to maintained or readable names. Weather filters include six vanilla types and explicitly referenced custom weather.
+- Fallback names cover vanilla locations, including Ginger Island, and reviewed mod locations; translations for arbitrary new content are not guaranteed. Identical location labels share a filter choice while keeping each event's identity. The mine dwarf and Highlands dwarf remain separate characters.
 
 ### Uninstall
 
 Delete the `Mods/StardewGallery` folder.
+
+### Validation And Building
+
+Windows gameplay feedback for 2.5.0 has been accepted, including the final small-window confirmation fix. Logic, localization, persistence and isolated rendering checks passed across all 12 languages. This does not represent exhaustive in-game testing of every mod combination, Linux or macOS.
+
+Use .NET SDK 8 or a later compatible SDK and a game installation with SMAPI. The mod targets `net6.0`. From the repository root:
+
+```sh
+dotnet build StardewGallery.csproj -c Release -p:GamePath="/path/to/Stardew Valley"
+```
+
+Set `GamePath` to your installation. Output is written to `bin/Release/net6.0/`; building does not deploy the mod. Checks require the .NET 6 runtime:
+
+```sh
+dotnet run --project Checks/StardewGallery.Checks.csproj -c Release
+dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -c Release
+```
 
 ### License
 
