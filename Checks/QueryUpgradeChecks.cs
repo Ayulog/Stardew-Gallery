@@ -79,6 +79,12 @@ internal static class QueryUpgradeChecks
         Check(sameName.Rows.Select(row => row.LocationKey).Distinct().Count() == 1
             && sameName.Search("", new QueryFilter { Location = groupKey }).Count == 2, "identical location labels form one selectable group across assets");
         Check(sameName.Search("", location: otherMap.AssetName).Single().Event == otherMap, "explicit asset lookup stays exact after display grouping");
+        var farmhouse = new Dictionary<string, string> { ["558291/y 3/H"] = "grandpa scene", ["558292/e 558291"] = "re-evaluation" };
+        Check(NativeGlobalEventCopies.IsCopy("Data/Events/Cellar8", "558291/y 3/H", "grandpa scene", farmhouse), "native global grandpa copy is not a cellar story");
+        Check(!NativeGlobalEventCopies.IsCopy("Data\\Events\\FarmHouse", "558291/y 3/H", "grandpa scene", farmhouse), "original farmhouse global event retained");
+        Check(!NativeGlobalEventCopies.IsCopy("Data/Events/Town", "558291/y 3/H", "modded scene", farmhouse)
+            && !NativeGlobalEventCopies.IsCopy("Data/Events/Town", "558291/other condition", "grandpa scene", farmhouse)
+            && !NativeGlobalEventCopies.IsCopy("Data/Events/Town", "another/y 3/H", "grandpa scene", farmhouse), "different script, condition, and ID are not discarded");
         Console.WriteLine("Query upgrade checks passed.");
     }
     private static void Check(bool value, string label) { if (!value) throw new InvalidOperationException(label); }

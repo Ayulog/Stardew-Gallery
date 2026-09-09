@@ -18,6 +18,7 @@
     <Compile Include="..\Navigation\QueryFilter.cs" Link="Navigation\QueryFilter.cs" />
     <Compile Include="..\Navigation\QueryWeather.cs" Link="Navigation\QueryWeather.cs" />
     <Compile Include="..\Catalog\PrerequisiteCatalog.cs" Link="Catalog\PrerequisiteCatalog.cs" />
+    <Compile Include="..\Catalog\NativeGlobalEventCopies.cs" Link="Catalog\NativeGlobalEventCopies.cs" />
     <Compile Include="..\Conditions\ConditionEventReferences.cs" Link="Conditions\ConditionEventReferences.cs" />
     <Compile Include="StoryCatalogChecks.cs" />
     <Compile Include="StoryReplayChecks.cs" />

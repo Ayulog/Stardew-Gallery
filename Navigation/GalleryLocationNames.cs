@@ -20,6 +20,8 @@ internal sealed class GalleryLocationNames(ITranslationHelper i18n)
     internal string Key(string id) => "Data/Events/" + Canonical(id);
     private string Canonical(string id)
     {
+        if (id.StartsWith("Cellar", StringComparison.Ordinal) && int.TryParse(id[6..], out int cellar) && cellar is >= 2 and <= 8)
+            return "Cellar";
         if (aliases is null)
         {
             aliases = new(SceneAliases, StringComparer.OrdinalIgnoreCase);
@@ -55,7 +57,9 @@ internal sealed class GalleryLocationNames(ITranslationHelper i18n)
         if (GalleryNameText.IsMissing(display) || display.Equals(id, StringComparison.OrdinalIgnoreCase)
             || i18n.Locale.StartsWith("zh", StringComparison.OrdinalIgnoreCase) && display.All(character => character < 128))
         {
-            if (LocationNameFallbacks.Entries.TryGetValue(id, out var fallback)) display = Fallback(fallback.Place, fallback.Part);
+            var translated = i18n.Get("location." + id.ToLowerInvariant());
+            if (translated.HasValue()) display = translated.ToString();
+            else if (LocationNameFallbacks.Entries.TryGetValue(id, out var fallback)) display = Fallback(fallback.Place, fallback.Part);
             else if (id.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase) && id.EndsWith("_WarpRoom", StringComparison.OrdinalIgnoreCase))
                 display = Fallback("npc:" + id[7..^9], "scene");
         }

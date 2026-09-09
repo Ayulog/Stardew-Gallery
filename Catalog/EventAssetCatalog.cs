@@ -7,6 +7,7 @@ internal sealed class EventAssetCatalog : IEventAssetSourceCatalog
     private readonly NativePreconditionProbe probe = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
     public void VisitCurrent(Action<EventAssetSource> visit)
     {
+        var farmhouseEvents = Game1.content.Load<Dictionary<string, string>>("Data/Events/FarmHouse");
         Utility.ForEachLocation(location =>
         {
             if (!location.TryGetLocationEvents(out string assetName, out Dictionary<string, string> events))
@@ -14,7 +15,8 @@ internal sealed class EventAssetCatalog : IEventAssetSourceCatalog
 
             List<EventAssetDefinition> definitions = [];
             foreach ((string key, string script) in events)
-                definitions.Add(new EventAssetDefinition(key, script));
+                if (!NativeGlobalEventCopies.IsCopy(assetName, key, script, farmhouseEvents))
+                    definitions.Add(new EventAssetDefinition(key, script));
 
             visit(new EventAssetSource(
                 AssetName: assetName,

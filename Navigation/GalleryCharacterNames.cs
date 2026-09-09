@@ -49,6 +49,8 @@ internal sealed class GalleryCharacterNames
         // SVE explicitly uses this temporary costume actor in Claire's Joja scenes.
         if (names.ContainsKey("Claire")) aliases["ClaireJoja"] = "Claire";
         if (names.ContainsKey("Claire")) aliases["ClaireTheater"] = "Claire";
+        foreach (var (original, replacement) in new[] { ("Marlon", "MarlonFay"), ("Gunther", "GuntherSilvian"), ("Morris", "MorrisTod") })
+            if (names.ContainsKey(original) && names.ContainsKey(replacement)) aliases[original] = replacement;
     }
     internal string? Key(string raw, GalleryEvent? entry = null)
     {
@@ -63,6 +65,7 @@ internal sealed class GalleryCharacterNames
     internal string Get(string raw)
     {
         string id = Key(raw) ?? raw;
+        if (id == "HighlandsDwarf") return i18n.Get("character.highlandsdwarf");
         string? display = names.GetValueOrDefault(id);
         if (!GalleryNameText.IsMissing(display) && display != id) return display!;
         var translated = i18n.Get("character." + id.ToLowerInvariant());

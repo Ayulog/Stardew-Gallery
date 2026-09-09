@@ -20,3 +20,5 @@
 dev.4已按用户要求移除定义来源功能及数据表。地点分组保留所有原始资产/ID身份；Kenneth OFF/ON按地理位置归山脊、AlissaDate归山脊崖边，不能据此替换实际场景。图片场景和公主屯不按入口房屋强行归并。临时演员只凭明确命令/已核查别名归一，无法确认为人物的动画标识不占角色选项。本地名称证据见`drafts/星露谷画廊/research/20260909-query-corrections/names-and-locations.md`。
 
 dev.5在查询索引中进一步聚合相同地点显示名，保留独立事件身份；注册的隐藏不可社交圆点分身在Key查找前先归到本体。`LocationNameFallbacks`只提供已核对地点的可读描述，使用原地点/角色名称和本地化后缀组合，不参与执行。当前全量盘点与回退依据见`drafts/星露谷画廊/research/20260909-query-name-followup/REPORT.md`。
+
+dev.6的`NativeGlobalEventCopies`只识别游戏TryGetLocationEvents注入的两段爷爷剧情，匹配原FarmHouse完整键与脚本后省略异地副本，避免每个地图虚增同一剧情。不得将该规则泛化到不同键/脚本或其它ID；输入原字典保持只读。原版地名、Cellar显示组及SVE替代人物归并继续位于名称层。
