@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "会話イベントが進行中でないこと：{{id}}",
   "query.open": "イベント検索",
   "query.title": "イベント検索",
   "query.search": "イベントID・キャラクター・場所…",
@@ -39,7 +40,7 @@
   "nav.other-event": "その他のイベント",
   "nav.read-only": "閲覧のみ",
   "nav.no-results": "一致する結果がありません。まだ読み込まれていないイベントもあります。",
-  "nav.unavailable": "このイベントは現在読み込まれていません。コンテンツパックの読み込み条件による可能性があります。",
+  "nav.unavailable": "この一覧には該当する物語や解放手順の情報がありません。このIDは進行の記録、または未読み込みの内容を示している可能性があります。",
   "nav.back-detail": "前のイベントに戻る",
   "photo.title": "イベント写真",
   "photo.capture": "写真を撮る",
@@ -106,7 +107,7 @@
   "condition.world-state": "ワールド状態: {{id}}",
   "condition.native-query": "ゲーム条件: {{query}}",
   "condition.unsupported": "安全に解析できません: {{raw}}",
-  "condition.not": "次を満たさない: {{condition}}",
+  "condition.not": "次の状態でないことが条件：{{condition}}",
   "condition.sunny": "天候：晴れ",
   "condition.not-sunny": "天候：晴れではない",
   "condition.friendship-not": "次の友好度条件をすべては満たしていない：{{requirements}}",

@@ -23,6 +23,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D slotFrame;
     private readonly Texture2D scrollbarTrackTexture;
     private readonly IReadOnlyList<GalleryEvent> events;
+    private readonly string[] eventTitles;
+    private readonly string[] eventLabels;
+    private readonly float eventLabelScale;
     private readonly GalleryCharacterPanel leftPanel;
     private readonly int preferredComponentId;
     private int scrollRow;
@@ -53,6 +56,13 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         slotFrame = context.Textures.SlotFrame;
         scrollbarTrackTexture = context.Textures.Scrollbar;
         events = context.Catalog.HeartEventsFor(character.Name);
+        Rectangle header = Bounds(GallerySpreadLayout.EventCardHeaderBounds(0));
+        eventTitles = events.Select(EventTitle).ToArray();
+        float titleHeight = eventTitles.Select(title => Game1.smallFont.MeasureString(title).Y)
+            .Append(Game1.smallFont.LineSpacing).Max();
+        eventLabelScale = Math.Min(1f, header.Height / Math.Max(1f, titleHeight));
+        eventLabels = eventTitles.Select(title => GalleryTextFit.Ellipsize(title, header.Width / eventLabelScale,
+            text => Game1.smallFont.MeasureString(text).X)).ToArray();
         leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Textures.Scene);
         int focusIndex = EventCardFocus.TryFromComponentId(state.Focus, CardComponentBase, events.Count, out EventCardFocus restored)
             ? restored.EventIndex : -1;
@@ -260,6 +270,20 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         GalleryDrawing.DrawButton(b, backBounds, i18n.Get("detail.back"));
         upperRightCloseButton?.draw(b);
         GalleryDrawing.EndScaled(b);
+        for (int slot = 0; slot < visible; slot++)
+        {
+            int index = first + slot;
+            if (eventLabels[index] == eventTitles[index]) continue;
+            bool hover = ToScreen(Bounds(GallerySpreadLayout.EventCardHeaderBounds(slot))).Contains(Game1.getMouseX(true), Game1.getMouseY(true));
+            bool focused = Game1.options.snappyMenus && Game1.options.gamepadControls
+                && EventCardFocus.TryFromComponentId(currentlySnappedComponent?.myID ?? -1, CardComponentBase, events.Count, out EventCardFocus focus)
+                && focus.EventIndex == index;
+            if (hover || focused)
+            {
+                drawHoverText(b, Game1.parseText(eventTitles[index], Game1.smallFont, Math.Min(620, Math.Max(200, Game1.uiViewport.Width - 80))), Game1.smallFont);
+                break;
+            }
+        }
         drawMouse(b);
     }
 
@@ -276,13 +300,21 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         }
     }
 
-    private void DrawEvent(SpriteBatch b, GalleryEvent entry, int slot, int index)
+    private string EventTitle(GalleryEvent entry)
     {
         EventOwner owner = entry.Ownership.Owners.First(value => value.Name == character.Name);
         string hearts = owner.FriendshipPoints is int points
             ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
             : i18n.Get("event.unspecified");
-        GalleryDrawing.DrawLeftFitted(b, hearts + GalleryDrawing.TextSeparator + $"ID {entry.EventId}", Bounds(GallerySpreadLayout.EventCardHeaderBounds(slot)));
+        return hearts + GalleryDrawing.TextSeparator + $"ID {entry.EventId}";
+    }
+
+    private void DrawEvent(SpriteBatch b, GalleryEvent entry, int slot, int index)
+    {
+        Rectangle header = Bounds(GallerySpreadLayout.EventCardHeaderBounds(slot));
+        Vector2 size = Game1.smallFont.MeasureString(eventLabels[index]);
+        b.DrawString(Game1.smallFont, eventLabels[index], new Vector2(header.X, header.Center.Y - size.Y * eventLabelScale / 2),
+            Game1.textColor, 0f, Vector2.Zero, eventLabelScale, SpriteEffects.None, 0f);
         Rectangle detailWell = Bounds(GallerySpreadLayout.EventCardDetailsBounds(slot));
         string label = i18n.Get("event.details-short");
         Vector2 labelSize = Game1.smallFont.MeasureString(label);

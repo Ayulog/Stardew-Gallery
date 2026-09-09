@@ -2,6 +2,8 @@
 
 ## 2.5.0 - Story Gallery / 剧情画廊（开发中）
 
+- Polish negative requirement wording, use consistent album title sizing with full-ID tooltips, and align query/unlock actions at the bottom right. Explain unresolved IDs without assuming content-loading failure. / 明确否定要求文案，相册标题统一字号并提供完整ID提示；查询/解锁按钮并排放在右下，缺项ID不再直接断言未加载。
+
 - Keep the album focused on heart stories and add separate ID/NPC/location story search. Internal workflows remain hidden. / 主相册聚焦好感剧情，新增独立ID/NPC/地点自助查询，内部流程不展示。
 - Gate ordinary story replays behind an optional GMCM setting; unseen stories still require Unlock All. / 普通剧情回放增加默认关闭的GMCM开关；未经历剧情仍需一键解锁。
 - Separate story data, condition explanation, views, navigation, replay and photos. Reuse page state and one replay permission policy. / 事件资料、条件解释、视图、导航、回放与照片各自维护，统一页面状态和回放权限。

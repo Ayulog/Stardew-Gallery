@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "O tópico de conversa deve estar inativo: {{id}}",
   "query.open": "Buscar eventos",
   "query.title": "Busca de eventos",
   "query.search": "ID do evento, personagem ou local...",
@@ -39,7 +40,7 @@
   "nav.other-event": "Outro evento",
   "nav.read-only": "Somente leitura",
   "nav.no-results": "Nenhum resultado. Alguns eventos podem ainda não estar carregados.",
-  "nav.unavailable": "Este evento não está carregado no momento. As condições de um pacote de conteúdo podem impedir seu carregamento.",
+  "nav.unavailable": "O catálogo não tem informações sobre a história ou etapa de desbloqueio. O ID pode ser um marcador de progresso ou conteúdo ainda não carregado.",
   "nav.back-detail": "Voltar ao evento anterior",
   "photo.title": "Fotos do evento",
   "photo.capture": "Tirar foto",
@@ -106,7 +107,7 @@
   "condition.world-state": "Estado do mundo: {{id}}",
   "condition.native-query": "Condição do jogo: {{query}}",
   "condition.unsupported": "Não é possível interpretar com segurança: {{raw}}",
-  "condition.not": "Não ({{condition}})",
+  "condition.not": "Requisito: NÃO ({{condition}})",
   "condition.sunny": "Clima: ensolarado",
   "condition.not-sunny": "Clima: não ensolarado",
   "condition.friendship-not": "Nem todos os requisitos de amizade são atendidos: {{requirements}}",

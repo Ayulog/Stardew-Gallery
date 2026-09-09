@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "Dialogue topic must be inactive: {{id}}",
   "query.open": "Find events",
   "query.title": "Event search",
   "query.search": "Event ID, character or location...",
@@ -39,7 +40,7 @@
   "nav.other-event": "Other event",
   "nav.read-only": "View only",
   "nav.no-results": "No matches. Some events may not be loaded yet.",
-  "nav.unavailable": "This event is not loaded in the current content. Content pack conditions may prevent it from loading.",
+  "nav.unavailable": "No matching story or unlock-step information was found in this catalog. This ID may be a progress marker or refer to content that is not loaded.",
   "nav.back-detail": "Back to previous event",
   "photo.title": "Event photos",
   "photo.capture": "Take photo",
@@ -153,7 +154,7 @@
   "condition.world-state": "World state: {{id}}",
   "condition.native-query": "Game condition: {{query}}",
   "condition.unsupported": "Can't safely parse: {{raw}}",
-  "condition.not": "Not ({{condition}})",
+  "condition.not": "Required: NOT ({{condition}})",
   "condition.sunny": "Weather: sunny",
   "condition.not-sunny": "Weather: not sunny",
   "condition.friendship-not": "The following friendship requirements aren't all met: {{requirements}}",

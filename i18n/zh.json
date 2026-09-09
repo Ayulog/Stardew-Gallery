@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "对话事件须未在进行：{{id}}",
   "query.open": "事件查询",
   "query.title": "事件查询",
   "query.search": "搜索事件 ID、角色或地点……",
@@ -39,7 +40,7 @@
   "nav.other-event": "其他事件",
   "nav.read-only": "仅供查看",
   "nav.no-results": "没有匹配项，部分事件可能尚未加载。",
-  "nav.unavailable": "此事件当前未加载，可能受内容包加载条件限制。",
+  "nav.unavailable": "当前目录未找到对应剧情或解锁步骤资料。此 ID 可能是进度标记，也可能对应尚未载入的内容。",
   "nav.back-detail": "返回上一事件",
   "photo.title": "事件截图",
   "photo.capture": "拍摄截图",
@@ -153,7 +154,7 @@
   "condition.world-state": "世界状态：{{id}}",
   "condition.native-query": "游戏条件：{{query}}",
   "condition.unsupported": "暂不支持安全解析：{{raw}}",
-  "condition.not": "不满足（{{condition}}）",
+  "condition.not": "要求以下情况不成立：{{condition}}",
   "condition.sunny": "天气：晴朗",
   "condition.not-sunny": "天气：非晴天",
   "condition.friendship-not": "不同时满足以下好感要求：{{requirements}}",

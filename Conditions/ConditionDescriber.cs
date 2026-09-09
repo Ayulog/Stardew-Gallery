@@ -56,7 +56,7 @@ internal static class ConditionDescriber
         GenderCondition x => Named(x, "condition.gender", ("gender", Term("gender", x.Gender))),
         HasItemCondition x => Named(x, "condition.has-item", ("item", new ItemTextValue(x.ItemId))),
         TileCondition x => Named(x, "condition.designated-area"),
-        ActiveDialogueEventCondition x => Named(x, "condition.dialogue-event", ("id", Id(x.Id))),
+        ActiveDialogueEventCondition x => NamedNegative(x, "condition.dialogue-event", "condition.dialogue-event-not", ("id", Id(x.Id))),
         DayOfMonthCondition x => Named(x, "condition.day", ("day", List(x.Days.Select(d => Num(d))))),
         UpcomingFestivalCondition x => NamedNegative(x, "condition.upcoming-festival", "condition.no-upcoming-festival", ("days", Num(x.Days))),
         NativeQueryCondition x => DescribeQuery(x),

@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "A beszélgetési téma nem lehet aktív: {{id}}",
   "query.open": "Eseménykereső",
   "query.title": "Eseménykereső",
   "query.search": "Eseményazonosító, szereplő vagy hely...",
@@ -39,7 +40,7 @@
   "nav.other-event": "Egyéb esemény",
   "nav.read-only": "Csak megtekintés",
   "nav.no-results": "Nincs találat. Egyes események még nem töltődtek be.",
-  "nav.unavailable": "Ez az esemény jelenleg nincs betöltve. Egy tartalomcsomag feltételei megakadályozhatják a betöltését.",
+  "nav.unavailable": "A katalógusban nincs adat a történetről vagy feloldási lépésről. Az azonosító lehet haladásjelző vagy még be nem töltött tartalom.",
   "nav.back-detail": "Előző esemény",
   "photo.title": "Eseményfotók",
   "photo.capture": "Fotó készítése",
@@ -106,7 +107,7 @@
   "condition.world-state": "Világállapot: {{id}}",
   "condition.native-query": "Játékfeltétel: {{query}}",
   "condition.unsupported": "Nem értelmezhető biztonságosan: {{raw}}",
-  "condition.not": "Nem ({{condition}})",
+  "condition.not": "Feltétel: NEM ({{condition}})",
   "condition.sunny": "Időjárás: napos",
   "condition.not-sunny": "Időjárás: nem napos",
   "condition.friendship-not": "Nem teljesül minden barátsági követelmény: {{requirements}}",

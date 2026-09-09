@@ -311,8 +311,8 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         search.X = searchBounds.X;
         search.Y = searchBounds.Y;
         search.Width = searchBounds.Width;
-        unlockBounds = R(1014, 124, footerButton.Width, footerButton.Height);
-        queryBounds = R(1146, 818, 260, 58);
+        queryBounds = R(938, 818, 260, 58);
+        unlockBounds = R(1220, 818, queryBounds.Width, queryBounds.Height);
         scrollTrack = R(1534, 146, 24, 640);
         yesBounds = R(650, 540, 160, 56);
         noBounds = R(860, 540, 160, 56);
@@ -409,28 +409,30 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         }
         else
         {
+            int visible = Math.Min(Columns * VisibleRows, Math.Max(0, ResultCount - scrollRow * Columns));
+            int LastVisibleInColumn(int column) => visible == 0 ? SearchComponentId
+                : column >= visible ? visible - 1 : column + (visible - 1 - column) / Columns * Columns;
             searchComponent = new ClickableComponent(ToScreen(searchBounds), "search")
             {
                 myID = SearchComponentId,
-                rightNeighborID = UnlockComponentId,
-                downNeighborID = 0
+                rightNeighborID = upperRightCloseButton?.myID ?? -1,
+                downNeighborID = visible > 0 ? 0 : QueryComponentId
             };
             unlockComponent = new ClickableComponent(ToScreen(unlockBounds), "unlock")
             {
                 myID = UnlockComponentId,
-                leftNeighborID = SearchComponentId,
+                leftNeighborID = QueryComponentId,
                 rightNeighborID = upperRightCloseButton?.myID ?? -1,
-                upNeighborID = upperRightCloseButton?.myID ?? -1,
-                downNeighborID = Math.Min(3, Math.Max(0, ResultCount - 1))
+                upNeighborID = LastVisibleInColumn(5),
+                downNeighborID = -1
             };
             allClickableComponents.Add(searchComponent);
             allClickableComponents.Add(unlockComponent);
             allClickableComponents.Add(new ClickableComponent(ToScreen(queryBounds), "query")
             {
-                myID = QueryComponentId, upNeighborID = Math.Min(Columns * VisibleRows, ResultCount - scrollRow * Columns) - 1,
-                leftNeighborID = SearchComponentId
+                myID = QueryComponentId, upNeighborID = LastVisibleInColumn(3),
+                leftNeighborID = SearchComponentId, rightNeighborID = UnlockComponentId
             });
-            int visible = Math.Min(Columns * VisibleRows, Math.Max(0, ResultCount - scrollRow * Columns));
             for (int slot = 0; slot < visible; slot++)
             {
                 int col = slot % Columns;
@@ -440,8 +442,8 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
                     myID = slot,
                     leftNeighborID = col > 0 ? slot - 1 : -1,
                     rightNeighborID = col < Columns - 1 && slot + 1 < visible ? slot + 1 : -1,
-                    upNeighborID = row > 0 ? slot - Columns : col < 3 ? SearchComponentId : UnlockComponentId,
-                    downNeighborID = slot + Columns < visible ? slot + Columns : QueryComponentId
+                    upNeighborID = row > 0 ? slot - Columns : SearchComponentId,
+                    downNeighborID = slot + Columns < visible ? slot + Columns : col >= 4 ? UnlockComponentId : QueryComponentId
                 };
                 cardComponents.Add(card);
                 allClickableComponents.Add(card);
@@ -449,8 +451,8 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         }
         if (upperRightCloseButton is not null)
         {
-            upperRightCloseButton.leftNeighborID = confirming ? YesComponentId : UnlockComponentId;
-            upperRightCloseButton.downNeighborID = confirming ? YesComponentId : cardComponents.FirstOrDefault()?.myID ?? UnlockComponentId;
+            upperRightCloseButton.leftNeighborID = confirming ? YesComponentId : SearchComponentId;
+            upperRightCloseButton.downNeighborID = confirming ? YesComponentId : cardComponents.ElementAtOrDefault(5)?.myID ?? UnlockComponentId;
             allClickableComponents.Add(new ClickableComponent(ToScreen(upperRightCloseButton.bounds), upperRightCloseButton.name)
             {
                 myID = upperRightCloseButton.myID,

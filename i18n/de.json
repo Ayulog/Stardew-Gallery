@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "Gesprächsthema muss inaktiv sein: {{id}}",
   "query.open": "Ereignisse suchen",
   "query.title": "Ereignissuche",
   "query.search": "Ereignis-ID, Figur oder Ort...",
@@ -39,7 +40,7 @@
   "nav.other-event": "Anderes Ereignis",
   "nav.read-only": "Nur Ansicht",
   "nav.no-results": "Keine Treffer. Manche Ereignisse sind noch nicht geladen.",
-  "nav.unavailable": "Dieses Ereignis ist derzeit nicht geladen. Bedingungen eines Inhaltspakets können das Laden verhindern.",
+  "nav.unavailable": "Im aktuellen Katalog fehlen Angaben zur Geschichte oder zum Freischaltschritt. Diese ID kann einen Fortschrittsmarker oder nicht geladene Inhalte bezeichnen.",
   "nav.back-detail": "Zum vorigen Ereignis",
   "photo.title": "Eventfotos",
   "photo.capture": "Foto aufnehmen",
@@ -139,7 +140,7 @@
   "condition.world-state": "Weltstatus: {{id}}",
   "condition.native-query": "Spielbedingung: {{query}}",
   "condition.unsupported": "Kann nicht sicher ausgewertet werden: {{raw}}",
-  "condition.not": "Nicht ({{condition}})",
+  "condition.not": "Voraussetzung: NICHT ({{condition}})",
   "condition.sunny": "Wetter: sonnig",
   "condition.not-sunny": "Wetter: nicht sonnig",
   "condition.friendship-not": "Nicht alle Freundschaftsanforderungen erfüllt: {{requirements}}",

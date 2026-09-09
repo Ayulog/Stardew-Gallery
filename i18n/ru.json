@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "Тема разговора должна быть неактивна: {{id}}",
   "query.open": "Поиск событий",
   "query.title": "Поиск событий",
   "query.search": "ID события, персонаж или место...",
@@ -39,7 +40,7 @@
   "nav.other-event": "Другое событие",
   "nav.read-only": "Только просмотр",
   "nav.no-results": "Совпадений нет. Некоторые события могут быть ещё не загружены.",
-  "nav.unavailable": "Это событие сейчас не загружено. Условия пакета контента могут препятствовать его загрузке.",
+  "nav.unavailable": "В каталоге нет сведений об этой истории или этапе открытия. ID может обозначать отметку прогресса или незагруженное содержимое.",
   "nav.back-detail": "К предыдущему событию",
   "photo.title": "Снимки события",
   "photo.capture": "Сделать снимок",
@@ -106,7 +107,7 @@
   "condition.world-state": "Состояние мира: {{id}}",
   "condition.native-query": "Игровое условие: {{query}}",
   "condition.unsupported": "Невозможно безопасно разобрать: {{raw}}",
-  "condition.not": "Не ({{condition}})",
+  "condition.not": "Требуется: НЕ ({{condition}})",
   "condition.sunny": "Погода: солнечно",
   "condition.not-sunny": "Погода: не солнечно",
   "condition.friendship-not": "Не все требования дружбы выполнены: {{requirements}}",

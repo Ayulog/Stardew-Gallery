@@ -1,4 +1,5 @@
 {
+  "condition.dialogue-event-not": "Konuşma konusu etkin olmamalı: {{id}}",
   "query.open": "Olay ara",
   "query.title": "Olay arama",
   "query.search": "Olay kimliği, karakter veya konum...",
@@ -39,7 +40,7 @@
   "nav.other-event": "Diğer etkinlik",
   "nav.read-only": "Yalnızca görüntüleme",
   "nav.no-results": "Eşleşme yok. Bazı etkinlikler henüz yüklenmemiş olabilir.",
-  "nav.unavailable": "Bu etkinlik şu anda yüklü değil. İçerik paketinin koşulları yüklenmesini engelliyor olabilir.",
+  "nav.unavailable": "Katalogda bu hikaye veya açılma adımı için bilgi bulunamadı. Kimlik bir ilerleme işareti veya henüz yüklenmemiş içerik olabilir.",
   "nav.back-detail": "Önceki etkinliğe dön",
   "photo.title": "Etkinlik fotoğrafları",
   "photo.capture": "Fotoğraf çek",
@@ -106,7 +107,7 @@
   "condition.world-state": "Dünya durumu: {{id}}",
   "condition.native-query": "Oyun koşulu: {{query}}",
   "condition.unsupported": "Güvenle ayrıştırılamıyor: {{raw}}",
-  "condition.not": "Değil ({{condition}})",
+  "condition.not": "Gereken: DEĞİL ({{condition}})",
   "condition.sunny": "Hava: güneşli",
   "condition.not-sunny": "Hava: güneşli değil",
   "condition.friendship-not": "Şu arkadaşlık gereksinimlerinin tümü karşılanmıyor: {{requirements}}",

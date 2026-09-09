@@ -61,6 +61,22 @@ internal static class GalleryCorrectionChecks
         Check(GalleryUiRules.ResolveReturnPosition(15, 0, 2, 3, 20) == (5, 5), "stale scroll still keeps selected event visible");
         float scale = GalleryTextFit.Scale(600, 90, 328, 56);
         Check(scale * 600 <= 328.001f && scale * 90 <= 56.001f, "long labels fit both width and height with button padding");
+        string shortTitle = "14 hearts ID 1724099";
+        Check(ReferenceEquals(shortTitle, GalleryTextFit.Ellipsize(shortTitle, 100, text => text.Length)), "short titles retain their full text");
+        string longTitle = "14 hearts ID Parrot.RomRas_14HeartPart2";
+        Check(GalleryTextFit.Ellipsize(longTitle, 22, text => text.Length) == "14 hearts ID Parrot...", "long ID truncates without changing title scale");
+        Check(GalleryTextFit.Ellipsize("e\u0301abcdef", 5, text => text.Length) == "e\u0301...", "ellipsis does not split a combining text element");
+        Check(GalleryTextFit.Ellipsize("\ud83d\ude00abcdef", 4, text => text.Length) == "...", "ellipsis does not leave an unmatched surrogate");
+        ActiveDialogueEventCondition notActive = new("haleyCakewalk2", ConditionSource.LegacyEventPrecondition, "!ActiveDialogueEvent haleyCakewalk2", true);
+        ConditionTextSpec notActiveText = ConditionDescriber.Describe(notActive);
+        Check(notActiveText.Negated && notActiveText.NaturalNegativeKey == "condition.dialogue-event-not", "negated dialogue uses a requirement description, not a failed status label");
+        ConditionEvaluationContext absent = new(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)
+            { Details = new() { ActiveDialogues = new HashSet<string>() } };
+        ConditionEvaluator evaluator = new(null);
+        Check(ConditionRowPresentation.Status(evaluator.Evaluate(notActive, absent)) == ConditionStatusIcon.Check,
+            "inactive dialogue satisfies the negative requirement");
+        Check(ConditionRowPresentation.Status(evaluator.Evaluate(notActive, absent with { Details = new() { ActiveDialogues = new HashSet<string> { "haleyCakewalk2" } } })) == ConditionStatusIcon.Cross,
+            "active dialogue fails the negative requirement");
         Console.WriteLine("Gallery 2.1.2 correction checks passed.");
     }
 
