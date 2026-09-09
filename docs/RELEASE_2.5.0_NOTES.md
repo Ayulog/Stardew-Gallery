@@ -23,7 +23,7 @@ To uninstall, remove `Mods/StardewGallery` after keeping any photos or personal 
 
 The catalog reflects currently discoverable content; saves and CP conditions can produce different lists. Inactive content-pack branches and arbitrary C# scenes are not guaranteed to appear. Unsupported conditions remain unknown. Replay is single-player only and protects covered native state, not arbitrary third-party files, private state or callbacks.
 
-Build, logic/localization and persistence checks passed. The final development build was accepted after the user's Windows gameplay testing. Isolated rendering checks cover all 12 maintained languages; this is not exhaustive testing of every mod combination or platform. Release preparation changes documentation only relative to that accepted build.
+Build, logic/localization and persistence checks passed. The user accepted dev.6 after Windows gameplay testing, then reported a confirmation-dialog layout issue during release preparation. The dialog fix passes isolated checks across all 12 languages and five viewport sizes; its final in-game confirmation is pending. This is not exhaustive testing of every mod combination or platform.
 
 ## 中文
 
@@ -42,6 +42,6 @@ Build, logic/localization and persistence checks passed. The final development b
 
 目录随当前存档和内容加载条件变化，不保证包含未生效分支或任意C#场景；未知条件仍保留问号。回放仅单人可用，保护范围不含第三方外部文件、私有状态和任意回调。
 
-构建、逻辑/本地化、存储检查通过；用户在Windows实机测试最终开发包后确认可发布。12语言隔离渲染通过，不等同于所有模组组合与平台全面实测。相对已验收包，本次发布准备仅调整文档。
+构建、逻辑/本地化、存储检查通过；用户认可dev.6后，在发布准备期间新增回放确认框越界反馈。修复通过12语言、五种视口隔离检查，新增弹窗修复的最终实机确认待完成。不等同于所有模组组合与平台全面实测。
 
 [Changelog / 更新日志](https://github.com/Ayulog/Stardew-Gallery/blob/v2.5.0/CHANGELOG.md) · [Source and license / 源码与许可](https://github.com/Ayulog/Stardew-Gallery/tree/v2.5.0)

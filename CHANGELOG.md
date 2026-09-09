@@ -2,6 +2,8 @@
 
 ## 2.5.0 - 2026-09-10 - Story Gallery / 剧情画廊
 
+- Fit the replay confirmation dialog to the current window, wrap long translations and keep both controls visible when resizing. / 回放确认框适配当前窗口，长翻译自动换行，改变窗口尺寸时正文与按钮重新定位。
+
 - Add missing vanilla location names including Ginger Island; merge replacement NPC IDs and distinguish the Highlands dwarf. Ignore exact native copies of Grandpa's two global scenes outside their original farmhouse asset. / 补齐姜岛等原版地名，合并替代NPC身份并区分高地矮人；移除游戏注入各地图的爷爷两段剧情副本，保留原始农舍定义和实际覆盖变体。
 
 - Merge registered cosmetic NPC copies and identical location labels in query filters; expand readable location fallbacks and simplify progress labels. / 合并查询中的注册外观分身与同名地点，遍历当前地点清单补充可读译名，简化进度状态文案。

@@ -80,7 +80,7 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
         if (showWarning() && !warningShown)
         {
             confirmationPending = true;
-            Game1.activeClickableMenu = new ConfirmationDialog(helper.Translation.Get("replay.warning"), _ =>
+            Game1.activeClickableMenu = new GalleryReplayConfirmationDialog(helper.Translation.Get("replay.warning"), _ =>
             {
                 confirmationPending = false;
                 warningShown = true;
