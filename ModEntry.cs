@@ -4,6 +4,7 @@ using StardewValley;
 using StardewValley.Menus;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using StardewGallery.Appearance;
 
 namespace StardewGallery;
 
@@ -20,6 +21,7 @@ internal sealed class ModEntry : Mod
     private GalleryApplication application = null!;
     private bool replayProtectionReady;
     private GalleryPhotos photos = null!;
+    private CharacterAppearance appearance = null!;
 
     internal ModConfig Config { get; private set; } = new();
 
@@ -59,7 +61,10 @@ internal sealed class ModEntry : Mod
         tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-horizontal-v5.png");
         replayService = new ReplayService(helper, Monitor, replay, () => replayProtectionReady,
             () => Config.EnableOrdinaryEventReplay, () => unlockAll, () => Config.ShowRollbackWarning);
-        application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock);
+        appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor);
+        application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock, appearance);
+        helper.Events.GameLoop.SaveLoaded += (_, _) => appearance.Invalidate();
+        helper.Events.GameLoop.DayStarted += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); replayService.ResetWarnings(); application.Reset(); };
         helper.Events.GameLoop.SaveLoaded += (_, _) => photos.Load(new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID));
         helper.Events.GameLoop.GameLaunched += (_, _) => RegisterGmcm();
@@ -72,10 +77,12 @@ internal sealed class ModEntry : Mod
             replayService.ResetWarnings();
             application.Reset();
             photos.Dispose();
+            appearance.Invalidate();
         };
         helper.Events.Content.LocaleChanged += (_, _) => catalog.Invalidate();
         helper.Events.Content.AssetsInvalidated += (_, e) =>
         {
+            if (e.NamesWithoutLocale.Any(appearance.UsesAsset)) appearance.Invalidate();
             if (e.NamesWithoutLocale.Any(name =>
                 name.IsEquivalentTo("Data/Characters") || name.Name.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase)))
                 catalog.Invalidate();

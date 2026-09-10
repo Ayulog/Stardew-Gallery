@@ -2,6 +2,9 @@ using System.Text;
 using System.Text.Json;
 using StardewGallery;
 
+AppearanceChecks.Run();
+if (args.Contains("--appearance")) return;
+
 GallerySearchChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();

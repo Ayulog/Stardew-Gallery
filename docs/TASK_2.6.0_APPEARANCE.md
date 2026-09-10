@@ -1,0 +1,51 @@
+# 2.6.0 角色外观兼容 Delta Task
+
+基线：2.5.0 `c4435f0`。开发版：2.6.0-dev.1。状态：开发交付，待兼容实测。
+
+## 目标
+
+新增独立角色外观模块，统一首页肖像和相册小人的获取、缩放、缓存及失效。首批覆盖普通 CP 替图、Seasonal Outfits 5450，以及用户提供的 Mud 29979 1.3 包使用的 DDFC/Scale Up Unofficial。保持原有页面尺寸、导航、未认识角色遮罩与无美化时的外观。
+
+## 边界
+
+- 框架按玩家安装情况可选接入，画廊不携带第三方立绘、不更改其他 Mod 文件。
+- 不改变事件分类、目录扫描、条件判断、回放权限、存档保护及照片持久化。
+- 本次不制作画册皮肤，不扩展 Portraiture 专用适配，不改回放环境或模拟框架生命周期事件。
+- 普通 CP 通过游戏当前外观读取；DDFC 通过公开数据资产取得帧区域；Scale Up 继承框架绘制，必要的尺寸/锚点处理集中在适配器。
+- 角色外观模块不引用事件目录/条件/回放模块。页面提供身份与绘制区域，组合入口负责创建及注入。
+
+## 验证
+
+- 构建和针对性外观检查：64/1000 像素帧、CopyFrom、异常/缺失回退、缓存失效、放大小人锚点。
+- 隔离 UI 渲染：原版与合成高清素材、缩小窗口、首页与相册/详情入口；保留12语言布局。
+- 用户实测：分别启用5450和Mud美化，查看首页肖像、相册小人、换装刷新及回放后返回。框架组合实测前不声明全面兼容，不合并main或发布Release。
+
+参考：项目工作区 `drafts/星露谷画廊/research/20260910-appearance-compatibility.md`。
+
+## 接入依据与限制
+
+- 目标安装版本：DDFC 0.7.5、Scale Up Unofficial 2.7.0、Mud 29979 1.3。框架 DLL 只复制到工作区辅助验证，不进入画廊成品。
+- DDFC 的 GetSpeakerDisplayData 会写入框架共享的对话缓存，不适合相册批量探测；改用 `GameContent.Load<object>` 读取其公开字典，再投影公开字段为独立快照。复用资源名与 CopyFrom 协议，不调用条件查询，不改变真实 NPC 或对话状态。
+- 按地点/当前外观/可确认海滩贴图/角色/default 选择；CopyFrom 按整个 Portrait 部件回退。不能从公开状态确认的海滩别名、更新版自定义条件，以及框架全局禁用但仍保留旧资源的热切换不声明完整兼容；框架设置变化后可重启游戏确认。
+- Scale Up 没有 GetApi，绘制使用其公开静态 `ScalesByAsset`。适配器通过反射读取该公开索引和公开元数据，以匹配实际绘制规则；不读取私有状态、不新加 Harmony 补丁。接口形状失配会回退，无硬依赖。
+- 首页固定 96x96 槽位，相册逻辑布局维持不变。缓存最多保留40份外观引用；只借用游戏/框架贴图，不创建高清副本，不销毁借用资源。
+- 当前真实 NPC 的资源切换可即时反映；画廊不主动调用 ChooseAppearance 重新求值，也不替 CP 模拟 DayStarted。季节/地点选择以游戏已生效外观为准。
+
+源码依据：[DDFC 数据协议](https://github.com/MangusuPixel/DialogueDisplayFrameworkContinued/blob/main/docs/api.md)、[DDFC 选择及缓存](https://github.com/MangusuPixel/DialogueDisplayFrameworkContinued/blob/main/Framework/DialogueBoxInterface.cs)、[Scale Up 小人绘制](https://github.com/Arborsm/ScaleUpUnofficial/blob/master/ScaleUpUnofficial/HarmonyPatches.SpriteInDetail.cs)。两框架以 GPLv3 开源；本包不捆绑其 DLL 或美术。
+
+## 已完成验证
+
+- Release 构建通过，0警告/0错误；目标游戏1.6.15、SMAPI4.5.2与net6.0保持不变。
+- `dotnet run --project Checks/StardewGallery.Checks.csproj -c Release -- --appearance`：51项外观检查通过。
+- 工作区已有 StoryUiQa 新增 appearance 模式：9项集成断言通过，包括真实 DDFC 0.7.5 数据类型、Mud CopyFrom 配置、缓存复用、当前肖像切换和真实 Scale Up 2.7.0 Draw 补丁的最终像素边界/居中。
+- 12种语言、960宽窗口首页与相册，加上1280宽首页/相册/详情，共29张完整界面截图，29项非空界面检查通过。纹理采用合成色块，不包含第三方立绘美术；截图及报告在工作区 `assets/星露谷画廊/2.6.0-appearance-qa/dev1-final/`。
+- 测试夹具对非目标角色仍使用原版尺寸，触发3种预期的尺寸不匹配回退；目标角色无警告。第一次隔离运行缺少框架贴图尺寸缓存，补齐测试夹具后通过，未当作生产故障。
+- 所有检查针对本轮外观，事件真值、回放生命周期及持久化未改，不重复旧版完整审计。
+
+## 最小实测
+
+1. 启用 Mud 美化与对应框架，检查首页六位角色立绘完整，相册小人居中且没有越框。
+2. 在正常游戏换装/换季后重新打开画廊，确认跟随当前外观；有5450时单独验证该组合。
+3. 回放后返回相册，检查小人、肖像、返回位置和封面仍正常。此项只验证返回外观，不代表新增了历史服装重建。
+
+未实测部分保持待验收；本次不合并main、不发布Release。

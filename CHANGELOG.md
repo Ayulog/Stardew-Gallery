@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 2.6.0-dev.1 - Character Appearance / 角色外观兼容开发版
+
+- Centralize gallery portraits and sprite previews in an independent appearance module; use current NPC textures and refresh local visual caches. / 独立管理肖像与小人预览，跟随当前角色外观并刷新本地缓存。
+- Read DDFC public portrait metadata, including inherited frame sizes, and fit large portraits inside existing cards. / 读取 DDFC 公开肖像数据与继承的帧尺寸，让高清立绘完整放入既有卡片。
+- Account for Scale Up Unofficial's final sprite size and origin without applying its texture scale twice. / 按 Scale Up Unofficial 的最终尺寸与锚点安排小人，避免重复放大和位置偏移。
+- Development build: isolated rendering verified; real-save seasonal outfit and mod-combination acceptance pending. / 开发版：隔离渲染已验证，换装及模组组合仍待真实存档实测。
+
 ## 2.5.0 - 2026-09-10 - Story Gallery / 剧情画廊
 
 - Fit the replay confirmation dialog to the current window, wrap long translations and keep both controls visible when resizing. / 回放确认框适配当前窗口，长翻译自动换行，改变窗口尺寸时正文与按钮重新定位。

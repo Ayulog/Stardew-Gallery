@@ -1,5 +1,9 @@
 # Stardew Gallery / 星露谷画廊
 
+本分支为 **2.6.0-dev.1 角色外观兼容开发版**：跟随当前 NPC 外观，适配 DDFC 大立绘与 Scale Up 小人。隔离渲染通过，真实存档兼容实测待完成；详见 [开发记录](docs/TASK_2.6.0_APPEARANCE.md)。下方 2.5.0 链接仍指向已发布稳定版。
+
+This branch contains **2.6.0-dev.1**, with current NPC appearances, DDFC portrait sizing and Scale Up sprite placement. Isolated rendering passed; real-save compatibility acceptance is pending. The 2.5.0 links below still point to the stable release.
+
 Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)

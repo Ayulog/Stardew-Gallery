@@ -63,7 +63,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         eventLabelScale = Math.Min(1f, header.Height / Math.Max(1f, titleHeight));
         eventLabels = eventTitles.Select(title => GalleryTextFit.Ellipsize(title, header.Width / eventLabelScale,
             text => Game1.smallFont.MeasureString(text).X)).ToArray();
-        leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Textures.Scene);
+        leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Textures.Scene, context.Appearance);
+        leftPanel.Prepare();
         int focusIndex = EventCardFocus.TryFromComponentId(state.Focus, CardComponentBase, events.Count, out EventCardFocus restored)
             ? restored.EventIndex : -1;
         (scrollRow, _) = GalleryUiRules.ResolveReturnPosition(
@@ -88,6 +89,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     public override void update(GameTime time)
     {
         base.update(time);
+        leftPanel.Prepare();
         if (pendingInitialSnap && Game1.options.snappyMenus && Game1.options.gamepadControls)
         {
             pendingInitialSnap = false;

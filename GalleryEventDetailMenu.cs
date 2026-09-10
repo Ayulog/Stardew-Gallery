@@ -87,7 +87,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         statusIcons = context.Textures.ConditionIcons;
         scrollbarTrackTexture = context.Textures.Scrollbar;
         photos = context.Photos;
-        leftPanel = character is null ? null : new GalleryCharacterPanel(character, context.Catalog.HeartEventsFor(character.Name), i18n, context.Textures.Scene);
+        leftPanel = character is null ? null : new GalleryCharacterPanel(character, context.Catalog.HeartEventsFor(character.Name), i18n, context.Textures.Scene, context.Appearance);
+        leftPanel?.Prepare();
         scroll = state.Scroll;
         int initialFocus = state.Focus;
         RecalculateLayout();
@@ -107,6 +108,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     public override void update(GameTime time)
     {
         base.update(time);
+        leftPanel?.Prepare();
         SaveState();
     }
 

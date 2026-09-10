@@ -4,6 +4,7 @@ using StardewModdingAPI;
 using StardewValley;
 using StardewValley.BellsAndWhistles;
 using StardewValley.GameData.Characters;
+using StardewGallery.Appearance;
 
 namespace StardewGallery;
 
@@ -11,30 +12,16 @@ internal sealed class GalleryCharacterPanel(
     GalleryCharacter character,
     IReadOnlyList<GalleryEvent> events,
     ITranslationHelper i18n,
-    Texture2D scene)
+    Texture2D scene,
+    ICharacterAppearance appearance)
 {
-    private AnimatedSprite? previewSprite;
+    internal void Prepare() => appearance.Prepare(character.Name, CharacterVisual.Sprite);
 
     internal void DrawPhoto(SpriteBatch b)
     {
         Rectangle photo = Bounds(GallerySpreadLayout.PortraitBounds);
         b.Draw(scene, photo, Color.White);
-        previewSprite ??= Game1.getCharacterFromName(character.Name)?.Sprite?.Clone();
-        if (previewSprite?.Texture is null)
-            return;
-
-        switch ((int)(Game1.currentGameTime.TotalGameTime.TotalMilliseconds / 1800) % 4)
-        {
-            case 0: previewSprite.AnimateDown(Game1.currentGameTime); break;
-            case 1: previewSprite.AnimateLeft(Game1.currentGameTime); break;
-            case 2: previewSprite.AnimateUp(Game1.currentGameTime); break;
-            default: previewSprite.AnimateRight(Game1.currentGameTime); break;
-        }
-        float scale = Math.Min(4f, Math.Min(photo.Width * .65f / previewSprite.SpriteWidth, photo.Height * .72f / previewSprite.SpriteHeight));
-        Vector2 size = new(previewSprite.SpriteWidth * scale, previewSprite.SpriteHeight * scale);
-        Vector2 position = new(photo.Center.X - size.X / 2, photo.Y + (int)Math.Round(photo.Height * .76f) - size.Y);
-        previewSprite.drawShadow(b, position, scale, .45f);
-        previewSprite.draw(b, position, .9f, 0, 0, Color.White, false, scale);
+        appearance.Draw(b, character.Name, CharacterVisual.Sprite, photo, Color.White);
     }
 
     internal void DrawInformation(SpriteBatch b)

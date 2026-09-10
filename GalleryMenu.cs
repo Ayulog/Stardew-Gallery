@@ -6,6 +6,7 @@ using StardewValley;
 using StardewValley.BellsAndWhistles;
 using StardewValley.Menus;
 using static StardewGallery.GalleryDrawing;
+using StardewGallery.Appearance;
 
 namespace StardewGallery;
 
@@ -73,6 +74,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         RecalculateLayout();
         RefreshFilter();
         scrollRow = Math.Clamp(state.Scroll, 0, MaxScroll);
+        PreparePortraits();
         BuildClickableComponents();
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == state.Focus)
             ?? cardComponents.FirstOrDefault() ?? searchComponent;
@@ -238,6 +240,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
     {
         base.update(time);
         RefreshFilter();
+        PreparePortraits();
         SaveState();
     }
 
@@ -333,20 +336,21 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
     private void DrawCharacter(SpriteBatch b, Rectangle card, GalleryCharacter character)
     {
         bool known = character.IsMet || isUnlocked();
-        string textureName = NPC.getTextureNameForCharacter(character.Name);
-        string asset = $"Portraits\\{textureName}";
-        if (Game1.content.DoesAssetExist<Texture2D>(asset))
-        {
-            Texture2D portrait = Game1.content.Load<Texture2D>(asset);
-            Rectangle source = new(0, 0, Math.Min(64, portrait.Width), Math.Min(64, portrait.Height));
-            b.Draw(portrait, new Rectangle(card.Center.X - 48, card.Y, 96, 96), source, known ? Color.White : Color.Black * .82f);
-        }
+        context.Appearance.Draw(b, character.Name, CharacterVisual.Portrait,
+            new Rectangle(card.Center.X - 48, card.Y, 96, 96), known ? Color.White : Color.Black * .82f);
         DrawCentered(b, GalleryUiRules.DisplayName(character.DisplayName, character.IsMet, isUnlocked()), new Rectangle(card.X, card.Y + 100, card.Width, 32));
         string count = heartCounts.GetValueOrDefault(character.Name).ToString();
         float countWidth = Math.Min(90, Game1.smallFont.MeasureString(count).X);
         int left = card.Center.X - (int)(countWidth + 30) / 2;
         b.Draw(Game1.mouseCursors, new Rectangle(left, card.Y + 135, 24, 21), new Rectangle(211, 428, 7, 6), Color.White);
         DrawLeftFitted(b, count, new Rectangle(left + 30, card.Y + 132, (int)Math.Ceiling(countWidth), 28));
+    }
+
+    private void PreparePortraits()
+    {
+        int first = scrollRow * Columns;
+        for (int i = first; i < Math.Min(ResultCount, first + Columns * VisibleRows); i++)
+            context.Appearance.Prepare(filtered[i].Name, CharacterVisual.Portrait);
     }
 
     private void RefreshFilter()

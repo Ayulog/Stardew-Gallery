@@ -2,11 +2,12 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Menus;
+using StardewGallery.Appearance;
 
 namespace StardewGallery;
 
 internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, GalleryCatalogCache catalog,
-    GalleryPhotos photos, ReplayService replay, Func<bool> isUnlocked, Action toggleUnlock) : IGalleryNavigation
+    GalleryPhotos photos, ReplayService replay, Func<bool> isUnlocked, Action toggleUnlock, ICharacterAppearance appearance) : IGalleryNavigation
 {
     private readonly GalleryPageHistory history = new();
     private GalleryViewContext? view;
@@ -24,7 +25,7 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
                 Load("assets/CharacterScene-day-v2.png"), Load(EventThumbnailAsset.For()), Load(GalleryUiAssets.ReplayGlyph),
                 Load(GalleryUiAssets.EventSlotFrame), Load(GalleryUiAssets.ScrollbarTrack), Load(GalleryUiAssets.ConditionStatusIcons));
             names ??= new EventNameStore(Path.Combine(helper.DirectoryPath, "user-data"), warning => monitor.Log(warning, LogLevel.Warn));
-            view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access) { Names = names };
+            view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access) { Names = names, Appearance = appearance };
             history.Reset(); ShowCurrent(); Game1.playSound("bigSelect");
         }
         catch (Exception error) { monitor.Log($"Gallery open failed: {error}", LogLevel.Error); }
