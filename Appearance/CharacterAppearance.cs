@@ -14,16 +14,18 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     }
     private readonly IGameContentHelper content;
     private readonly IMonitor monitor;
+    private readonly Texture2D placeholder;
     private readonly DialoguePortraits dialogue;
     private readonly ScaleUpSprites scaleUp;
     private readonly Dictionary<(string Name, CharacterVisual Kind), Visual> visuals = [];
-    private readonly HashSet<(string Name, CharacterVisual Kind)> failed = [];
+    private readonly Dictionary<(string Name, CharacterVisual Kind), double> failed = [];
     private readonly HashSet<string> warnings = [];
     private long clock;
 
-    internal CharacterAppearance(IGameContentHelper content, IModRegistry registry, IMonitor monitor)
+    internal CharacterAppearance(IGameContentHelper content, IModRegistry registry, IMonitor monitor, Texture2D placeholder)
     {
         this.content = content; this.monitor = monitor;
+        this.placeholder = placeholder;
         dialogue = new(content, registry); scaleUp = new(registry);
     }
 
@@ -43,19 +45,27 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     public void Prepare(string name, CharacterVisual kind)
     {
         var key = (name, kind);
-        if (failed.Contains(key)) return;
+        if (failed.TryGetValue(key, out double retryAt) && Game1.currentGameTime.TotalGameTime.TotalMilliseconds < retryAt)
+        {
+            if (kind == CharacterVisual.Sprite) Prepare(name, CharacterVisual.Portrait);
+            return;
+        }
+        failed.Remove(key);
         try
         {
             NPC? npc = Game1.getCharacterFromName(name);
-            Texture2D? original = kind == CharacterVisual.Portrait ? npc?.Portrait : npc?.Sprite?.Texture;
-            if (original is null && kind == CharacterVisual.Portrait)
+            Texture2D? original = null;
+            try { original = kind == CharacterVisual.Portrait ? npc?.Portrait : npc?.Sprite?.Texture; }
+            catch (Exception error) { Warn("source:" + name + kind, $"Current appearance could not be read for {name}: {error.Message}"); }
+            if ((original is null || original.IsDisposed) && kind == CharacterVisual.Portrait)
             {
                 string asset = "Portraits/" + NPC.getTextureNameForCharacter(name);
-                if (Game1.content.DoesAssetExist<Texture2D>(asset)) original = content.Load<Texture2D>(asset);
+                original = content.Load<Texture2D>(asset);
             }
-            if (original is null || original.IsDisposed) { visuals.Remove(key); return; }
+            if (original is null || original.IsDisposed) { Failed(name, kind); return; }
             string context = (npc?.LastAppearanceId ?? "") + "|" + npc?.currentLocation?.NameOrUniqueName
-                + "|" + original.Name + "|" + npc?.Sprite?.SpriteWidth + "|" + npc?.Sprite?.SpriteHeight;
+                + "|" + original.Name;
+            if (kind == CharacterVisual.Sprite) context += "|" + npc?.Sprite?.SpriteWidth + "|" + npc?.Sprite?.SpriteHeight;
             DetailedSprite? detailed = kind == CharacterVisual.Sprite ? scaleUp.Get(original.Name) : null;
             if (visuals.TryGetValue(key, out var cached) && ReferenceEquals(cached.Original, original)
                 && cached.Context == context && cached.Detailed == detailed && !cached.Texture.IsDisposed)
@@ -100,21 +110,29 @@ internal sealed class CharacterAppearance : ICharacterAppearance
         }
         catch (Exception error)
         {
-            visuals.Remove(key); failed.Add(key);
+            Failed(name, kind);
             Warn("prepare:" + name + kind, $"Appearance unavailable for {name}: {error.Message}");
         }
     }
 
     public void Draw(SpriteBatch batch, string name, CharacterVisual kind, Rectangle bounds, Color tint)
     {
-        if (!visuals.TryGetValue((name, kind), out var visual) || visual.Texture.IsDisposed) return;
+        if (TryDraw(batch, name, kind, bounds, tint)) return;
+        if (kind == CharacterVisual.Sprite && TryDraw(batch, name, CharacterVisual.Portrait, bounds, tint)) return;
+        var fit = AppearanceGeometry.Fit(bounds.X, bounds.Y, bounds.Width, bounds.Height, placeholder.Width, placeholder.Height);
+        batch.Draw(placeholder, new Rectangle((int)fit.X, (int)fit.Y, (int)fit.Width, (int)fit.Height), tint);
+    }
+
+    private bool TryDraw(SpriteBatch batch, string name, CharacterVisual kind, Rectangle bounds, Color tint)
+    {
+        if (!visuals.TryGetValue((name, kind), out var visual) || visual.Texture.IsDisposed) return false;
         try
         {
             if (kind == CharacterVisual.Portrait)
             {
-                if (visual.Portrait?.Disabled == true) return;
+                if (visual.Portrait?.Disabled == true) return false;
                 var frame = visual.Portrait ?? new PortraitFrame(null, Width: Math.Min(64, visual.Texture.Width), Height: Math.Min(64, visual.Texture.Height));
-                if (!frame.TryRegion(visual.Texture.Width, visual.Texture.Height, out var r)) return;
+                if (frame.Alpha <= 0 || !frame.TryRegion(visual.Texture.Width, visual.Texture.Height, out var r)) return false;
                 var fit = AppearanceGeometry.Fit(bounds.X, bounds.Y, bounds.Width, bounds.Height, r.Width, r.Height);
                 batch.Draw(visual.Texture, new Rectangle((int)fit.X, (int)fit.Y, (int)fit.Width, (int)fit.Height),
                     new Rectangle(r.X, r.Y, r.Width, r.Height), tint * Math.Clamp(frame.Alpha, 0, 1));
@@ -129,12 +147,23 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                     p.Scale, SpriteEffects.None, .45f);
                 sprite.draw(batch, position, .9f, 0, 0, tint, false, p.Scale);
             }
+            else return false;
+            return true;
         }
         catch (Exception error)
         {
-            visuals.Remove((name, kind)); failed.Add((name, kind));
+            visuals.Remove((name, kind));
+            failed[(name, kind)] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
             Warn("draw:" + name + kind, $"Appearance drawing failed for {name}: {error.Message}");
+            return false;
         }
+    }
+
+    private void Failed(string name, CharacterVisual kind)
+    {
+        visuals.Remove((name, kind));
+        failed[(name, kind)] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+        if (kind == CharacterVisual.Sprite) Prepare(name, CharacterVisual.Portrait);
     }
 
     private static void Animate(AnimatedSprite? sprite)

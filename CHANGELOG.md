@@ -1,5 +1,10 @@
 # Changelog / 更新日志
 
+## 2.6.0-dev.2 - Appearance Fallback / 外观读取兜底
+
+- Use a game portrait when current appearance reading fails, a portrait when a sprite is unavailable, and the gallery icon when neither can be drawn. Retry failed reads after a short delay without repeated warnings. / 当前外观读取失败时尝试游戏肖像，小人不可用时回退肖像，两者都失败时使用画廊占位图；延迟重试并限制重复日志。
+- Cosmetic conflict coordination and gallery theme development are deferred. / 美化冲突协调与画廊主题开发暂缓，当前专注读取和显示兜底。
+
 ## 2.6.0-dev.1 - Character Appearance / 角色外观兼容开发版
 
 - Centralize gallery portraits and sprite previews in an independent appearance module; use current NPC textures and refresh local visual caches. / 独立管理肖像与小人预览，跟随当前角色外观并刷新本地缓存。

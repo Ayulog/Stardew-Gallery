@@ -1,7 +1,7 @@
 {
   "Name": "Stardew Gallery",
   "Author": "sjt38",
-  "Version": "2.6.0-dev.1",
+  "Version": "2.6.0-dev.2",
   "Description": "Collect NPC heart stories, look up story prerequisites, and revisit experienced stories with replay photos and covers.",
   "UniqueID": "sjt38.StardewGallery",
   "EntryDll": "StardewGallery.dll",

@@ -61,7 +61,7 @@ internal sealed class ModEntry : Mod
         tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-horizontal-v5.png");
         replayService = new ReplayService(helper, Monitor, replay, () => replayProtectionReady,
             () => Config.EnableOrdinaryEventReplay, () => unlockAll, () => Config.ShowRollbackWarning);
-        appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor);
+        appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor, tabIcon);
         application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock, appearance);
         helper.Events.GameLoop.SaveLoaded += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.DayStarted += (_, _) => appearance.Invalidate();
