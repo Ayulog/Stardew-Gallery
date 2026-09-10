@@ -1,5 +1,10 @@
 # Changelog / 更新日志
 
+## 2.6.0-dev.4 - Portrait Recovery / 肖像缓存恢复
+
+- Commit DDFC metadata only after a complete successful read; retry temporary metadata and portrait-override failures without requiring a new day or asset invalidation. / DDFC完整读取成功后才保存元数据，临时加载失败可自动重试，不再等待换日或额外清缓存。
+- Recognize standard 64px portrait sheets when another mod's large-frame metadata no longer matches the active image. Preserve explicit warnings and placeholders for unknown layouts. / 当前贴图为标准64像素肖像时采用其正确裁图，避免套用其他美化的大图尺寸；未知布局仍保留明确警告和占位。
+
 ## 2.6.0-dev.3 - Portraiture Compatibility / Portraiture 肖像读取
 
 - Draw Portraiture's actual HD image in gallery bounds using its declared scale or forced frame, independent of Above Box dialogue placement. / 按Portraiture声明的缩放或指定区域绘制真实高清图，保持画廊槽位，不受对话框上方立绘位置影响。

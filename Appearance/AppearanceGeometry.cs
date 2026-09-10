@@ -3,6 +3,9 @@ namespace StardewGallery.Appearance;
 internal sealed record PortraitFrame(string? TexturePath, int X = -1, int Y = -1, int Width = 64, int Height = 64,
     float Alpha = 1, bool Disabled = false)
 {
+    internal static PortraitFrame? FromGameSheet(int width, int height)
+        => width is 64 or 128 && height >= 64 && height % 64 == 0 ? new(TexturePath: null) : null;
+
     internal bool TryRegion(int textureWidth, int textureHeight, out (int X, int Y, int Width, int Height) region)
     {
         int x = X >= 0 && Y >= 0 ? X : 0, y = X >= 0 && Y >= 0 ? Y : 0;

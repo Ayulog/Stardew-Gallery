@@ -7,6 +7,12 @@ internal static class AppearanceChecks
         int checks = 0;
         void Check(bool ok, string name) { checks++; if (!ok) throw new InvalidOperationException(name); }
         var large = new PortraitFrame(null, Width: 1000, Height: 1000);
+        Check(PortraitFrame.FromGameSheet(128, 256)?.Width == 64, "Recognize Emily seasonal sheet");
+        Check(PortraitFrame.FromGameSheet(128, 320)?.Height == 64, "Recognize Maru seasonal sheet");
+        Check(PortraitFrame.FromGameSheet(64, 64) is not null, "Recognize single vanilla portrait");
+        Check(PortraitFrame.FromGameSheet(2000, 7000) is null, "Do not infer a vanilla frame for Mud HD sheets");
+        Check(PortraitFrame.FromGameSheet(130, 129) is null, "Reject unknown portrait layout");
+        Check(PortraitFrame.FromGameSheet(128, 0) is null, "Reject empty portrait sheet");
         Check(large.TryRegion(2000, 7000, out var first) && first == (0, 0, 1000, 1000), "Mud portrait frame");
         Check(!large.TryRegion(128, 256, out _), "Reject stale high-resolution metadata");
         Check(!new PortraitFrame(null, int.MaxValue, 1, int.MaxValue, 10).TryRegion(2000, 7000, out _), "Reject overflow");

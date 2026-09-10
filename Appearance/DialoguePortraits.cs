@@ -18,14 +18,15 @@ internal sealed class DialoguePortraits(IGameContentHelper content, IModRegistry
         if (!registry.IsLoaded(ModId)) return null;
         if (entries is null)
         {
-            entries = new(StringComparer.Ordinal);
             // Read the public asset without populating DDFC's shared dialogue cache.
-            if (content.Load<object>(AssetName) is IDictionary data)
+            if (content.Load<object>(AssetName) is not IDictionary data)
+                throw new InvalidOperationException("DDFC portrait metadata is not a dictionary.");
+            Dictionary<string, DialoguePortraitEntry> loaded = new(StringComparer.Ordinal);
             foreach (DictionaryEntry pair in data)
             {
                 if (pair.Key is not string key || pair.Value is null) continue;
                 object? portrait = PublicAppearanceData.Get(pair.Value, "Portrait");
-                entries[key] = new(PublicAppearanceData.String(pair.Value, "CopyFrom"),
+                loaded[key] = new(PublicAppearanceData.String(pair.Value, "CopyFrom"),
                     PublicAppearanceData.Bool(pair.Value, "Disabled"), portrait is null ? null : new(
                         PublicAppearanceData.String(portrait, "TexturePath"),
                         PublicAppearanceData.Int(portrait, "X", -1), PublicAppearanceData.Int(portrait, "Y", -1),
@@ -33,6 +34,7 @@ internal sealed class DialoguePortraits(IGameContentHelper content, IModRegistry
                         PublicAppearanceData.Float(portrait, "Alpha", 1), PublicAppearanceData.Bool(portrait, "Disabled")),
                     PublicAppearanceData.String(pair.Value, "Condition"));
             }
+            entries = loaded;
         }
         List<string> keys = [];
         if (npc?.currentLocation is { } location && location.TryGetMapProperty("UniquePortrait", out string unique)

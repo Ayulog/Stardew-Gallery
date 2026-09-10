@@ -46,12 +46,17 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     public void Prepare(string name, CharacterVisual kind)
     {
         var key = (name, kind);
-        if (failed.TryGetValue(key, out double retryAt) && Game1.currentGameTime.TotalGameTime.TotalMilliseconds < retryAt)
+        if (failed.TryGetValue(key, out double retryAt))
         {
-            if (kind == CharacterVisual.Sprite) Prepare(name, CharacterVisual.Portrait);
-            return;
+            if (Game1.currentGameTime.TotalGameTime.TotalMilliseconds < retryAt)
+            {
+                if (kind == CharacterVisual.Sprite) Prepare(name, CharacterVisual.Portrait);
+                return;
+            }
+            // A readable fallback is temporary, not a successful permanent cache entry.
+            visuals.Remove(key);
+            failed.Remove(key);
         }
-        failed.Remove(key);
         try
         {
             NPC? npc = Game1.getCharacterFromName(name);
@@ -88,11 +93,30 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                     if (portrait?.TexturePath is { Length: > 0 } path) texture = content.Load<Texture2D>(path);
                     if (portrait is not null && !portrait.Disabled && !portrait.TryRegion(texture.Width, texture.Height, out _))
                     {
-                        Warn("portrait-region:" + name, $"Invalid portrait region for {name}; using the game portrait.");
-                        portrait = null; texture = original;
+                        string requested = $"{portrait.X},{portrait.Y},{portrait.Width}x{portrait.Height}";
+                        string actual = $"{texture.Name ?? "unnamed"} ({texture.Width}x{texture.Height})";
+                        portrait = PortraitFrame.FromGameSheet(original.Width, original.Height);
+                        if (portrait is not null)
+                        {
+                            if (warnings.Add("native-portrait:" + name))
+                                monitor.Log($"Using the current game's 64px portrait for {name}: DDFC frame {requested} does not fit {actual}.", LogLevel.Debug);
+                        }
+                        else
+                        {
+                            Warn("portrait-region:" + name, $"Invalid portrait region for {name}: DDFC frame {requested}, texture {actual}; using the gallery placeholder.");
+                            portrait = new(null, Width: 0, Height: 0);
+                            failed[key] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+                        }
+                        texture = original;
                     }
                 }
-                catch (Exception error) { Warn("dialogue:" + name, $"Portrait metadata unavailable for {name}: {error.Message}"); portrait = null; texture = original; }
+                catch (Exception error)
+                {
+                    Warn("dialogue:" + name, $"Portrait metadata unavailable for {name}: {error.Message}");
+                    portrait = PortraitFrame.FromGameSheet(original.Width, original.Height) ?? new(null, Width: 0, Height: 0);
+                    texture = original;
+                    failed[key] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+                }
             }
             else if (kind == CharacterVisual.Sprite && npc?.Sprite is { } live)
             {
