@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## 2.6.0-dev.3 - Portraiture Compatibility / Portraiture 肖像读取
+
+- Draw Portraiture's actual HD image in gallery bounds using its declared scale or forced frame, independent of Above Box dialogue placement. / 按Portraiture声明的缩放或指定区域绘制真实高清图，保持画廊槽位，不受对话框上方立绘位置影响。
+- Refresh animated frames, changed portrait selections and frame metadata while retaining the existing failure fallback. Avoid applying DDFC sizing a second time to Portraiture images. / 刷新动态帧、肖像切换和帧参数，保留已有失败回退；Portraiture图像不再叠加DDFC裁图。
+- Isolated tests use the author's framework DLL and synthetic images; actual DCBurger/Portraiture packs remain pending in-game acceptance. / 使用作者框架DLL和合成图案完成隔离检查，实际DCBurger/Portraiture美术包仍待游戏内验收。
+
 ## 2.6.0-dev.2 - Appearance Fallback / 外观读取兜底
 
 - Use a game portrait when current appearance reading fails, a portrait when a sprite is unavailable, and the gallery icon when neither can be drawn. Retry failed reads after a short delay without repeated warnings. / 当前外观读取失败时尝试游戏肖像，小人不可用时回退肖像，两者都失败时使用画廊占位图；延迟重试并限制重复日志。

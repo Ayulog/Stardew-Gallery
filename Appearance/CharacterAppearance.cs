@@ -17,6 +17,7 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     private readonly Texture2D placeholder;
     private readonly DialoguePortraits dialogue;
     private readonly ScaleUpSprites scaleUp;
+    private readonly PortraiturePortraits portraiture = new();
     private readonly Dictionary<(string Name, CharacterVisual Kind), Visual> visuals = [];
     private readonly Dictionary<(string Name, CharacterVisual Kind), double> failed = [];
     private readonly HashSet<string> warnings = [];
@@ -67,17 +68,19 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 + "|" + original.Name;
             if (kind == CharacterVisual.Sprite) context += "|" + npc?.Sprite?.SpriteWidth + "|" + npc?.Sprite?.SpriteHeight;
             DetailedSprite? detailed = kind == CharacterVisual.Sprite ? scaleUp.Get(original.Name) : null;
+            PortraitureImage? selected = kind == CharacterVisual.Portrait ? portraiture.Read(original) : null;
             if (visuals.TryGetValue(key, out var cached) && ReferenceEquals(cached.Original, original)
-                && cached.Context == context && cached.Detailed == detailed && !cached.Texture.IsDisposed)
+                && cached.Context == context && cached.Detailed == detailed && !cached.Texture.IsDisposed
+                && (selected is null || ReferenceEquals(cached.Texture, selected.Texture) && cached.Portrait == selected.Frame))
             {
                 cached.Used = ++clock;
                 Animate(cached.Sprite);
                 return;
             }
-            Texture2D texture = original;
-            PortraitFrame? portrait = null;
+            Texture2D texture = selected?.Texture ?? original;
+            PortraitFrame? portrait = selected?.Frame;
             AnimatedSprite? sprite = null;
-            if (kind == CharacterVisual.Portrait)
+            if (kind == CharacterVisual.Portrait && selected is null)
             {
                 try
                 {
@@ -91,7 +94,7 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 }
                 catch (Exception error) { Warn("dialogue:" + name, $"Portrait metadata unavailable for {name}: {error.Message}"); portrait = null; texture = original; }
             }
-            else if (npc?.Sprite is { } live)
+            else if (kind == CharacterVisual.Sprite && npc?.Sprite is { } live)
             {
                 sprite = live.Clone();
                 // Clone omits this field; retain temporary outfits without sharing animation callbacks.

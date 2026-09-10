@@ -11,6 +11,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="AppearanceChecks.cs" />
     <Compile Include="..\Appearance\AppearanceGeometry.cs" Link="Appearance\AppearanceGeometry.cs" />
+    <Compile Include="..\Appearance\PortraitureRegion.cs" Link="Appearance\PortraitureRegion.cs" />
     <Compile Include="..\Appearance\DialoguePortraitSelection.cs" Link="Appearance\DialoguePortraitSelection.cs" />
     <Compile Include="ConditionCoverageChecks.cs" />
     <Compile Include="GallerySearchChecks.cs" />

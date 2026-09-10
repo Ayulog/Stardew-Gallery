@@ -13,6 +13,14 @@ internal static class AppearanceChecks
         Check(new PortraitFrame(null, 1000, 2000, 1000, 1000).TryRegion(2000, 7000, out var crop) && crop == (1000, 2000, 1000, 1000), "Explicit portrait region");
         Check(!new PortraitFrame(null, Width: 0).TryRegion(128, 128, out _), "Reject empty frames");
         Check(!new PortraitFrame(null, Alpha: float.NaN).TryRegion(128, 128, out _), "Reject non-finite alpha");
+        var scaled = PortraitureRegion.Create(8, 64, 64, null);
+        Check(scaled?.Width == 512 && scaled.Height == 512, "Portraiture uses declared scale");
+        var forced = PortraitureRegion.Create(8, 64, 64, (512, 128, 256, 400));
+        Check(forced?.TryRegion(1024, 1024, out var forcedRegion) == true && forcedRegion == (512, 128, 256, 400), "Forced source overrides scale");
+        Check(PortraitureRegion.Create(float.NaN, 64, 64, null) is null, "Reject Portraiture NaN scale");
+        Check(PortraitureRegion.Create(float.MaxValue, 64, 64, null) is null, "Reject Portraiture scale overflow");
+        Check(PortraitureRegion.Create(0, 64, 64, null) is null, "Reject zero Portraiture scale");
+        Check(PortraitureRegion.Create(8, 64, 64, (-1, 0, 64, 64)) is null, "Reject invalid forced coordinates");
         var fit = AppearanceGeometry.Fit(10, 20, 96, 96, 1000, 2000);
         Check(fit == (34, 20, 48, 96), "Fit tall portrait without stretching");
         Dictionary<string, DialoguePortraitEntry> entries = new(StringComparer.Ordinal)
