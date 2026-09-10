@@ -1,6 +1,6 @@
-# Stardew Gallery 2.6.0 发布摘要草稿
+# Stardew Gallery 2.6.0
 
-状态：准备完成，尚未发布。当前可测试版本为2.6.0-dev.4；正式版号、标签和上传在最终验收/发布时同步。
+2026-09-10。正式版本，基于已验收的2.6.0-dev.4实现。
 
 ## 中文
 
@@ -15,7 +15,7 @@
 
 需要游戏1.6.15、SMAPI4.5.2或更新兼容版本。GMCM及美化框架均可选；不捆绑第三方模组或立绘。更新前退出游戏并备份，保留config.json、event-photos/和user-data/。本版本不解决美化包之间的覆盖冲突。
 
-验证：63项外观规则、19项缓存恢复、9项DDFC/ScaleUp、14项Portraiture、8项兜底及相关12语言隔离界面检查通过；Mud与Overgrown/Earthy当前组合有用户正常反馈。dev.4最后修复仍待游戏内确认，未声明所有框架版本、操作系统或美化组合均已实测。
+验证：63项外观规则、19项缓存恢复、9项DDFC/ScaleUp、14项Portraiture、8项兜底及相关12语言隔离界面检查通过。用户已确认单个美化模组支持正常，Mud与Overgrown/Earthy有正常反馈。多个美化模组互相覆盖的组合请自行实测；不声明所有框架版本或操作系统均已实测。
 
 ## English
 
@@ -30,4 +30,4 @@ Existing story albums, prerequisite search, filters, personal names, replay phot
 
 Requires Stardew Valley 1.6.15 and SMAPI 4.5.2 or compatible newer versions. GMCM and cosmetic frameworks are optional. Close the game and back up before updating; preserve config.json, event-photos/ and user-data/. No third-party mod or portrait artwork is bundled, and this update does not resolve conflicts between cosmetic packs.
 
-Focused logic and isolated rendering checks passed, with positive feedback for the tested Mud and Overgrown/Earthy setups. The final dev.4 fixes still await in-game confirmation; this is not universal compatibility certification.
+Focused logic and isolated rendering checks passed. Tested individual cosmetic mods have received user acceptance, with positive feedback for Mud and Overgrown/Earthy. Combinations of overlapping cosmetic mods require your own testing; this is not a guarantee for every framework version or operating system.

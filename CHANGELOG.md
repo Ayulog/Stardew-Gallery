@@ -1,5 +1,14 @@
 # Changelog / 更新日志
 
+## 2.6.0 - 2026-09-10 - Character Appearance Compatibility / 角色外观兼容
+
+- Read current NPC outfits and portraits through an independent appearance module, with support for reviewed DDFC, Scale Up Unofficial and Portraiture formats. / 独立外观模块读取当前服装与肖像，接入已核查的DDFC、Scale Up Unofficial和Portraiture格式。
+- Fit HD and animated portraits within the gallery and correct detailed sprite positioning. / 高清及动态肖像完整放入画廊，修正高清小人位置。
+- Recover from temporary metadata/image failures; use native frame dimensions or visible placeholders when needed. / 修复临时元数据/图片读取失败后的恢复，按需使用标准帧或可见占位图。
+- Tested individual cosmetic mods accepted. Overlapping cosmetic combinations require user testing and are not automatically reconciled. / 单个美化模组支持已验收；多个美化互相覆盖的组合请用户实测，不自动协调冲突。
+
+See `docs/RELEASE_2.6.0_NOTES.md` for usage, validation and limits. / 使用、验证与限制见对应版本说明。
+
 ## 2.6.0-dev.4 - Portrait Recovery / 肖像缓存恢复
 
 - Commit DDFC metadata only after a complete successful read; retry temporary metadata and portrait-override failures without requiring a new day or asset invalidation. / DDFC完整读取成功后才保存元数据，临时加载失败可自动重试，不再等待换日或额外清缓存。

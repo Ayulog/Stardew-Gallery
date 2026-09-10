@@ -32,5 +32,5 @@ Sources / 来源:
 - SQLitePCLRaw: https://github.com/ericsink/SQLitePCL.raw/tree/v2.1.6
 - SQLite public-domain dedication: https://www.sqlite.org/copyright.html
 
-Stardew Gallery is licensed under the included GNU GPL v3.0. Published source is at https://github.com/Ayulog/Stardew-Gallery; use the tag matching the installed release. Development previews may precede a public tag and are accompanied by their development source checkout. / 星露谷画廊使用随包 GNU GPL v3.0 许可；公开源码见项目仓库，请选择与安装版本对应的标签。开发预览可能早于公开标签，随本次开发工作区提供对应源码。
+Stardew Gallery 2.6.0 source is available at https://github.com/Ayulog/Stardew-Gallery/tree/v2.6.0 under the included GNU GPL v3.0. / 星露谷画廊2.6.0源码见对应版本标签，使用随包GNU GPL v3.0许可。
 

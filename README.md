@@ -1,14 +1,14 @@
 # Stardew Gallery / 星露谷画廊
 
-本分支为 **2.6.0-dev.4 角色外观兼容开发版**：跟随当前 NPC 外观，适配 DDFC 大立绘、Scale Up 小人及 Portraiture 高清/动态肖像，并提供读取失败时的回退显示。dev.4修复临时失败后的元数据/肖像恢复，识别普通季节肖像与大图配置不匹配的情况。Mud及Overgrown／Earthy当前组合已获用户正常反馈，新增修复待实测。详见 [开发记录](docs/TASK_2.6.0_APPEARANCE.md)。下方 2.5.0 链接仍指向已发布稳定版。
+**2.6.0 角色外观兼容**：跟随当前 NPC 外观，适配 DDFC 大立绘、Scale Up 小人及 Portraiture 高清/动态肖像，并提供失败回退与自动恢复。已测试的单个美化模组支持获用户确认；多个美化模组互相覆盖的组合请自行实测。详见 [版本说明](docs/RELEASE_2.6.0_NOTES.md)。
 
-This branch contains **2.6.0-dev.4**, with current NPC appearances, DDFC portrait sizing, Scale Up sprite placement, Portraiture HD/animated portraits and fallback visuals. It fixes recovery after temporary metadata/image errors and recognizes native-size portraits when HD metadata no longer matches. The current Mud and Overgrown/Earthy combinations received positive feedback; the new fixes await in-game acceptance. The 2.5.0 links below still point to the stable release.
+**2.6.0 character appearance compatibility** adds current NPC appearances, DDFC portrait sizing, Scale Up sprite placement, Portraiture HD/animated portraits, fallback visuals and automatic recovery. Tested individual cosmetic mods have received user acceptance. Combinations of overlapping cosmetic mods require your own testing. See the [release notes](docs/RELEASE_2.6.0_NOTES.md).
 
 Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 
-[Download 2.5.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.5.0) · [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/51593) · [Changelog / 更新日志](CHANGELOG.md)
+[Download 2.6.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.6.0) · [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/51593) · [Changelog / 更新日志](CHANGELOG.md)
 
 ## 中文
 
@@ -95,7 +95,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 
 ### 验证与构建
 
-2.5.0的Windows实机反馈已验收，包括最后修正的英文小窗口回放确认框。逻辑、本地化、存储及12语言隔离界面检查通过；不等同于所有模组组合、Linux或macOS全面实机验证。
+2.6.0已获单个美化模组支持的用户实测确认，复用2.5.0的既有功能验收。逻辑、本地化、存储及12语言隔离界面检查通过；多个美化模组互相覆盖请自行实测，不等同于所有模组版本、组合、Linux或macOS全面实机验证。
 
 构建需要.NET SDK 8或更新兼容版本，以及已安装SMAPI的游戏目录；目标框架保持`net6.0`。在仓库根目录运行：
 
@@ -199,7 +199,7 @@ Delete the `Mods/StardewGallery` folder.
 
 ### Validation And Building
 
-Windows gameplay feedback for 2.5.0 has been accepted, including the final small-window confirmation fix. Logic, localization, persistence and isolated rendering checks passed across all 12 languages. This does not represent exhaustive in-game testing of every mod combination, Linux or macOS.
+Tested individual cosmetic mods have received user acceptance for 2.6.0, reusing prior 2.5.0 gameplay acceptance. Logic, localization, persistence and isolated rendering checks passed across all 12 languages. Overlapping cosmetic combinations require user testing; this does not represent exhaustive testing of every mod version, Linux or macOS.
 
 Use .NET SDK 8 or a later compatible SDK and a game installation with SMAPI. The mod targets `net6.0`. From the repository root:
 
