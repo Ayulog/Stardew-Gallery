@@ -3,12 +3,14 @@
 - Stardew Valley is created by ConcernedApe. This project is an unofficial fan-made mod and is not affiliated with or endorsed by ConcernedApe.
 - SMAPI is required at runtime.
 - Generic Mod Config Menu is an optional runtime integration.
+- DDFC (MangusuPixel/aedenthorn), Scale Up Unofficial (Arborsm) and Portraiture (Platonymous) are optional cosmetic integrations. Their assemblies and portrait artwork are not bundled.
 - Harmony is supplied by SMAPI and is not bundled as a separate library in this mod package.
 - The release includes project-created UI and promotional assets. No code or assets from other user-created mods are redistributed.
 
 - 《星露谷物语》由 ConcernedApe 创作。本项目是非官方玩家 Mod，与 ConcernedApe 无隶属或背书关系。
 - 运行时必须安装 SMAPI。
 - Generic Mod Config Menu 是可选的运行时集成。
+- DDFC（MangusuPixel/aedenthorn）、Scale Up Unofficial（Arborsm）和 Portraiture（Platonymous）为可选美化集成，不捆绑其程序或立绘素材。
 - Harmony 由 SMAPI 提供，本 Mod 发布包不单独捆绑该库。
 - 发布内容包含本项目制作的 UI 与宣传素材，不重新分发其他玩家 Mod 的代码或素材。
 
@@ -30,5 +32,5 @@ Sources / 来源:
 - SQLitePCLRaw: https://github.com/ericsink/SQLitePCL.raw/tree/v2.1.6
 - SQLite public-domain dedication: https://www.sqlite.org/copyright.html
 
-Stardew Gallery source for this release is available at https://github.com/Ayulog/Stardew-Gallery/tree/v2.5.0 under the included GNU GPL v3.0. / 本版本星露谷画廊源码可由上述版本标签取得，项目使用随包 GNU GPL v3.0 许可。
+Stardew Gallery is licensed under the included GNU GPL v3.0. Published source is at https://github.com/Ayulog/Stardew-Gallery; use the tag matching the installed release. Development previews may precede a public tag and are accompanied by their development source checkout. / 星露谷画廊使用随包 GNU GPL v3.0 许可；公开源码见项目仓库，请选择与安装版本对应的标签。开发预览可能早于公开标签，随本次开发工作区提供对应源码。
 

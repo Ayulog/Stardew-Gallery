@@ -50,6 +50,8 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回放提示、自动对白和调试诊断。未安装GMCM时可在config.json设置`EnableOrdinaryEventReplay`，默认false。
 
+角色美化同样为可选：画廊读取当前生效的CP肖像与小人，按已支持的协议接入DDFC、Scale Up Unofficial和Portraiture。无需为了画廊安装这些框架，也不需要在画廊里选择美化来源。Portraiture素材须先在游戏正常对话中生效，再检查画廊；CP/PyTK版素材并不自动成为Portraiture选包。读取失败时尝试可用肖像，最终使用画廊图标占位并限频重试。此适配不解决多个美化包互相覆盖的问题，也不包含Overgrown/Earthy专用画廊皮肤。
+
 ### 从旧版更新
 
 退出游戏，先备份原`Mods/StardewGallery`，再用新版替换模组文件。保留并放回以下内容：
@@ -78,12 +80,13 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 事件目录取决于当前存档状态、已安装 Mod 及其条件，因此不同存档可能看到不同的当前版本。
 - 回放使用当前生效内容，不是历史回放。
 - 查询范围是当前可发现的地点事件内容，不保证覆盖未生效CP分支、夜间FarmEvent、节日主流程或纯C#事件；好感剧情分类依据正向关系证据与可确认的续篇，非社交NPC关联不等于主相册收录。
+- 婚礼仪式、节日主流程、夜间特殊流程和影院专用放映不纳入画廊；按普通地点事件提供的婚后剧情仍可收录。
 - 前置资料读取当前TriggerActions的直接标记动作和明确内部依赖，不执行动作来探测。条件现在满足不代表标记已生成；未知条件不计为满足。
 - 角色筛选合并有明确依据的演员别名，忽略纯动画角色和误解析文本；地点合并作者声明的旧名及已核实场景副本，保留真实事件身份与回放地点。缺译标记回退为已维护译名或可读名称。天气包含六种原版天气及事件明确使用的自定义天气。
 - 姜岛等原版地点和已核查的扩展地点提供译名回退；任意新增模组不保证全部地名有翻译。相同地点显示名共用一个筛选项，各事件仍保留原始身份。矿井矮人与高地矮人是不同角色。
 - 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内。
 - 未观看事件保持锁定；条件说明不会自动修改存档进度。
-- 事件回放目前仅支持单人模式。多人模式未实测。
+- 事件回放仅支持单人模式；本项目不开发多人回放。
 - Mod 不联网，也不会修改游戏原始文件或其他 Mod。
 
 ### 卸载
@@ -151,6 +154,8 @@ All Events includes these three categories. Pure transitions stay outside story 
 
 GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue auto-advance and diagnostics. Without GMCM, set `EnableOrdinaryEventReplay` in config.json; its default is false.
 
+Cosmetic frameworks are optional too. The gallery reads currently active CP portraits/sprites and integrates with supported DDFC, Scale Up Unofficial and Portraiture formats. None is required just to use the gallery. Select and verify Portraiture packs in normal game dialogue first; a CP/PyTK pack does not automatically become a Portraiture set. Failed reads use an available portrait or the gallery icon, with throttled retries. This does not resolve conflicts between cosmetic packs or provide dedicated Overgrown/Earthy gallery skins.
+
 ### Updating
 
 Close the game and back up `Mods/StardewGallery` before replacing the mod files. Preserve and restore:
@@ -179,9 +184,10 @@ Close the game and back up `Mods/StardewGallery` before replacing the mod files.
 - The catalog depends on the current save state, installed mods, and their conditions, so different saves may expose different current versions.
 - Replay uses currently active content, not historical versions.
 - Search covers currently discoverable location events, not every inactive CP branch, nightly FarmEvent, festival flow or pure C# scene. Heart-story classification uses positive relationship evidence and confirmed continuations; NPC participation alone is not album membership.
+- Wedding ceremonies, festival systems, special overnight flows and movie screenings are outside the gallery's collection scope. Post-marriage stories supplied as ordinary location events can still be included.
 - Replay protects covered native state and rewards, suppressing some effects during presentation. Third-party commands still run through their frameworks; external files, private state and arbitrary callbacks are outside the native snapshot guarantee.
 - Unseen events remain locked; condition explanations never rewrite save progress.
-- Event replay currently supports single-player only. Multiplayer has not been tested.
+- Event replay supports single-player only; multiplayer replay is outside this project's scope.
 - The mod does not access the internet or modify game files or other mods.
 - Prerequisites come from current direct TriggerActions marker writes and known internal dependencies; actions are never executed for analysis. Matching conditions do not imply an obtained marker.
 - Character filters combine confirmed actor aliases and omit animation-only actors or malformed names. Location groups use declared former names and verified scene copies without changing event identities or replay locations. Missing translation markers fall back to maintained or readable names. Weather filters include six vanilla types and explicitly referenced custom weather.
