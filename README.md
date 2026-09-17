@@ -97,7 +97,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 
 2.6.0已获单个美化模组支持的用户实测确认，复用2.5.0的既有功能验收。逻辑、本地化、存储及12语言隔离界面检查通过；多个美化模组互相覆盖请自行实测，不等同于所有模组版本、组合、Linux或macOS全面实机验证。
 
-构建需要.NET SDK 8或更新兼容版本，以及已安装SMAPI的游戏目录；目标框架保持`net6.0`。在仓库根目录运行：
+构建需要.NET SDK 8，以及已安装SMAPI的游戏目录；`global.json`固定使用已安装的正式版8.0 SDK，目标框架保持`net6.0`。完整环境与打包步骤见[构建说明](BUILDING.md)。在仓库根目录运行：
 
 ```sh
 dotnet build StardewGallery.csproj -c Release -p:GamePath="/path/to/Stardew Valley"
@@ -109,6 +109,8 @@ dotnet build StardewGallery.csproj -c Release -p:GamePath="/path/to/Stardew Vall
 dotnet run --project Checks/StardewGallery.Checks.csproj -c Release
 dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -c Release
 ```
+
+两套检查不依赖游戏安装，GitHub Actions会在PR和main推送时自动运行；完整构建和游戏内验收仍需本机游戏环境。
 
 ### 许可证
 
@@ -201,7 +203,7 @@ Delete the `Mods/StardewGallery` folder.
 
 Tested individual cosmetic mods have received user acceptance for 2.6.0, reusing prior 2.5.0 gameplay acceptance. Logic, localization, persistence and isolated rendering checks passed across all 12 languages. Overlapping cosmetic combinations require user testing; this does not represent exhaustive testing of every mod version, Linux or macOS.
 
-Use .NET SDK 8 or a later compatible SDK and a game installation with SMAPI. The mod targets `net6.0`. From the repository root:
+Use a .NET 8 SDK and a game installation with SMAPI. `global.json` selects an installed stable 8.0 SDK; the mod still targets `net6.0`. See [BUILDING.md](BUILDING.md) for setup and packaging. From the repository root:
 
 ```sh
 dotnet build StardewGallery.csproj -c Release -p:GamePath="/path/to/Stardew Valley"

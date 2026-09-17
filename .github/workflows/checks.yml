@@ -1,0 +1,33 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install .NET SDKs and runtimes
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            6.0.x
+
+      - name: Run logic checks
+        run: dotnet run --project Checks/StardewGallery.Checks.csproj -c Release
+
+      - name: Run persistence checks
+        run: dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -c Release
