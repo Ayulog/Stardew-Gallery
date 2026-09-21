@@ -33,6 +33,25 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
     private Texture2D Load(string path) => helper.ModContent.Load<Texture2D>(path);
     internal void Reset() { view = null; history.Reset(); }
 
+    internal void RefreshCatalog()
+    {
+        if (view is null || !Context.IsWorldReady) return;
+        bool visible = OwnsMenu(Game1.activeClickableMenu);
+        try
+        {
+            ReleaseInput();
+            view = new(catalog.Get(), helper.Translation, textures!, photos, this, isUnlocked, replay.Access)
+                { Names = names, Appearance = appearance, EventSource = sourceDetails };
+            if (visible) ShowCurrent();
+        }
+        catch (Exception error)
+        {
+            monitor.Log($"Gallery source filter refresh failed: {error}", LogLevel.Error);
+            Reset();
+            if (visible) Close();
+        }
+    }
+
     public void OpenCharacter(string name)
     {
         if (view?.Catalog.Characters.FirstOrDefault(character => character.Name == name) is not { } character
@@ -98,6 +117,8 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
     private void ShowCurrent()
     {
         if (view is null || history.Current is not { } page || !Context.IsWorldReady) return;
+        if (page.Page == GalleryPage.Album && !view.Catalog.Characters.Any(character => character.Name == page.CharacterName)
+            || page.Page == GalleryPage.Prerequisite && view.Catalog.FindPrerequisite(page.PrerequisiteId!) is null) { Back(); return; }
         if (page.Event is { } identity && view.Catalog.Find(identity) is not { Kind: not StoryKind.Internal }
             && !(page.Page == GalleryPage.Rename && view.Catalog.FindPrerequisite(identity.EventId)?.Identity == identity)) { Back(); return; }
         Game1.activeClickableMenu = page.Page switch

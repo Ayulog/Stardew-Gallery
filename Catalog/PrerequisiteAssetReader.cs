@@ -5,7 +5,7 @@ namespace StardewGallery;
 
 internal static class PrerequisiteAssetReader
 {
-    internal static IReadOnlyList<PrerequisiteEvent> Read(GalleryCatalog catalog, IMonitor monitor)
+    internal static IReadOnlyList<PrerequisiteEvent> Read(GalleryCatalog catalog, IMonitor monitor, IReadOnlySet<string>? reservedStoryIds = null)
     {
         try
         {
@@ -14,7 +14,7 @@ internal static class PrerequisiteAssetReader
                     rule.HostOnly, rule.MarkActionApplied, (string.IsNullOrWhiteSpace(rule.Action) ? [] : new[] { rule.Action })
                         .Concat(rule.Actions ?? []).Where(action => !string.IsNullOrWhiteSpace(action)).ToArray(), rule.SkipPermanentlyCondition));
             return PrerequisiteCatalog.Build(rules, catalog, ArgUtility.SplitBySpaceQuoteAware,
-                new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware), raw => Event.ParseCommands(raw));
+                new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware), raw => Event.ParseCommands(raw), reservedStoryIds);
         }
         catch (Exception error)
         { monitor.Log("Prerequisite data could not be read: " + error.Message, LogLevel.Warn); return []; }

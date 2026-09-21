@@ -16,3 +16,6 @@ diagnostics/
 backups/
 event-photos/
 user-data/
+
+ai-mod-exclusion.json
+exclusion-cache/

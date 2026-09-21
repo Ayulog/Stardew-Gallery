@@ -1,14 +1,14 @@
 # Stardew Gallery / 星露谷画廊
 
-**2.7.0 事件来源查询**：在事件详情页查看当前主事件的提供者与修改记录，在 GMCM 开启追踪、保存并重启后使用；修复读档完成后来源证据被清空的问题。来源追踪默认关闭，当前适配 SMAPI 4.5.2。详见 [版本说明](docs/RELEASE_2.7.0_NOTES.md)。
+**2.8.0 来源筛选与原始来源识别**：自动扫描模组事件定义，按来源查询剧情，并通过独立开关默认启用 AI Mod Exclusion 名单排除。修复来源未知与 SMAPI 加载兼容问题。详见[版本说明](docs/RELEASE_2.8.0_NOTES.md)。
 
-**2.7.0 event source lookup** shows the current main event provider and recorded edits in event details. Enable tracing in GMCM, save, and restart to use it. Source evidence now survives save loading. Tracing is off by default and currently supports SMAPI 4.5.2. See the [release notes](docs/RELEASE_2.7.0_NOTES.md).
+**2.8.0 source filters and original providers**: automatically match event definitions to their original mod, query by source, and apply the AI Mod Exclusion list by default through a separate settings file. Fixes unknown sources and SMAPI loading compatibility. See the [release notes](docs/RELEASE_2.8.0_NOTES.md).
 
 Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 
-[Download 2.7.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.7.0) · [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/51593) · [Changelog / 更新日志](CHANGELOG.md)
+[Download 2.8.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.8.0) · [Changelog / 更新日志](CHANGELOG.md)
 
 ## 中文
 
@@ -25,7 +25,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 ### 当前功能
 
 - 按角色浏览当前游戏与已安装 Mod 实际生效的好感事件。
-- 主相册只收好感剧情；查询支持名称、ID、角色与地点，以及精确角色/地点、类型、进度和更多条件筛选，返回保留筛选、滚动和焦点。普通剧情不计入好感剧情收藏。
+- 主相册只收好感剧情；查询支持名称、ID、角色、地点与来源，以及精确角色/地点/来源、类型、进度和更多条件筛选，返回保留筛选、滚动和焦点。普通剧情不计入好感剧情收藏。
 - 标记与明确的解锁依赖单列“前置事件”，展示条件、获得状态和关联剧情，不提供回放。纯转场继续隐藏；短但具有演出内容的剧情仍可收录。
 - 可自定义事件名称并搜索，原ID保持有效。名称在本机存档间共用，独立保存在`user-data/`。
 - 回放截图按存档保存，可选封面、替换封面、恢复默认或移除归档。
@@ -59,6 +59,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追
 | 文件或目录 | 玩家数据 |
 | --- | --- |
 | `config.json` | 快捷键和设置 |
+| `ai-mod-exclusion.json` | 来源名单排除开关 |
 | `event-photos/` | 按存档保存的截图及封面 |
 | `user-data/` | 本机各存档共用的自定义事件名称 |
 
@@ -71,13 +72,29 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追
 - 回放右上角按钮或配置的快捷键可循环切换 1x / 2x / 4x。
 - 回放时按 F8、手柄左肩或点击相机截图；从详情缩略图管理截图与封面。截图不含对话框和 HUD，保存在本 Mod 的 `event-photos/` 内，卸载前可保留此目录。
 - 首页搜索框只找角色；事件查询提供筛选面板。手柄Y打开筛选，确认进入角色/地点列表，肩键翻页，B返回上一级，应用后统一更新结果。类型为全部事件、好感剧情、普通剧情、前置事件；全部事件包含后三类。
-- 筛选支持角色、地点、进度、条件满足状态，以及季节、时间、天气和好感门槛。角色／地点精确选择可避免同字匹配过多；进度显示“已达成／未达成”，不会将当前条件满足等同于已经看过剧情。
+- 筛选支持角色、地点、来源、进度、条件满足状态，以及季节、时间、天气和好感门槛。角色／地点精确选择可避免同字匹配过多；进度显示“已达成／未达成”，不会将当前条件满足等同于已经看过剧情。
 - 详情中的“自定义事件名”可保存或恢复默认名称。更新或卸载前保留`user-data/`及`event-photos/`，即可保留个人命名和截图。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
+### 按来源查询与名单排除
+
+在事件查询的“筛选 → 来源”中选择原版、具体模组、未知或多个候选来源；搜索框也支持模组名称和完整 Mod ID。模组同名时通过 ID 区分，可与角色、地点、进度等筛选组合。
+
+默认按 [AI Mod Exclusion](https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion) 名单隐藏已确认由名单内模组提供的事件。每次启动及读档异步获取最新名单；等待期间及下载失败时使用发布包内置名单，不使用以前下载的缓存。只匹配原始提供者的 Mod ID（包括名单明确给出的通配规则）；不按角色、地点或修改者推断。原版、未知、来源冲突和名单外模组的事件保留，存档进度、照片及名称不删除。
+
+独立开关首次运行自动生成于模组根目录的 `ai-mod-exclusion.json`，默认如下；此项不在 `config.json` 或 GMCM 中。改为 `false` 后重新读档或重启，会停止排除与名单下载。更新模组时保留此文件。
+
+```json
+{
+  "Enabled": true
+}
+```
+
 ### 事件来源查询
 
-在事件详情页的地点下方查看来源；点击来源可查看主事件提供者、修改记录和证据状态，再点击返回条件。在 GMCM 中开启“事件来源追踪（重启生效）”并保存、重启即可使用；未安装 GMCM 时可设置 `EnableEventSourceDiagnostics=true`。默认关闭，缺少证据时显示未知。追踪当前适配 SMAPI 4.5.2.0，其他版本会停用来源追踪并保留画廊功能；仅追踪主事件定义，不代表分支或全部文本作者。真实 CP/SVE 组合验收仍待完成。详见[实现说明](docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md)。
+在事件详情页的地点下方直接查看原始来源，点击可查看匹配文件与修改记录，再点击返回条件。首次打开画廊目录时自动扫描已加载 Content Patcher 模组的 Include/FromFile 定义，以及 AliveNpcs 的场景文件；按资源路径＋事件 ID 匹配，即使后续文本或条件被改动仍能保留来源。原版事件读取游戏原始 XNB；翻译/兼容包结合声明的依赖关系消歧，独立多来源会列出候选，未找到时保留未知。此扫描无需开启配置，也不新增 Harmony。
+
+GMCM 的“追踪事件修改（重启生效）”仅控制可选的运行时修改记录，默认关闭；未安装 GMCM 时可设置 `EnableEventSourceDiagnostics=true`。追踪当前适配 SMAPI 4.5.2.0，追踪不可用不影响文件来源。返回标题或事件资源刷新后重新扫描，也可用 `gallery_event_source rescan` 手动刷新。扫描不执行 When，不证明当前所有文本作者；其他尚未适配的 C# 动态事件和令牌仍可能未知。详见[实现说明](docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md)。
 
 ### 兼容性与限制
 
@@ -91,7 +108,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追
 - 回放统一保护已覆盖的原版进度与奖励，部分效果在演出时阻止。第三方命令仍由其原框架执行，外部文件、私有状态和任意回调不在原版快照保障范围内。
 - 未观看事件保持锁定；条件说明不会自动修改存档进度。
 - 事件回放仅支持单人模式；本项目不开发多人回放。
-- Mod 不联网，也不会修改游戏原始文件或其他 Mod。
+- 名单功能开启时仅下载公开排除名单，不上传存档或游戏内容；不会修改游戏原始文件或其他 Mod。
 
 ### 卸载
 
@@ -99,7 +116,9 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追
 
 ### 验证与构建
 
-2.7.0 完成主项目构建、逻辑/存储检查及 36 项 SMAPI 来源管线检查，包含中文资源、原版 XNB 与读档缓存回归；12 种语言的键和占位符一致。修复后的来源界面、实际手柄操作及真实 CP/SVE 组合尚待游戏内验收。2.6.0 的单个美化模组支持已有用户确认，多个美化覆盖组合仍需自行实测。
+2.8.0 通过完整构建、逻辑与存储检查、真实 SMAPI 加载器兼容检查。12 语言各 538 键一致。生产代码对本机 1645 条事件快照全部识别来源；名单过滤保留全部 176 条原版和所有名单外来源。此为隔离验证，来源页面、长文本换行及实际手柄操作仍待游戏内确认。
+
+可选运行时修改追踪另有 36 项 SMAPI 来源管线检查，包含中文资源、原版 XNB 与读档缓存回归；这些检查不等于真实 CP/SVE 组合验收。2.6.0 的单个美化模组支持已有用户确认，多个美化覆盖组合仍需自行实测。
 
 构建需要.NET SDK 8，以及已安装SMAPI的游戏目录；`global.json`固定使用已安装的正式版8.0 SDK，目标框架保持`net6.0`。完整环境与打包步骤见[构建说明](BUILDING.md)。在仓库根目录运行：
 
@@ -135,7 +154,7 @@ All Events includes these three categories. Pure transitions stay outside story 
 ### Features
 
 - Browse the heart events actually active in the base game and installed mods, by character.
-- The album contains heart stories; the separate search supports names, IDs, characters, locations and precise filters. Follow prerequisites and return with filters, scroll and focus preserved. Ordinary stories do not count toward the collection.
+- The album contains heart stories; the separate search supports names, IDs, characters, locations, sources and precise filters. Follow prerequisites and return with filters, scroll and focus preserved. Ordinary stories do not count toward the collection.
 - Prerequisite records show marker conditions, progress and related stories without replay. Pure transitions stay hidden; brief scenes with narrative content remain eligible.
 - Give events personal names and search them while retaining the original IDs. Names are shared across local saves and stored separately in `user-data/`.
 - Capture replay photos per save, choose or replace covers, restore defaults, and archive removed photos.
@@ -169,6 +188,7 @@ Close the game and back up `Mods/StardewGallery` before replacing the mod files.
 | File or folder | Player data |
 | --- | --- |
 | `config.json` | Settings and key bindings |
+| `ai-mod-exclusion.json` | Source exclusion switch |
 | `event-photos/` | Photos and covers for each save |
 | `user-data/` | Personal event names shared across local saves |
 
@@ -185,9 +205,19 @@ Close the game and back up `Mods/StardewGallery` before replacing the mod files.
 - Use Rename Event in details to save a personal name or restore the default. Preserve `user-data/` and `event-photos/` when updating or uninstalling.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
+### Source filters and exclusion list
+
+Use event query → Filters → Source to select the base game, a specific mod, unknown, or ambiguous sources. Search also accepts provider names and Mod IDs. Same-name mods have distinct ID labels, and source filters combine with existing filters.
+
+By default, events with a confirmed original provider listed in [AI Mod Exclusion](https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion) are hidden. Startup and each save load fetch the latest list asynchronously; the bundled release list applies while waiting and on failure. Previous downloads are never a fallback. Only the original provider's complete Mod ID or an explicitly declared wildcard rule is used; NPCs, locations and modifying packs do not imply exclusion. Vanilla, unknown, ambiguous and unlisted sources remain visible. Save progress, photos and names are not deleted.
+
+The separate `ai-mod-exclusion.json` file is created in the mod folder with `{ "Enabled": true }`. It is absent from config.json and GMCM. Set it to `false` and reload the save or restart to disable both filtering and downloads. Preserve this file when updating.
+
 ### Event source lookup
 
-Event details show a source row below the location. Click it to view the main definition provider, recorded changes and evidence status; click again to return to requirements. Enable event source tracing in GMCM, save, and restart SMAPI (off by default). Without GMCM, set `EnableEventSourceDiagnostics=true`. Tracing currently supports SMAPI 4.5.2.0; other versions disable tracing while keeping the gallery available. Missing evidence remains unknown, and main-definition provenance does not establish branch or full-text authorship. In-game CP/SVE combination acceptance is pending; see the [implementation notes](docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md).
+Event details automatically show original sources below the location. Click the row for matched files and optional modification records. The first gallery catalog access scans loaded Content Patcher packs, following Include/FromFile from content.json, and supported AliveNpcs scene files, then matches asset path plus event ID. Later script or condition edits do not erase the match. Raw game XNBs identify vanilla events; declared dependencies help distinguish translation/compatibility packs, while independent conflicting declarations remain ambiguous. This requires no configuration switch and adds no Harmony hooks.
+
+The GMCM option "Track event modifications (restart required)" controls optional runtime evidence only; it remains off by default (`EnableEventSourceDiagnostics`). That adapter currently supports SMAPI 4.5.2.0; unavailable tracing does not disable file matching. Returning to title or invalidating event assets resets the scan, and `gallery_event_source rescan` refreshes it manually. The scan does not evaluate When or establish full-text authorship. Other unsupported C# event formats and tokens may remain unknown. See the [implementation notes](docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md).
 
 ### Compatibility and limitations
 
@@ -198,7 +228,7 @@ Event details show a source row below the location. Click it to view the main de
 - Replay protects covered native state and rewards, suppressing some effects during presentation. Third-party commands still run through their frameworks; external files, private state and arbitrary callbacks are outside the native snapshot guarantee.
 - Unseen events remain locked; condition explanations never rewrite save progress.
 - Event replay supports single-player only; multiplayer replay is outside this project's scope.
-- The mod does not access the internet or modify game files or other mods.
+- When exclusion is enabled, the mod downloads only the public exclusion list; it uploads no saves or game content and does not modify game files or other mods.
 - Prerequisites come from current direct TriggerActions marker writes and known internal dependencies; actions are never executed for analysis. Matching conditions do not imply an obtained marker.
 - Character filters combine confirmed actor aliases and omit animation-only actors or malformed names. Location groups use declared former names and verified scene copies without changing event identities or replay locations. Missing translation markers fall back to maintained or readable names. Weather filters include six vanilla types and explicitly referenced custom weather.
 - Fallback names cover vanilla locations, including Ginger Island, and reviewed mod locations; translations for arbitrary new content are not guaranteed. Identical location labels share a filter choice while keeping each event's identity. The mine dwarf and Highlands dwarf remain separate characters.
@@ -209,7 +239,9 @@ Delete the `Mods/StardewGallery` folder.
 
 ### Validation And Building
 
-2.7.0 passes the full build, logic/persistence checks and 36 SMAPI source pipeline assertions, including localized resources, a vanilla XNB and save-load cache regressions. Keys and placeholders match across all 12 languages. The corrected source UI, actual controller input and real CP/SVE combinations still need in-game acceptance. Tested individual cosmetic mods received user confirmation in 2.6.0; overlapping cosmetic combinations still require testing.
+2.8.0 passes the full build, logic and persistence checks, and actual SMAPI assembly-loader compatibility checks. All 12 locales contain matching sets of 538 keys. Production code identifies all 1645 events in the local snapshot; exclusion retains all 176 vanilla events and all unlisted providers. These are isolated checks; in-game source pages, long text wrapping and physical controller input still need confirmation.
+
+Optional runtime modification tracking has 36 SMAPI source pipeline assertions, including localized resources, a vanilla XNB and save-load cache regressions. These do not establish real CP/SVE combination acceptance. Tested individual cosmetic mods received user confirmation in 2.6.0; overlapping cosmetic combinations still require testing.
 
 Use a .NET 8 SDK and a game installation with SMAPI. `global.json` selects an installed stable 8.0 SDK; the mod still targets `net6.0`. See [BUILDING.md](BUILDING.md) for setup and packaging. From the repository root:
 

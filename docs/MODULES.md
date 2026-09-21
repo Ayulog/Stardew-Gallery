@@ -2,10 +2,11 @@
 
 | 模块 | 维护入口 | 依赖与职责 |
 | --- | --- | --- |
-| 事件来源 | `Sources/EventSourceIndex`、`SmapiEventSourceObserver`、`EventSourceDetails`、`EventSourcePresentation` | GMCM开关默认关闭、重启生效；事件详情页按实际完整键/脚本读来源，展示主定义提供者与修改链。仍仅两个非泛型观察点，不接数据库、收录或回放权限。 |
+| 事件来源 | `Sources/ModDirectoryDiscovery`、`ContentPackEventScanner`、`AliveNpcEventScanner`、`EventDefinitionIndex`、`EventDefinitionSources`、`EventOriginPresentation`、`EventSourceDetails` | 自动扫描已加载 CP、AliveNpcs 场景与原版 XNB，按资产＋ID匹配原始来源、列出候选文件；`SmapiEventSourceObserver`/`EventSourceIndex`仅补充可选修改证据，GMCM开关只控制追踪，仍仅两个观察点。来源元数据也供查询与名单展示过滤使用，不改数据库或游戏事件。 |
 | 当前事件资料 | `GalleryCatalogCache`、`Catalog/GalleryCatalogBuilder`、`GalleryCatalog` | 从当前游戏读取并分类；供其他模块取资料，不创建菜单或回放。 |
 | 条件与前置 | `GalleryConditionPresentation`、`ConditionStateReader`、`StoryDependencyLookup`、`PrerequisiteCatalog` | 当前TriggerActions标记和明确内部解锁依赖单独建资料；不生成可播放事件。条件与动作、已获得状态分离。 |
-| 自助搜索 | `StorySearchIndex`、`QueryFilter`、`QueryWeather` | 预计算角色/地点分组与名称，按类别/进度/已知条件筛选；不改收藏或权限。 |
+| 自助搜索 | `StorySearchIndex`、`QueryFilter`、`QueryWeather` | 预计算角色/地点/原始来源，按来源Mod ID、类别、进度、已知条件筛选，并支持来源名称搜索。 |
+| 来源排除 | `Exclusions/AiModExclusionRules`、`AiModExclusionService`、`Catalog/GalleryCatalogVisibility` | 独立JSON默认开启；启动与读档异步下载公开ModId名单，失败使用内置种子。按确认原始来源投影画廊目录，保留原版/未知/歧义，保护前置去重和进行中的回放。 |
 | 查询名称 | `GalleryLocationNames`、`GalleryCharacterNames`、`GalleryNameText` | 优先现成译名，识别缺译诊断串；角色别名按剧情解析，地点旧名和已核实副本只在查询层分组。 |
 | 玩家命名 | `EventNameStore`、`GalleryRenameMenu` | 本机存档共用的用户别名，按资产+ID定位，独立原子保存，不写游戏进度。 |
 | 页面与共用绘制 | `GalleryMenu`、`GalleryCharacterMenu`、`GalleryQueryMenu`、`GalleryEventDetailMenu`、`GalleryDrawing` | 按资料画界面，写`GalleryPageState`，通过`IGalleryNavigation`发出操作。 |
@@ -25,3 +26,5 @@ dev.5在查询索引中进一步聚合相同地点显示名，保留独立事件
 dev.6的`NativeGlobalEventCopies`只识别游戏TryGetLocationEvents注入的两段爷爷剧情，匹配原FarmHouse完整键与脚本后省略异地副本，避免每个地图虚增同一剧情。不得将该规则泛化到不同键/脚本或其它ID；输入原字典保持只读。原版地名、Cellar显示组及SVE替代人物归并继续位于名称层。
 
 2.7.0 的事件来源功能基于运行时操作调研，独立于上述历史 dev.4 已移除的实现；当前已有详情页展示与GMCM开关，并保留开发者诊断，不恢复旧数据表或旧来源推断。范围、启用方式及验收限制见 `EVENT_MOD_SOURCE_IMPLEMENTATION.md`。
+
+当前工作区（未发布）将静态原始定义与运行时修改记录分开：来源扫描始终可用，返回标题或事件资产刷新清空索引，控制台 rescan 可刷新；不改写游戏资产，不使用完整脚本相同作为原始来源的必要条件。

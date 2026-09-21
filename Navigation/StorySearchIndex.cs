@@ -6,6 +6,8 @@ internal sealed record StorySearchRow(GalleryEvent? Event, string Location, stri
     internal EventIdentity Identity => Event?.Resolved.Identity ?? Prerequisite!.Identity;
     internal string EventId => Event?.EventId ?? Prerequisite!.EventId;
     internal string Title { get; init; } = "";
+    internal StoryQuerySource Source { get; init; } = StoryQuerySource.Unknown;
+    internal string SourceLabel { get; init; } = "";
     internal IReadOnlyList<string> Npcs { get; init; } = [];
     internal string LocationKey { get; init; } = "";
     internal IReadOnlyList<ConditionExpression> Requirements { get; init; } = [];
@@ -23,7 +25,8 @@ internal sealed class StorySearchIndex
         Func<EventIdentity, string?>? names = null,
         IReadOnlySet<string>? completed = null, ConditionParser? parser = null,
         Func<StorySearchRow, ConditionTruth>? conditionState = null,
-        Func<GalleryEvent?, string, string?>? characterKey = null, Func<GalleryEvent, string>? locationKey = null)
+        Func<GalleryEvent?, string, string?>? characterKey = null, Func<GalleryEvent, string>? locationKey = null,
+        Func<string, string>? sourceText = null)
     {
         this.completed = completed ?? new HashSet<string>();
         this.conditionState = conditionState;
@@ -46,7 +49,12 @@ internal sealed class StorySearchIndex
         var locationGroups = projected.Where(row => row.Event is not null && !GalleryNameText.IsMissing(row.Location) && row.Location != "-")
             .GroupBy(row => row.Location.Trim(), StringComparer.CurrentCulture)
             .ToDictionary(group => group.Key, group => group.Select(row => row.LocationKey).OrderBy(key => key, StringComparer.OrdinalIgnoreCase).First(), StringComparer.CurrentCulture);
-        rows = projected.Select(row => row.Event is not null && locationGroups.TryGetValue(row.Location.Trim(), out string? groupKey)
+        rows = projected.Select(row =>
+        {
+            catalog.Origins.TryGetValue(row.Identity, out EventOriginMatch? origin);
+            StoryQuerySource source = StoryQuerySource.From(origin);
+            return row with { Source = source, SourceLabel = source.Label(sourceText) };
+        }).Select(row => row.Event is not null && locationGroups.TryGetValue(row.Location.Trim(), out string? groupKey)
             ? row with { LocationKey = groupKey } : row).ToArray();
     }
 
@@ -66,6 +74,7 @@ internal sealed class StorySearchIndex
             })
             && (filter.Location is null || string.Equals(row.LocationKey, filter.Location, StringComparison.OrdinalIgnoreCase))
             && (filter.Npc is null || row.Npcs.Contains(filter.Npc, StringComparer.Ordinal))
+            && (filter.Source is null || string.Equals(row.Source.Key, filter.Source, StringComparison.OrdinalIgnoreCase))
             && (filter.Completion == QueryCompletion.Any || completed.Contains(row.EventId) == (filter.Completion == QueryCompletion.Complete))
             && MatchesRequirements(row, filter)
             && (filter.Conditions == QueryConditionState.Any || Truth(row) == (filter.Conditions switch
@@ -75,6 +84,8 @@ internal sealed class StorySearchIndex
                 || row.Identity.AssetName.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || row.Location.Contains(query, StringComparison.CurrentCultureIgnoreCase)
                 || row.Characters.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || row.SourceLabel.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || row.Source.ModId?.Contains(query, StringComparison.OrdinalIgnoreCase) == true
                 || row.Npcs.Any(name => name.Contains(query, StringComparison.OrdinalIgnoreCase))))
             .OrderByDescending(row => query.Length > 0 && (row.EventId == query || row.Title.Equals(query, StringComparison.CurrentCultureIgnoreCase))).ToArray();
     }

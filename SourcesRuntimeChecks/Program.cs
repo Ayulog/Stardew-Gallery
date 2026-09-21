@@ -4,8 +4,10 @@ using HarmonyLib;
 using StardewGallery;
 using StardewModdingAPI;
 
-if (args.Length is < 1 or > 2 || !Directory.Exists(args[0]) || args.Length == 2 && args[1] != "--generic-probe")
-    throw new ArgumentException("Pass the SMAPI game directory as the only argument; also supply -p:GamePath when building.");
+bool checkAssembly = args is [_, "--assembly", _];
+if (args.Length < 1 || !Directory.Exists(args[0])
+    || !(args.Length == 1 || args is [_, "--generic-probe"] || checkAssembly))
+    throw new ArgumentException("Pass the SMAPI game directory, optionally followed by --generic-probe or --assembly <mod-dll>; also supply -p:GamePath when building.");
 string game = Path.GetFullPath(args[0]);
 AssemblyLoadContext.Default.Resolving += (context, name) =>
 {
@@ -16,7 +18,8 @@ AssemblyLoadContext.Default.Resolving += (context, name) =>
     }
     return null;
 };
-if (args.Length == 2) GenericSharingProbe.Run();
+if (checkAssembly) AssemblyLoadChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(game, "StardewModdingAPI.dll")), game, args[2]);
+else if (args.Length == 2) GenericSharingProbe.Run();
 else RuntimeChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(game, "StardewModdingAPI.dll")), game);
 
 internal static class RuntimeChecks

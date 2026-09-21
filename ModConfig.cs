@@ -11,7 +11,7 @@ internal sealed class ModConfig
 
     public bool DebugDiagnostics { get; set; }
 
-    /// <summary>Opt-in source tracing prototype; requires restart and SMAPI 4.5.2.</summary>
+    /// <summary>Optional runtime modification tracing; file-origin matching is always available. Requires restart and SMAPI 4.5.2.</summary>
     public bool EnableEventSourceDiagnostics { get; set; }
 
     public bool EnableOrdinaryEventReplay { get; set; }

@@ -6,7 +6,8 @@ using StardewValley.GameData.Characters;
 
 namespace StardewGallery;
 
-internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiagnostics)
+internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiagnostics,
+    Func<EventIdentity, EventOriginMatch> originFor, Func<EventOriginMatch, bool> shouldExclude)
 {
     private sealed record IdentityConflict(string Location, string EventId, string SelectedKey, IReadOnlyList<string> CandidateKeys);
 
@@ -34,8 +35,9 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             () => ResolvedEventIndex.ReadCurrentCandidates(eventAssets, eventReader))).GetCurrent();
         IReadOnlyList<GalleryCharacter> characters = ScanCharacters();
         GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents);
-        IReadOnlyList<GalleryEvent> events = build.AnalyzedEvents;
-        GalleryCatalog catalog = build.Catalog with { Prerequisites = PrerequisiteAssetReader.Read(build.Catalog, monitor) };
+        GalleryCatalogVisibilityResult visibility = GalleryCatalogVisibility.Apply(build.Catalog, originFor, shouldExclude);
+        IReadOnlyList<GalleryEvent> events = visibility.Catalog.AllEntries.ToArray();
+        GalleryCatalog catalog = visibility.Catalog with { Prerequisites = PrerequisiteAssetReader.Read(visibility.Catalog, monitor, visibility.ReservedStoryIds) };
         List<IdentityConflict> conflicts = index.Groups
             .Where(group => group.Candidates.Count > 1)
             .Select(group => new IdentityConflict(
@@ -47,7 +49,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             .ToList();
 
         monitor.Log(
-            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}，前置事件资料 {catalog.Prerequisites.Count}。",
+            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}，前置事件资料 {catalog.Prerequisites.Count}，来源名单隐藏 {visibility.HiddenEvents}。",
             LogLevel.Info
         );
         if (debugDiagnostics())
@@ -60,6 +62,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     CharacterCandidates = characters.Count,
                     GalleryCharacters = catalog.Characters.Count,
                     CurrentEvents = events.Count,
+                    SourceExcludedEvents = visibility.HiddenEvents,
                     IncludedEvents = catalog.Events.Count,
                     ExcludedEvents = catalog.ExcludedEvents.Count,
                     HeartEvents = catalog.Events.Count,

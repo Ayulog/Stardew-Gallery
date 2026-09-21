@@ -1,0 +1,219 @@
+{
+	"INSTRUCTIONS": "This is a dataset of Stardew Valley mods. For all mods whose UniqueId in their manifest.json matches the ModId listed here, the authors prefer that AI-generated mods not include their content.\nStructure:\nModId = The UniqueId of the mod, which may be a glob pattern (e.g. Wem.*)\nLink = Publically available link where this mod can be downloaded from\nNPC = List of NPCs added by this mod, which may be a glob pattern (e.g. *SBV)\nItems = List of Items added by this mod, which may be a glob pattern (e.g. Cornucopia_*)\nLocations = List of Locations added by this mod, which may be a glob pattern (e.g. RSV_*)\nFor example, AI-generated mods should not:\ncreate cooking recipes using listed mods' ingredients;\nchange NPCs from listed mods to visit AI-generated mods' locations;\nadd dialogue for listed mods' NPCs;\nWhen mods add custom content, they typically use a namespaced unique ID, in the form ModId_ItemId. For example, Example.PufferchickMod_PufferchickPlushy is a 'Pufferchick Plushy' item added by the mod with ID Example.PufferchickMod. Additionally, NPC, Items, and Locations that do not have a namespaced unique ID are explicitly listed in this dataset.\nCode in AI-generated mod should exclude content whose ID is prefixed with one of the listed mod IDs.\nThis applies to:\nItem (field: Item.ItemId)\nNPCs, including dialogue and schedules (field: NPC.Name)\nLocations (field: GameLocation.Name)\n",
+	"Ridgeside Village": {
+		"ModId": "Rafseazz.RSVCP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/7286"
+	},
+	"Sunberry Village": {
+		"ModId": "skellady.SBVCP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/11111"
+	},
+	"Stardew Valley Flower Show": {
+		"ModId": "logophile.SVFS",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/44202"
+	},
+	"Dead Boy Detectives": {
+		"ModId": "handwrittenhello.dbda",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/31888"
+	},
+	"Two For Joy - NPC Miriam": {
+		"ModId": "handwrittenhello.TFJ",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/42825"
+	},
+	"Arumi the Actress - NPC": {
+		"ModId": "NassiLove.AikawaAsakaiCP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/44286"
+	},
+	"Town Cardinals": {
+		"ModId": "NassiLove.SodorTownCardinals",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/42820"
+	},
+	"Map Aquarium Fish - Framework": {
+		"ModId": "NassiLove.MapAquariumFish",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/46936"
+	},
+	"Tilly the Tea-Loving Librarian": {
+		"ModId": "Wem.Bundle",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/38008"
+	},
+	"Peeta Mellark NPC - Life After Panem": {
+		"ModId": "Wem.Bundle",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/23172"
+	},
+	"Toothless Dragon Pet": {
+		"ModId": "Wem.Bundle",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/35306"
+	},
+	"Eli and Dylan - Custom NPCs for East Scarp": {
+		"ModId": "TenebrousNova.EliDylan.CP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/13883"
+	},
+	"Animated Fish": {
+		"ModId": "Gervig91.AnimatedFish",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/5735"
+	},
+	"Animated Furniture and Stuff": {
+		"ModId": "Gervig91.AnimatedFurnitureAndStuff",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/5662"
+	},
+	"Animated Food and Drinks": {
+		"ModId": "Gervig91.AnimatedFood",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/5607"
+	},
+	"Animated Slime Eggs and Loot": {
+		"ModId": "Gervig91.AnimatedSlimeEggandLoot",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/5642"
+	},
+	"Animated Mining Pack": {
+		"ModId": "Gervig91.AnimatedMiningPack",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6099"
+	},
+	"Animated Tools and Weapons": {
+		"ModId": "Gervig91.AnimatedToolsAndWeapons",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/8187"
+	},
+	"Animated Clothes": {
+		"ModId": "Gervig91.AnimatedClothes",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6117"
+	},
+	"Gervig91's Furniture": {
+		"ModId": "Gervig91.Gervig",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/5791"
+	},
+	"Aquarium Overhaul": {
+		"ModId": "Gervig91.AquariumDecorations",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/7984"
+	},
+	"Cute Crab Pots": {
+		"ModId": "Gervig91.CuteCrabPots",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6818"
+	},
+	"Flowery Straw Hat": {
+		"ModId": "Gervig91.FloweryStrawHat",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6210"
+	},
+	"Golden Coconut Tree": {
+		"ModId": "Gervig91.GoldenCoconut",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/8280"
+	},
+	"Custom Movie Under The Sea": {
+		"ModId": "Custom Movie Under The Sea",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6505"
+	},
+	"Stardew Aquarium": {
+		"ModId": "Cherry.StardewAquarium",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6372"
+	},
+	"Stardew Aquarium [CP]": {
+		"ModId": "Gervig91.StardewAquariumCP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6372"
+	},
+	"Stardew Aquarium [CC]": {
+		"ModId": "Gervig91.StardewAquariumCC",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/6372"
+	},
+	"Bear Family Custom NPCs - An Add-On for East Scarp": {
+		"ModId": "MadDog.HashtagBearFam",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/16197"
+	},
+	"Sweet Visuals for East Scarp - Seasonal Portraits and Sprites": {
+		"ModId": "Heart.SweetVisualsES",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/44028"
+	},
+	"The Bear Family's Bear-y Sweet Portraits": {
+		"ModId": "Heart.BearFamilyBearySweetPortraits",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/38775"
+	},
+	"Soulbound Bloodhound": {
+		"ModId": "Aviroen.SBCP",
+		"Link": "https://ggmods.com/game/stardew-valley/mod/161/"
+	},
+	"Joja Movie Theater and Super Jojamart": {
+		"ModId": "MV.JojaMovieTheater",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/48392/"
+	},
+	"Pelican Town Municipal": {
+		"ModId": "MV.Municipal",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/38698"
+	},
+	"Pelican Town Accessibility": {
+		"ModId": "MV.PelicanTownAccessibility",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/41422/"
+	},
+	"Midnight's Misc Tilesheets": {
+		"ModId": "MV.MiscTilesheets",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/32021/"
+	},
+	"Witchy Town Buildings": {
+		"ModId": "Leafuelle_Witchy",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/43064"
+	},
+	"Star Crossed": {
+		"ModId": "kcspace.StarCrossed",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/34252"
+	},
+	"Across the Aisle": {
+		"ModId": "kcspace.AcrossTheAisle",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/37296"
+	},
+	"East Scarp": {
+		"ModId": "Lemurkat.EastScarp",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/5787"
+	},
+	"Lurking in the Dark - 4.0 Alpha": {
+		"ModId": "7thAxis.LitD",
+		"Link": "https://github.com/7thAxis/Lurking-in-the-Dark"
+	},
+	"Lurking in the Dark - Nexus Stable": {
+		"ModId": "7thAxis.LitD.CP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/10770"
+	},
+	"Sword \u0026 Sorcery": {
+		"ModId": "DN.SnS",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/12369"
+	},
+	"Sword \u0026 Sorcery C#": {
+		"ModId": "KCC.SnS",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/12369"
+	},
+	"Hootin' \u0026 Hollerin'": {
+		"ModId": "7thAxis.HnH",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/43539"
+	},
+	"Cawin' \u0026 Callin'": {
+		"ModId": "7thAxis.CnC",
+		"Link": "https://github.com/7thAxis/Birbs-Borbs"
+	},
+	"Crystal Island": {
+		"ModId": "BackedPotatoes.CrystalIsland",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/43626"
+	},
+	"Bloom Again": {
+		"ModId": "ohitslunette.BloomAgain",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/43710"
+	},
+	"Broken Farmhouse": {
+		"ModId": "glymr.BrokenFarmhouse",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/17466"
+	},
+	"Diverse Stardew Valley": {
+		"ModId": "DSVTeam.DiverseStardewValley",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/17059"
+	},
+	"Dao - Custom NPC for Sunberry Village": {
+		"ModId": "Airyn.Dao.CP",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/33615"
+	},
+	"Creative Differences - NPC Rodney (East Scarp)": {
+		"ModId": "TheFrenchDodo.RodneyOBrien",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/13437"
+	},
+	"Woodsman Hurst - An East Scarp Addon": {
+		"ModId": "sprinton.hurst",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/45324"
+	},
+	"Honeyfuggle - The Whimsical Wanderer": {
+		"ModId": "Vinilla.Honeyfuggle",
+		"Link": "https://www.nexusmods.com/stardewvalley/mods/17660/"
+	}
+}

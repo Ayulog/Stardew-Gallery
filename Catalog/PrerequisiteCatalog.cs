@@ -16,7 +16,8 @@ internal sealed record PrerequisiteEvent(string EventId, IReadOnlyList<MarkerAct
 internal static class PrerequisiteCatalog
 {
     internal static IReadOnlyList<PrerequisiteEvent> Build(IEnumerable<PrerequisiteRule> rules,
-        GalleryCatalog catalog, Func<string, string[]> splitArguments, ConditionParser parser, Func<string, string[]> parseCommands)
+        GalleryCatalog catalog, Func<string, string[]> splitArguments, ConditionParser parser, Func<string, string[]> parseCommands,
+        IReadOnlySet<string>? reservedStoryIds = null)
     {
         Dictionary<string, List<MarkerAction>> markers = new(StringComparer.Ordinal);
         foreach (PrerequisiteRule rule in rules.Where(rule => rule.Actions.Any(action => !string.IsNullOrWhiteSpace(action)))
@@ -49,6 +50,7 @@ internal static class PrerequisiteCatalog
                             is "mail" or "mailtomorrow" or "addmailreceived" or "addquest" or "completequest" or "seteventseen" or "setworldstate")))
             .GroupBy(story => story.EventId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
         HashSet<string> stories = catalog.StoryEntries.Select(entry => entry.EventId).ToHashSet(StringComparer.Ordinal);
+        if (reservedStoryIds is not null) stories.UnionWith(reservedStoryIds);
         var result = markers.Keys.Concat(internalSources.Keys).Distinct(StringComparer.Ordinal)
             .Where(id => !stories.Contains(id))
             .Select(id => new PrerequisiteEvent(id, markers.TryGetValue(id, out var sources) ? sources : [],

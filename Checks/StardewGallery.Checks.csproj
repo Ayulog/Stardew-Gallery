@@ -12,6 +12,19 @@
     <Compile Include="AppearanceChecks.cs" />
     <Compile Include="EventSourceChecks.cs" />
     <Compile Include="EventSourceDetailChecks.cs" />
+    <Compile Include="EventDefinitionChecks.cs" />
+    <Compile Include="GallerySourceVisibilityChecks.cs" />
+    <Compile Include="..\Catalog\GalleryCatalogVisibility.cs" Link="Catalog\GalleryCatalogVisibility.cs" />
+    <Compile Include="..\Exclusions\*.cs" Link="Exclusions\%(Filename)%(Extension)" />
+    <Compile Include="AiModExclusionChecks.cs" />
+    <Compile Include="SourceQueryChecks.cs" />
+    <Compile Include="ModDirectoryDiscoveryChecks.cs" />
+    <Compile Include="..\Sources\ModDirectoryDiscovery.cs" Link="Sources\ModDirectoryDiscovery.cs" />
+    <Compile Include="EventOriginPresentationChecks.cs" />
+    <Compile Include="..\Sources\EventDefinitionIndex.cs" Link="Sources\EventDefinitionIndex.cs" />
+    <Compile Include="..\Sources\AliveNpcEventScanner.cs" Link="Sources\AliveNpcEventScanner.cs" />
+    <Compile Include="..\Sources\ContentPackEventScanner.cs" Link="Sources\ContentPackEventScanner.cs" />
+    <Compile Include="..\Sources\EventOriginPresentation.cs" Link="Sources\EventOriginPresentation.cs" />
     <Compile Include="..\Sources\EventSourcePresentation.cs" Link="Sources\EventSourcePresentation.cs" />
     <Compile Include="..\Sources\EventSourceDetailLookup.cs" Link="Sources\EventSourceDetailLookup.cs" />
     <Compile Include="..\Sources\EventSourceInfo.cs" Link="Sources\EventSourceInfo.cs" />

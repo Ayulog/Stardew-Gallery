@@ -45,7 +45,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
                 ? PrerequisitePresentation.Title(prerequisite, context) : context.Name(identity),
             Game1.player.eventsSeen.ToHashSet(StringComparer.Ordinal), new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
             row => row.Event is { } story ? PrerequisitePresentation.Truth(GalleryConditionPresentation.Build(story, context.I18n, locationName: context.Locations.Get(story.LocationName)))
-                : PrerequisitePresentation.Truth(row.Prerequisite!, context.I18n), (entry, id) => context.Characters.Key(id, entry), entry => context.Locations.Key(entry.LocationName));
+                : PrerequisitePresentation.Truth(row.Prerequisite!, context.I18n), (entry, id) => context.Characters.Key(id, entry), entry => context.Locations.Key(entry.LocationName), key => context.I18n.Get(key));
         search = new GalleryTextBox { Height = SearchBounds.Height };
         rowTextScale = Math.Min(1f, 29f / index.Rows.Select(row => Game1.smallFont.MeasureString(row.Title + row.Characters + row.Location).Y)
             .Append((float)Game1.smallFont.LineSpacing).Max());
@@ -370,7 +370,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             if (access is not null && ReplayBounds(slot).Contains(mouseX, mouseY))
                 tooltip = context.I18n.Get(access.Allowed ? "event.replay" : access.ReasonKey ?? "event.locked");
             else if (hovered)
-                tooltip = $"{row.Title}\nID {row.EventId}\n{row.Characters}\n{row.Location}";
+                tooltip = $"{row.Title}\nID {row.EventId}\n{row.Characters}\n{row.Location}\n{context.I18n.Get("filter.source")}: {row.SourceLabel}";
         }
         if (rows.Count == 0)
             GalleryDrawing.DrawCentered(b, context.I18n.Get("nav.no-results"), new Rectangle(240, 370, 960, 160));

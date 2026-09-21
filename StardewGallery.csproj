@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <RootNamespace>StardewGallery</RootNamespace>
     <AssemblyName>StardewGallery</AssemblyName>
-    <Version>2.7.0</Version>
+    <Version>2.8.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -15,6 +15,10 @@
   <ItemGroup>
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(GamePath)\smapi-internal\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(GamePath)\smapi-internal\0Harmony.dll</HintPath>
       <Private>false</Private>
@@ -32,5 +36,7 @@
     <None Remove="PersistenceChecks\**\*" />
     <None Remove="event-photos\**\*" />
     <None Remove="user-data\**\*" />
+    <None Remove="ai-mod-exclusion.json" />
+    <None Remove="exclusion-cache\**\*" />
   </ItemGroup>
 </Project>

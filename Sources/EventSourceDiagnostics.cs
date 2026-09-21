@@ -3,19 +3,17 @@ using StardewValley;
 
 namespace StardewGallery;
 
-/// <summary>Developer-facing query for the opt-in source prototype; does not alter gallery permissions.</summary>
-internal sealed class EventSourceDiagnostics(SmapiEventSourceObserver observer, IMonitor monitor)
+/// <summary>Developer-facing file-origin lookup and optional runtime edit evidence; does not alter gallery permissions.</summary>
+internal sealed class EventSourceDiagnostics(EventDefinitionSources definitions, SmapiEventSourceObserver observer, IMonitor monitor)
 {
     internal void Run(string command, string[] args)
     {
-        if (args.Length == 0 || args is ["status"])
+        if (args.Length == 0 || args is ["status"] || args is ["rescan"])
         {
-            monitor.Log(observer.DiagnosticStatus + " Usage: gallery_event_source <location> <event-id>", LogLevel.Info);
-            return;
-        }
-        if (!observer.Enabled)
-        {
-            monitor.Log(observer.DiagnosticStatus + " Set EnableEventSourceDiagnostics=true in config.json and restart SMAPI to test.", LogLevel.Info);
+            if (args is ["rescan"]) definitions.Reset();
+            definitions.EnsureScanned();
+            monitor.Log(definitions.Status + " " + observer.DiagnosticStatus
+                + " Usage: gallery_event_source <location> <event-id> | rescan", LogLevel.Info);
             return;
         }
         if (args.Length != 2 || !Context.IsWorldReady)
@@ -41,6 +39,10 @@ internal sealed class EventSourceDiagnostics(SmapiEventSourceObserver observer, 
                 monitor.Log("No current raw key matches event " + args[1] + " in " + assetName, LogLevel.Info);
                 return;
             }
+            EventOriginMatch origin = definitions.Read(assetName, args[1]);
+            monitor.Log($"Original definition: {origin.Provider?.Name ?? origin.Status.ToString()} ({origin.Provider?.UniqueId ?? "unresolved"}); file candidates: {origin.Candidates.Count}", LogLevel.Info);
+            foreach (var candidate in origin.Candidates.DistinctBy(candidate => (candidate.Actor.UniqueId, candidate.RelativePath)))
+                monitor.Log($"  {candidate.Actor.UniqueId}: {candidate.RelativePath}", LogLevel.Info);
             foreach (EventSourceInfo source in sources)
             {
                 string provider = source.Provider is { } actor ? $"{actor.Name} ({actor.UniqueId}, {actor.Version ?? "game"})" : "Unknown";
@@ -52,7 +54,9 @@ internal sealed class EventSourceDiagnostics(SmapiEventSourceObserver observer, 
             }
             GalleryDiagnostics.Write("event-source-latest.json", new
             {
-                Scope = "Current main event definitions only; branches and TriggerActions are not tracked.",
+                Scope = "Original definition file matches by asset and event ID; runtime changes are supplemental.",
+                DefinitionIndex = definitions.Status,
+                Origin = origin,
                 Observer = observer.DiagnosticStatus,
                 Location = location.NameOrUniqueName,
                 Sources = sources

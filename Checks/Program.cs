@@ -7,6 +7,12 @@ if (args.Contains("--appearance")) return;
 
 EventSourceChecks.Run();
 EventSourceDetailChecks.Run();
+EventDefinitionChecks.Run();
+ModDirectoryDiscoveryChecks.Run();
+EventOriginPresentationChecks.Run();
+AiModExclusionChecks.Run();
+GallerySourceVisibilityChecks.Run();
+SourceQueryChecks.Run();
 if (args.Contains("--event-sources")) return;
 
 GallerySearchChecks.Run();

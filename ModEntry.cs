@@ -23,6 +23,8 @@ internal sealed class ModEntry : Mod
     private GalleryPhotos photos = null!;
     private CharacterAppearance appearance = null!;
     private SmapiEventSourceObserver eventSources = null!;
+    private EventDefinitionSources eventDefinitions = null!;
+    private AiModExclusionService eventExclusions = null!;
 
     internal ModConfig Config { get; private set; } = new();
 
@@ -37,18 +39,32 @@ internal sealed class ModEntry : Mod
             Monitor.Log(helper.Translation.Get("log.config-invalid", new { error = error.Message }), LogLevel.Error);
         }
 
+        eventDefinitions = new EventDefinitionSources(helper, Monitor);
+        eventExclusions = new AiModExclusionService(helper.DirectoryPath,
+            message => Monitor.Log(message, LogLevel.Info), message => Monitor.Log(message, LogLevel.Warn));
+        helper.Events.GameLoop.GameLaunched += (_, _) => eventExclusions.StartSession();
+        helper.Events.GameLoop.SaveLoaded += (_, _) => eventExclusions.StartSession();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => eventExclusions.EndSession();
         eventSources = new SmapiEventSourceObserver(ModManifest.UniqueID, Monitor);
         if (Config.EnableEventSourceDiagnostics)
             eventSources.Start();
-        helper.ConsoleCommands.Add("gallery_event_source", "Inspect observed main event sources: gallery_event_source <location> <event-id>",
-            new EventSourceDiagnostics(eventSources, Monitor).Run);
+        helper.ConsoleCommands.Add("gallery_event_source", "Inspect event definition sources: gallery_event_source <location> <event-id> | status | rescan",
+            new EventSourceDiagnostics(eventDefinitions, eventSources, Monitor).Run);
         helper.Events.Content.AssetReady += (_, e) => eventSources.OnAssetReady(e.Name);
-        helper.Events.Content.AssetsInvalidated += (_, e) => eventSources.Invalidate(e.NamesWithoutLocale);
+        helper.Events.Content.AssetsInvalidated += (_, e) =>
+        {
+            eventSources.Invalidate(e.NamesWithoutLocale);
+            // CP config/reload can change referenced files, targets and event IDs during a save.
+            if (e.NamesWithoutLocale.Any(name => name.StartsWith("Data/Events")))
+                eventDefinitions.Reset();
+        };
         helper.Events.Content.LocaleChanged += (_, _) => eventSources.Clear();
         helper.Events.GameLoop.SaveLoaded += (_, _) => eventSources.OnSaveLoaded();
-        helper.Events.GameLoop.ReturnedToTitle += (_, _) => eventSources.Clear();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => { eventSources.Clear(); eventDefinitions.Reset(); };
 
-        catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
+        catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics,
+            identity => eventDefinitions.Read(identity.AssetName, identity.EventId),
+            origin => eventExclusions.Enabled && eventExclusions.Rules.ShouldExclude(origin));
         photos = new GalleryPhotos(helper, Monitor, (key, error) =>
             Game1.addHUDMessage(new HUDMessage(helper.Translation.Get(key), error ? HUDMessage.error_type : HUDMessage.newQuest_type)));
         try
@@ -75,7 +91,7 @@ internal sealed class ModEntry : Mod
             () => Config.EnableOrdinaryEventReplay, () => unlockAll, () => Config.ShowRollbackWarning);
         appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor, tabIcon);
         application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock, appearance,
-            new EventSourceDetails(eventSources, Config.EnableEventSourceDiagnostics, () => Config.EnableEventSourceDiagnostics, helper.Translation, Monitor).Read);
+            new EventSourceDetails(eventDefinitions, eventSources, Config.EnableEventSourceDiagnostics, () => Config.EnableEventSourceDiagnostics, helper.Translation, Monitor).Read);
         helper.Events.GameLoop.SaveLoaded += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.DayStarted += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); replayService.ResetWarnings(); application.Reset(); };
@@ -115,6 +131,9 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
             eventSources.PruneIncomplete();
+            // Apply on the game thread, after any replay/confirmation has finished safely.
+            if (!replayService.IsBusy && eventExclusions.TryApplyCompleted())
+                application.RefreshCatalog();
             replay.Update();
             photos.Update(replay.PlayingEvent);
             if (!pendingOpen)

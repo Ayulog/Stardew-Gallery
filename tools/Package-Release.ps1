@@ -22,7 +22,7 @@ try {
     foreach ($entry in $source.Entries) {
         if (-not $entry.FullName.StartsWith('StardewGallery/', [StringComparison]::Ordinal) -or
             $entry.FullName.Contains('..') -or $entry.FullName.Contains('\') -or
-            $entry.FullName -match '(?i)(^|/)(config\.json|event-photos|user-data|diagnostics|backups|catalog-latest\.json|\.env)(/|$)' -or
+            $entry.FullName -match '(?i)(^|/)(config\.json|ai-mod-exclusion\.json|exclusion-cache|event-photos|user-data|diagnostics|backups|catalog-latest\.json|\.env)(/|$)' -or
             $entry.FullName -match '(?i)\.(cs|pdb|db|sqlite)$') {
             throw "Unexpected build entry: $($entry.FullName)"
         }
@@ -30,6 +30,15 @@ try {
     if (@($source.Entries | Where-Object { $_.FullName -match '^StardewGallery/i18n/[^/]+\.json$' }).Count -ne 12) {
         throw 'The archive must contain all 12 maintained locales.'
     }
+    $seedEntry = $source.GetEntry('StardewGallery/assets/ai-mod-exclusion.seed.json')
+    if ($null -eq $seedEntry) { throw 'Missing bundled event-source exclusion list.' }
+    $seedReader = [IO.StreamReader]::new($seedEntry.Open())
+    try {
+        $seed = $seedReader.ReadToEnd() | ConvertFrom-Json
+        if (@($seed.PSObject.Properties | Where-Object { $_.Value.ModId -is [string] }).Count -eq 0) {
+            throw 'Bundled event-source exclusion list has no ModId records.'
+        }
+    } finally { $seedReader.Dispose() }
     $manifestEntry = $source.GetEntry('StardewGallery/manifest.json')
     if ($null -eq $manifestEntry) { throw 'Missing packaged manifest.' }
     $reader = [IO.StreamReader]::new($manifestEntry.Open())

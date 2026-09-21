@@ -43,7 +43,7 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 - 事件身份包含资产与 ID；同名地点、同 ID 或演员别名的查询分组不能覆盖真实身份、原始脚本和回放地点。
 - 回放仅支持单人。保留回放期间禁止保存、备份、正常结束/跳过/异常时恢复玩家及环境的机制。
 - 原版快照不能保证恢复第三方私有状态、外部文件或任意回调；研究和验证结论要写清实际覆盖范围。
-- `config.json`、`event-photos/`、`user-data/` 为玩家数据；更新与测试必须保留它们。照片按存档区分，事件自定义名称在本机存档间共用。
+- `config.json`、`ai-mod-exclusion.json`、`event-photos/`、`user-data/` 为玩家数据；更新与测试必须保留它们。照片按存档区分，事件自定义名称在本机存档间共用。
 - 存储变更保持已有数据兼容，验证迁移、失败恢复与未来 schema 保护；使用临时数据或测试副本验证，不把真实存档用作可丢弃夹具。
 - GMCM、Portraiture、DDFC、Scale Up 均为可选依赖；缺失或读取失败时保留可用回退、恢复重试与日志限频，不能令基础画廊不可用。
 

@@ -38,6 +38,7 @@ internal sealed record GalleryCatalog(
     IReadOnlyList<GalleryEvent> ExcludedEvents
 )
 {
+    internal IReadOnlyDictionary<EventIdentity, EventOriginMatch> Origins { get; init; } = new Dictionary<EventIdentity, EventOriginMatch>();
     internal IReadOnlyList<PrerequisiteEvent> Prerequisites { get; init; } = [];
     internal PrerequisiteEvent? FindPrerequisite(string id) => Prerequisites.FirstOrDefault(entry => entry.EventId == id);
     internal IEnumerable<GalleryEvent> AllEntries => Events.Concat(ExcludedEvents);

@@ -73,8 +73,8 @@ The destination must not already exist. The packaging script checks the version,
 
 ## Event source checks / 事件来源检查
 
-Pure source-chain checks are included in the regular Checks command. A focused run is also available:
-来源逻辑检查已接入原有全量 Checks，也可定向执行：
+Pure source-chain, static file-origin and presentation checks are included in the regular Checks command. A focused run is also available:
+来源链、静态文件匹配及显示逻辑检查已接入原有全量 Checks，也可定向执行：
 
 ```powershell
 dotnet run --project Checks/StardewGallery.Checks.csproj -c Release -- --event-sources
@@ -89,3 +89,13 @@ dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.cs
 
 This harness is excluded from the MOD build/package and ordinary CI, which has no game binaries. Runtime check success is not in-game acceptance. See `docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md` for scope and remaining scenarios.
 此检查程序不进入 MOD 构建/发布包，也不加入没有游戏 DLL 的普通 CI。检查通过不等于游戏内验收，范围和待验场景见 `docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md`。
+
+## Built DLL compatibility / 构建产物加载检查
+
+On Windows, validate the built Gallery DLL through the installed SMAPI 4.5.2 assembly loader before packaging. Run in a fresh process; the loader keeps rewriting enabled and does not ignore incompatibility. It does not call Mod.Entry or launch the game. It also invokes the loaded DLL's JSON normalizer with permissive object/array fixtures.
+
+Windows 本机打包前，可用真实 SMAPI 4.5.2 加载器检查 DLL；重写开启且不忽略兼容错误，不执行模组入口或启动游戏，并验证加载后的宽松 JSON 对象/数组读取。此检查不能复现所有第三方模组先前加载的依赖组合，不代替游戏内验收。
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --assembly "bin/Release/net6.0/StardewGallery.dll"
+```

@@ -10,6 +10,7 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
     private bool warningShown;
     private bool confirmationPending;
     private EventIdentity? activeIdentity;
+    internal bool IsBusy => coordinator.IsActive || confirmationPending;
 
     internal EventIdentity? ActiveIdentity
     {

@@ -19,3 +19,13 @@ dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.cs
 ```
 
 On the verified Harmony 2.2.2 / .NET 6.0.36 installation, patching the `object` specialization changed the dictionary and string calls' `typeof(T)` results to `System.Object`. The production observer uses two non-generic hooks and public events instead.
+
+## Built DLL compatibility / 构建产物加载检查
+
+On Windows, validate the built Gallery DLL through the installed SMAPI 4.5.2 assembly loader before packaging. Run in a fresh process; the loader keeps rewriting enabled and does not ignore incompatibility. It does not call Mod.Entry or launch the game. It also invokes the loaded DLL's JSON normalizer with permissive object/array fixtures.
+
+Windows 本机打包前，可用真实 SMAPI 4.5.2 加载器检查 DLL；重写开启且不忽略兼容错误，不执行模组入口或启动游戏，并验证加载后的宽松 JSON 对象/数组读取。此检查不能复现所有第三方模组先前加载的依赖组合，不代替游戏内验收。
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --assembly "bin/Release/net6.0/StardewGallery.dll"
+```

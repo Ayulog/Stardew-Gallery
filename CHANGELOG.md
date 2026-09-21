@@ -1,5 +1,23 @@
 # Changelog / 更新日志
 
+## 2.8.0 - 2026-09-21 - Source Filters and Original Definitions / 来源筛选与原始定义
+
+- Add source filters and provider name/Mod ID text searches to the event query. / 事件查询新增来源筛选，支持搜索提供模组名称和 Mod ID。
+- Hide only confirmed non-vanilla original providers matching the public AI Mod Exclusion ModId rules; preserve unknown, ambiguous and unlisted origins. / 默认按公开 AI Mod Exclusion 的 ModId 规则隐藏明确命中的非原版原始来源；保留原版、未知、歧义及名单外来源。
+- Fetch the current list asynchronously on startup and save load, falling back to the bundled list on failure. Control this solely through ai-mod-exclusion.json, outside config.json and GMCM. / 启动和读档异步更新，失败使用发布内置名单；仅由独立 ai-mod-exclusion.json 控制，不加入 config.json 或 GMCM。
+- Refresh open gallery pages after list changes; prevent hidden stories reappearing as prerequisite markers, and defer changes until replay or its confirmation finishes. / 名单变化后刷新画廊，防止隐藏剧情重新生成为前置标记，回放及确认期间延后应用。
+
+- Discover installed event-pack folders from manifests matched to the public loaded-mod registry, fixing SMAPI blocking internal directory reflection and producing an empty index. / 改用模组清单与公开加载身份定位目录，修复 SMAPI 阻止内部反射、导致游戏内来源索引为空的问题。
+
+- Use a JSON formatting call supported by SMAPI assembly validation, fixing the "no longer compatible" load failure. / 修正 JSON 输出方法调用，解决 SMAPI 程序集检查拒绝加载、显示“不再兼容”的问题。
+- Remove the unavailable Nexus update key and download link; retain GitHub updates. / 移除失效的 Nexus 更新键与下载入口，保留 GitHub 更新。
+
+- Automatically scan loaded Content Patcher definitions, AliveNpcs scenes and raw game event XNBs; match asset plus event ID independently of optional tracing. / 自动扫描已加载 CP 模组、AliveNpcs 场景和原版 XNB 的事件定义，按资源＋事件 ID 匹配原始来源，无需开启追踪。
+- Follow Include/FromFile, retain matched file evidence and distinguish dependent overrides from ambiguous independent definitions. / 跟随 Include/FromFile 并显示匹配文件，结合依赖区分覆盖包，独立冲突保留多来源候选。
+- Keep runtime modifications as optional supplemental information; no additional Harmony hooks. / 运行时修改记录作为可选补充，不新增 Harmony。
+
+See `docs/RELEASE_2.8.0_NOTES.md` for usage, validation and limits. / 使用、验证与限制见对应版本说明。
+
 ## 2.7.0 - 2026-09-21 - Event Sources / 事件来源查询
 
 - Show event sources below the location in event details; click to view the main definition provider, executing framework, recorded edits and evidence status. / 在事件详情的地点下方显示来源，点击查看主事件提供者、执行框架、修改记录和证据状态。
