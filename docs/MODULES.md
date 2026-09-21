@@ -2,6 +2,7 @@
 
 | 模块 | 维护入口 | 依赖与职责 |
 | --- | --- | --- |
+| 事件来源 | `Sources/EventSourceIndex`、`SmapiEventSourceObserver`、`EventSourceDetails`、`EventSourcePresentation` | GMCM开关默认关闭、重启生效；事件详情页按实际完整键/脚本读来源，展示主定义提供者与修改链。仍仅两个非泛型观察点，不接数据库、收录或回放权限。 |
 | 当前事件资料 | `GalleryCatalogCache`、`Catalog/GalleryCatalogBuilder`、`GalleryCatalog` | 从当前游戏读取并分类；供其他模块取资料，不创建菜单或回放。 |
 | 条件与前置 | `GalleryConditionPresentation`、`ConditionStateReader`、`StoryDependencyLookup`、`PrerequisiteCatalog` | 当前TriggerActions标记和明确内部解锁依赖单独建资料；不生成可播放事件。条件与动作、已获得状态分离。 |
 | 自助搜索 | `StorySearchIndex`、`QueryFilter`、`QueryWeather` | 预计算角色/地点分组与名称，按类别/进度/已知条件筛选；不改收藏或权限。 |
@@ -22,3 +23,5 @@ dev.4已按用户要求移除定义来源功能及数据表。地点分组保留
 dev.5在查询索引中进一步聚合相同地点显示名，保留独立事件身份；注册的隐藏不可社交圆点分身在Key查找前先归到本体。`LocationNameFallbacks`只提供已核对地点的可读描述，使用原地点/角色名称和本地化后缀组合，不参与执行。当前全量盘点与回退依据见`drafts/星露谷画廊/research/20260909-query-name-followup/REPORT.md`。
 
 dev.6的`NativeGlobalEventCopies`只识别游戏TryGetLocationEvents注入的两段爷爷剧情，匹配原FarmHouse完整键与脚本后省略异地副本，避免每个地图虚增同一剧情。不得将该规则泛化到不同键/脚本或其它ID；输入原字典保持只读。原版地名、Cellar显示组及SVE替代人物归并继续位于名称层。
+
+2.7.0 的事件来源功能基于运行时操作调研，独立于上述历史 dev.4 已移除的实现；当前已有详情页展示与GMCM开关，并保留开发者诊断，不恢复旧数据表或旧来源推断。范围、启用方式及验收限制见 `EVENT_MOD_SOURCE_IMPLEMENTATION.md`。

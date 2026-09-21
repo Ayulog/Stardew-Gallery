@@ -60,7 +60,8 @@ internal static class GallerySpreadLayout
     internal static (int X, int Y, int Width, int Height) DetailHeaderBounds => (755, 140, 710, 150);
     internal static (int X, int Y, int Width, int Height) DetailMetadataBounds => (755, 140, 425, 150);
     internal static (int X, int Y, int Width, int Height) DetailEventIdBounds => (755, 140, 425, 42);
-    internal static (int X, int Y, int Width, int Height) DetailLocationBounds => (755, 190, 425, 92);
+    internal static (int X, int Y, int Width, int Height) DetailLocationBounds => (755, 190, 425, 42);
+    internal static (int X, int Y, int Width, int Height) DetailSourceBounds => (755, 240, 425, 42);
     internal static (int X, int Y, int Width, int Height) DetailThumbnailBounds => (1200, 140, 265, 149);
     internal static (int X, int Y, int Width, int Height) ConditionHeadingBounds => (755, 310, 710, 40);
     internal static (int X, int Y, int Width, int Height) ConditionViewportBounds => (755, 365, 710, 420);

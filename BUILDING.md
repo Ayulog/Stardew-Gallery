@@ -70,3 +70,22 @@ The destination must not already exist. The packaging script checks the version,
 
 目标文件必须尚不存在。打包脚本会核对版本、12 种语言、玩家数据排除和必需文档，并输出 ZIP 的 SHA256；生成 ZIP 不会上传或发布。
 
+
+## Event source checks / 事件来源检查
+
+Pure source-chain checks are included in the regular Checks command. A focused run is also available:
+来源逻辑检查已接入原有全量 Checks，也可定向执行：
+
+```powershell
+dotnet run --project Checks/StardewGallery.Checks.csproj -c Release -- --event-sources
+```
+
+The optional runtime harness requires the local game/SMAPI 4.5.2 DLLs. It uses in-memory fixtures and reads a vanilla Chinese event XNB without launching the game, installing files, or reading player saves. Replace GamePath with the confirmed installation path:
+可选运行时检查需要本机游戏及 SMAPI 4.5.2 DLL，使用内存夹具并只读加载原版中文事件 XNB，不启动游戏、不安装文件、不读取玩家存档；请替换实际路径：
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:\Games\Stardew Valley" -- "C:\Games\Stardew Valley"
+```
+
+This harness is excluded from the MOD build/package and ordinary CI, which has no game binaries. Runtime check success is not in-game acceptance. See `docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md` for scope and remaining scenarios.
+此检查程序不进入 MOD 构建/发布包，也不加入没有游戏 DLL 的普通 CI。检查通过不等于游戏内验收，范围和待验场景见 `docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md`。

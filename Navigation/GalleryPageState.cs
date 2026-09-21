@@ -9,6 +9,9 @@ internal sealed class GalleryPageState(GalleryPage page)
     internal EventIdentity? Event { get; init; }
     internal string SearchText { get; set; } = "";
     internal int Scroll { get; set; }
+    internal bool SourceExpanded { get; set; }
+    internal int ConditionScroll { get; set; }
+    internal int SourceScroll { get; set; }
     internal int Focus { get; set; } = -1;
     internal string? LocationFilter { get; set; }
     internal StoryKind? KindFilter { get; set; }

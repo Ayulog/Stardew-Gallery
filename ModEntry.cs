@@ -22,6 +22,7 @@ internal sealed class ModEntry : Mod
     private bool replayProtectionReady;
     private GalleryPhotos photos = null!;
     private CharacterAppearance appearance = null!;
+    private SmapiEventSourceObserver eventSources = null!;
 
     internal ModConfig Config { get; private set; } = new();
 
@@ -35,6 +36,17 @@ internal sealed class ModEntry : Mod
         {
             Monitor.Log(helper.Translation.Get("log.config-invalid", new { error = error.Message }), LogLevel.Error);
         }
+
+        eventSources = new SmapiEventSourceObserver(ModManifest.UniqueID, Monitor);
+        if (Config.EnableEventSourceDiagnostics)
+            eventSources.Start();
+        helper.ConsoleCommands.Add("gallery_event_source", "Inspect observed main event sources: gallery_event_source <location> <event-id>",
+            new EventSourceDiagnostics(eventSources, Monitor).Run);
+        helper.Events.Content.AssetReady += (_, e) => eventSources.OnAssetReady(e.Name);
+        helper.Events.Content.AssetsInvalidated += (_, e) => eventSources.Invalidate(e.NamesWithoutLocale);
+        helper.Events.Content.LocaleChanged += (_, _) => eventSources.Clear();
+        helper.Events.GameLoop.SaveLoaded += (_, _) => eventSources.OnSaveLoaded();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => eventSources.Clear();
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics);
         photos = new GalleryPhotos(helper, Monitor, (key, error) =>
@@ -62,7 +74,8 @@ internal sealed class ModEntry : Mod
         replayService = new ReplayService(helper, Monitor, replay, () => replayProtectionReady,
             () => Config.EnableOrdinaryEventReplay, () => unlockAll, () => Config.ShowRollbackWarning);
         appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor, tabIcon);
-        application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock, appearance);
+        application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock, appearance,
+            new EventSourceDetails(eventSources, Config.EnableEventSourceDiagnostics, () => Config.EnableEventSourceDiagnostics, helper.Translation, Monitor).Read);
         helper.Events.GameLoop.SaveLoaded += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.DayStarted += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); replayService.ResetWarnings(); application.Reset(); };
@@ -101,6 +114,7 @@ internal sealed class ModEntry : Mod
         };
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
+            eventSources.PruneIncomplete();
             replay.Update();
             photos.Update(replay.PlayingEvent);
             if (!pendingOpen)
@@ -283,6 +297,8 @@ internal sealed class ModEntry : Mod
         gmcm.Register(ModManifest, () => Config = new ModConfig(), () => Helper.WriteConfig(Config));
         gmcm.AddBoolOption(ModManifest, () => Config.EnableOrdinaryEventReplay, value => Config.EnableOrdinaryEventReplay = value,
             () => Helper.Translation.Get("config.ordinary-replay.name"), () => Helper.Translation.Get("config.ordinary-replay.tooltip"));
+        gmcm.AddBoolOption(ModManifest, () => Config.EnableEventSourceDiagnostics, value => Config.EnableEventSourceDiagnostics = value,
+            () => Helper.Translation.Get("config.event-source.name"), () => Helper.Translation.Get("config.event-source.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.GalleryKeys, value => Config.GalleryKeys = value,
             () => Helper.Translation.Get("config.key.name"), () => Helper.Translation.Get("config.key.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.ReplaySpeedKeys, value => Config.ReplaySpeedKeys = value,

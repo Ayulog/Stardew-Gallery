@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -14,6 +15,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private const int ReplayComponentId = 1001;
     private const int PhotosComponentId = 1002;
     private const int RenameComponentId = 1003;
+    private const int SourceComponentId = 1004;
     private static Rectangle RenameBounds => new(238, 810, 368, 72);
     private const int ReferenceComponentId = 5000;
     private const int ReferenceHeight = 42;
@@ -28,6 +30,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private readonly GalleryCharacter? character;
     private readonly GalleryEvent entry;
     private readonly IReadOnlyList<ConditionDisplayItem> conditions;
+    private readonly string sourceSummary;
+    private readonly string sourceStatus;
+    private readonly IReadOnlyList<string> sourceParagraphs;
+    private IReadOnlyList<string> wrappedSourceParagraphs = [];
     private readonly IReadOnlyDictionary<ConditionDisplayItem, IReadOnlyList<ReferenceItem>> conditionReferences;
     private readonly IReadOnlyDictionary<ConditionDisplayItem, string> internalNotes;
     private readonly ITranslationHelper i18n;
@@ -64,6 +70,11 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         character = entry.Kind == StoryKind.Heart ? GalleryEventNavigation.Owner(context.Catalog, entry, state.CharacterName) : null;
         this.conditions = conditions;
         i18n = context.I18n;
+        // Resolve once when opening the page; drawing and scrolling never load event assets.
+        EventSourceDisplay source = context.EventSource(entry.Resolved);
+        sourceSummary = source.Summary;
+        sourceStatus = source.Status;
+        sourceParagraphs = source.Details.Where(text => !string.IsNullOrWhiteSpace(text)).ToArray();
         var references = conditions.Distinct().ToDictionary(item => item, item => GalleryEventNavigation.References(item.Expression)
             .Select(id => (Id: id, Result: StoryDependencyLookup.Find(context.Catalog, id))).ToArray());
         internalNotes = references.ToDictionary(pair => pair.Key, pair => string.Join("\n", pair.Value
@@ -143,6 +154,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             return;
         }
         if (RenameBounds.Contains(x, y)) { Rename(); return; }
+        if (Bounds(GallerySpreadLayout.DetailSourceBounds).Contains(x, y)) { ToggleSource(); return; }
         if (CanReplay() && replayBounds.Contains(x, y))
         {
             currentlySnappedComponent = allClickableComponents.First(component => component.myID == ReplayComponentId);
@@ -235,6 +247,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         {
             FollowItem(referenceLinks[reference].Item);
         }
+        else if (currentlySnappedComponent?.myID == SourceComponentId) ToggleSource();
         else if (currentlySnappedComponent?.myID == RenameComponentId) Rename();
         else if (currentlySnappedComponent?.myID == PhotosComponentId)
             OpenPhotos();
@@ -246,46 +259,45 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     public override void applyMovementKey(int direction)
     {
-        if (referenceLinks.Count > 0 && direction is 0 or 2)
+        int current = currentlySnappedComponent?.myID ?? BackComponentId;
+        bool header = current is SourceComponentId or PhotosComponentId;
+        if (direction is 1 or 3)
         {
-            int current = currentlySnappedComponent?.myID ?? BackComponentId;
-            int reference = current - ReferenceComponentId;
-            int target = direction == 0
-                ? (reference >= 0 ? reference - 1 : current == PhotosComponentId ? -1 : referenceLinks.Count - 1)
-                : (reference >= 0 ? reference + 1 : current == PhotosComponentId ? 0 : referenceLinks.Count);
-            if (target >= 0 && target < referenceLinks.Count)
-                FocusReference(target);
-            else
+            if (header)
             {
-                ScrollBy(target < 0 ? -MaxScroll : MaxScroll);
-                currentlySnappedComponent = allClickableComponents.First(component => component.myID ==
-                    (target < 0 ? PhotosComponentId : CanReplay() ? ReplayComponentId : BackComponentId));
-                SnapCurrent();
+                FocusComponent(direction == 1 ? PhotosComponentId : SourceComponentId);
+                return;
+            }
+            int[] footer = CanReplay() ? [RenameComponentId, BackComponentId, ReplayComponentId] : [RenameComponentId, BackComponentId];
+            int index = Array.IndexOf(footer, current);
+            FocusComponent(footer[Math.Clamp(index + (direction == 1 ? 1 : -1), 0, footer.Length - 1)]);
+            return;
+        }
+        if (direction is not (0 or 2)) return;
+        if (header)
+        {
+            if (direction == 2)
+            {
+                if (referenceLinks.Count > 0) FocusReference(0);
+                else FocusComponent(CanReplay() ? ReplayComponentId : BackComponentId);
             }
             return;
         }
-        if (direction == 0 && scroll == 0 && currentlySnappedComponent?.myID != PhotosComponentId)
+        if (referenceLinks.Count > 0)
         {
-            currentlySnappedComponent = allClickableComponents.First(component => component.myID == PhotosComponentId);
-            SnapCurrent();
+            int reference = current - ReferenceComponentId;
+            int target = reference >= 0 ? reference + (direction == 0 ? -1 : 1)
+                : direction == 0 ? referenceLinks.Count - 1 : referenceLinks.Count;
+            if (target >= 0 && target < referenceLinks.Count) FocusReference(target);
+            else
+            {
+                ScrollBy(target < 0 ? -MaxScroll : MaxScroll);
+                FocusComponent(target < 0 ? SourceComponentId : CanReplay() ? ReplayComponentId : BackComponentId);
+            }
             return;
         }
-        if (direction == 2 && currentlySnappedComponent?.myID == PhotosComponentId)
-        {
-            currentlySnappedComponent = allClickableComponents.First(component => component.myID == (CanReplay() ? ReplayComponentId : BackComponentId));
-            SnapCurrent();
-            return;
-        }
-        if (direction is 0 or 2)
-            ScrollBy(direction == 0 ? -ScrollStep : ScrollStep);
-        else if (direction is 1 or 3)
-        {
-            int[] footer = CanReplay() ? [RenameComponentId, BackComponentId, ReplayComponentId] : [RenameComponentId, BackComponentId];
-            int current = Array.IndexOf(footer, currentlySnappedComponent?.myID ?? BackComponentId);
-            int target = footer[Math.Clamp(current + (direction == 1 ? 1 : -1), 0, footer.Length - 1)];
-            currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target);
-            SnapCurrent();
-        }
+        if (direction == 0 && scroll == 0) FocusComponent(SourceComponentId);
+        else ScrollBy(direction == 0 ? -ScrollStep : ScrollStep);
     }
 
     public override void snapToDefaultClickableComponent()
@@ -316,7 +328,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         b.Draw(Game1.mouseCursors2, new Rectangle(photoBounds.Right - 58, photoBounds.Bottom - 52, 54, 48),
             new Rectangle(72, 31, 18, 16), Focused(PhotosComponentId) ? new Color(255, 240, 160) : Color.White);
         BeginContentClip(b);
-        DrawConditions(b);
+        if (state.SourceExpanded) DrawSourceDetails(b);
+        else DrawConditions(b);
         EndContentClip(b);
         if (MaxScroll > 0)
             GalleryDrawing.DrawScrollbar(b, scrollThumb);
@@ -326,7 +339,11 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         GalleryDrawing.DrawButton(b, RenameBounds, i18n.Get("name.edit"));
         upperRightCloseButton?.draw(b);
         GalleryDrawing.EndScaled(b);
-        if (ToScreen(photoBounds).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
+        if (SourceHovered() || Focused(SourceComponentId))
+            IClickableMenu.drawHoverText(b, Game1.parseText(state.SourceExpanded ? i18n.Get("source.collapse")
+                : sourceSummary + "\n" + sourceStatus + "\n" + i18n.Get("source.expand"), Game1.smallFont,
+                Math.Max(160, Math.Min(520, viewportWidth - 80))), Game1.smallFont);
+        else if (ToScreen(photoBounds).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
             IClickableMenu.drawHoverText(b, i18n.Get("photo.title"), Game1.smallFont);
         drawMouse(b);
     }
@@ -344,7 +361,15 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         DrawHeaderText(b, titleText, Bounds(GallerySpreadLayout.DetailEventIdBounds));
         string location = context.Locations.Get(entry.LocationName);
         DrawHeaderText(b, i18n.Get("event-detail.location", new { location }), Bounds(GallerySpreadLayout.DetailLocationBounds), wrap: true);
-        DrawHeaderText(b, i18n.Get("event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
+        Rectangle sourceBounds = Bounds(GallerySpreadLayout.DetailSourceBounds);
+        if (SourceHovered() || Focused(SourceComponentId))
+            b.Draw(Game1.staminaRect, sourceBounds, new Color(255, 240, 165) * .7f);
+        Rectangle sourceTextBounds = new(sourceBounds.X + 8, sourceBounds.Y, sourceBounds.Width - 40, sourceBounds.Height);
+        float sourceScale = Math.Min(1f, (sourceTextBounds.Height - 8f) / Game1.smallFont.LineSpacing);
+        GalleryDrawing.DrawEllipsized(b, sourceSummary, sourceTextBounds, sourceScale);
+        GalleryDrawing.DrawCentered(b, state.SourceExpanded ? "-" : "+", new Rectangle(sourceBounds.Right - 30, sourceBounds.Y, 28, sourceBounds.Height));
+        b.Draw(Game1.staminaRect, new Rectangle(sourceBounds.X + 8, sourceBounds.Bottom - 3, sourceBounds.Width - 16, 1), GallerySpreadDrawing.LightInk);
+        DrawHeaderText(b, i18n.Get(state.SourceExpanded ? "source.details-title" : "event-detail.requirements"), Bounds(GallerySpreadLayout.ConditionHeadingBounds));
     }
 
     private void DrawOtherEventInformation(SpriteBatch b)
@@ -372,9 +397,61 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private int MeasureContent()
     {
+        if (state.SourceExpanded)
+            return wrappedSourceParagraphs.Sum(SourceParagraphHeight);
         if (conditions.Count == 0)
             return LineHeight(i18n.Get("condition.none"), RowTextWidth) + RowPadding * 2;
         return conditions.Sum(MeasureRow);
+    }
+
+    private int SourceTextWidth => contentBounds.Width - RowPadding * 2;
+
+    private void DrawSourceDetails(SpriteBatch b)
+    {
+        int y = contentBounds.Y - scroll;
+        foreach (string text in wrappedSourceParagraphs)
+        {
+            int height = SourceParagraphHeight(text);
+            if (y >= contentBounds.Bottom) break;
+            if (y + height > contentBounds.Top)
+            {
+                if (y > contentBounds.Y - scroll)
+                    b.Draw(Game1.staminaRect, new Rectangle(contentBounds.X, y, contentBounds.Width, 1), GallerySpreadDrawing.LightInk);
+                b.DrawString(Game1.smallFont, text, new Vector2(contentBounds.X + RowPadding, y + RowPadding), Game1.textColor);
+            }
+            y += height;
+        }
+    }
+
+    private static int SourceParagraphHeight(string text)
+        => text.Split('\n').Length * Game1.smallFont.LineSpacing + RowPadding * 2;
+
+    // Normal word wrapping can leave a mod ID or full event key wider than the viewport.
+    // Split those lines on Unicode text elements so no part of the identifier is clipped.
+    private static string WrapSourceText(string text, int width)
+    {
+        List<string> lines = [];
+        foreach (string line in Game1.parseText(text, Game1.smallFont, width).Replace("\r", "").Split('\n'))
+        {
+            if (line.Length == 0) { lines.Add(""); continue; }
+            int[] starts = StringInfo.ParseCombiningCharacters(line);
+            int offset = 0;
+            while (offset < starts.Length)
+            {
+                int low = offset + 1, high = starts.Length, fit = low;
+                while (low <= high)
+                {
+                    int middle = low + (high - low) / 2;
+                    int end = middle == starts.Length ? line.Length : starts[middle];
+                    if (Game1.smallFont.MeasureString(line[starts[offset]..end]).X <= width)
+                    { fit = middle; low = middle + 1; }
+                    else high = middle - 1;
+                }
+                lines.Add(line[starts[offset]..(fit == starts.Length ? line.Length : starts[fit])]);
+                offset = fit;
+            }
+        }
+        return string.Join("\n", lines);
     }
 
     private int MeasureRow(ConditionDisplayItem item)
@@ -497,10 +574,11 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         replayBounds = Bounds(GallerySpreadLayout.ReplayButtonBounds);
         backBounds = Bounds(GallerySpreadLayout.BackButtonBounds);
         initializeUpperRightCloseButton();
+        wrappedSourceParagraphs = sourceParagraphs.Select(text => WrapSourceText(text, SourceTextWidth)).ToArray();
         contentHeight = MeasureContent();
         referenceLinks.Clear();
         int rowY = contentBounds.Y;
-        foreach (ConditionDisplayItem item in conditions)
+        foreach (ConditionDisplayItem item in state.SourceExpanded ? Array.Empty<ConditionDisplayItem>() : conditions)
         {
             int linkY = rowY + MeasureRowBody(item);
             foreach (ReferenceItem reference in conditionReferences[item])
@@ -564,6 +642,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             allClickableComponents.Add(new ClickableComponent(ToScreen(replayBounds), "replay") { myID = ReplayComponentId, leftNeighborID = BackComponentId });
         allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.DetailThumbnailBounds)), "photos") { myID = PhotosComponentId });
         allClickableComponents.Add(new ClickableComponent(ToScreen(RenameBounds), "rename") { myID = RenameComponentId });
+        allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.DetailSourceBounds)), "source") { myID = SourceComponentId, rightNeighborID = PhotosComponentId });
         for (int index = 0; index < referenceLinks.Count; index++)
         {
             Rectangle visible = Rectangle.Intersect(ReferenceBounds(index), contentBounds);
@@ -575,6 +654,26 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)
             SnapCurrent();
     }
+
+    private void ToggleSource()
+    {
+        SaveState(SourceComponentId);
+        state.SourceExpanded = !state.SourceExpanded;
+        scroll = state.SourceExpanded ? state.SourceScroll : state.ConditionScroll;
+        dragging = false;
+        RecalculateLayout();
+        FocusComponent(SourceComponentId);
+        Game1.playSound("smallSelect");
+    }
+
+    private void FocusComponent(int id)
+    {
+        currentlySnappedComponent = allClickableComponents.First(component => component.myID == id);
+        SaveState();
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls) SnapCurrent();
+    }
+
+    private bool SourceHovered() => ToScreen(Bounds(GallerySpreadLayout.DetailSourceBounds)).Contains(Game1.getMouseX(true), Game1.getMouseY(true));
 
     private void Return()
     {
@@ -594,6 +693,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private void SaveState(int? focus = null)
     {
         state.Scroll = scroll;
+        if (state.SourceExpanded) state.SourceScroll = scroll;
+        else state.ConditionScroll = scroll;
         state.Focus = focus ?? currentlySnappedComponent?.myID ?? -1;
     }
 

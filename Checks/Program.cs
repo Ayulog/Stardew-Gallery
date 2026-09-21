@@ -5,6 +5,10 @@ using StardewGallery;
 AppearanceChecks.Run();
 if (args.Contains("--appearance")) return;
 
+EventSourceChecks.Run();
+EventSourceDetailChecks.Run();
+if (args.Contains("--event-sources")) return;
+
 GallerySearchChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();

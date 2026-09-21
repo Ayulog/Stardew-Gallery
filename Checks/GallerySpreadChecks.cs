@@ -52,7 +52,11 @@ internal static class GallerySpreadChecks
         Disjoint("Detail header children", GallerySpreadLayout.DetailMetadataBounds, GallerySpreadLayout.DetailThumbnailBounds);
         Contains(GallerySpreadLayout.DetailMetadataBounds, GallerySpreadLayout.DetailEventIdBounds, "Detail event ID");
         Contains(GallerySpreadLayout.DetailMetadataBounds, GallerySpreadLayout.DetailLocationBounds, "Detail location");
-        Disjoint("Metadata children", GallerySpreadLayout.DetailEventIdBounds, GallerySpreadLayout.DetailLocationBounds);
+        Contains(GallerySpreadLayout.DetailMetadataBounds, GallerySpreadLayout.DetailSourceBounds, "Detail source");
+        Disjoint("Metadata children", GallerySpreadLayout.DetailEventIdBounds, GallerySpreadLayout.DetailLocationBounds,
+            GallerySpreadLayout.DetailSourceBounds);
+        Check(GallerySpreadLayout.DetailSourceBounds.Y >= GallerySpreadLayout.DetailLocationBounds.Y + GallerySpreadLayout.DetailLocationBounds.Height,
+            "Source entry must follow the event location.");
         (int X, int Y, int Width, int Height)[] detailRegions = [GallerySpreadLayout.TitleBounds, GallerySpreadLayout.DetailHeaderBounds,
             GallerySpreadLayout.ConditionHeadingBounds, GallerySpreadLayout.ConditionViewportBounds,
             GallerySpreadLayout.FooterBounds, GallerySpreadLayout.DetailScrollTrackBounds];

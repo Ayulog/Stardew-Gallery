@@ -1,14 +1,14 @@
 # Stardew Gallery / 星露谷画廊
 
-**2.6.0 角色外观兼容**：跟随当前 NPC 外观，适配 DDFC 大立绘、Scale Up 小人及 Portraiture 高清/动态肖像，并提供失败回退与自动恢复。已测试的单个美化模组支持获用户确认；多个美化模组互相覆盖的组合请自行实测。详见 [版本说明](docs/RELEASE_2.6.0_NOTES.md)。
+**2.7.0 事件来源查询**：在事件详情页查看当前主事件的提供者与修改记录，在 GMCM 开启追踪、保存并重启后使用；修复读档完成后来源证据被清空的问题。来源追踪默认关闭，当前适配 SMAPI 4.5.2。详见 [版本说明](docs/RELEASE_2.7.0_NOTES.md)。
 
-**2.6.0 character appearance compatibility** adds current NPC appearances, DDFC portrait sizing, Scale Up sprite placement, Portraiture HD/animated portraits, fallback visuals and automatic recovery. Tested individual cosmetic mods have received user acceptance. Combinations of overlapping cosmetic mods require your own testing. See the [release notes](docs/RELEASE_2.6.0_NOTES.md).
+**2.7.0 event source lookup** shows the current main event provider and recorded edits in event details. Enable tracing in GMCM, save, and restart to use it. Source evidence now survives save loading. Tracing is off by default and currently supports SMAPI 4.5.2. See the [release notes](docs/RELEASE_2.7.0_NOTES.md).
 
 Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 
-[Download 2.6.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.6.0) · [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/51593) · [Changelog / 更新日志](CHANGELOG.md)
+[Download 2.7.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.7.0) · [Nexus Mods](https://www.nexusmods.com/stardewvalley/mods/51593) · [Changelog / 更新日志](CHANGELOG.md)
 
 ## 中文
 
@@ -48,7 +48,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 2. 解压下载文件，将 `StardewGallery` 文件夹放入游戏的 `Mods` 文件夹。
 3. 通过 SMAPI 启动游戏。
 
-GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回放提示、自动对白和调试诊断。未安装GMCM时可在config.json设置`EnableOrdinaryEventReplay`，默认false。
+GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追踪、快捷键、回放提示、自动对白和调试诊断。未安装GMCM时可在config.json设置`EnableOrdinaryEventReplay`，默认false。
 
 角色美化同样为可选：画廊读取当前生效的CP肖像与小人，按已支持的协议接入DDFC、Scale Up Unofficial和Portraiture。无需为了画廊安装这些框架，也不需要在画廊里选择美化来源。Portraiture素材须先在游戏正常对话中生效，再检查画廊；CP/PyTK版素材并不自动成为Portraiture选包。读取失败时尝试可用肖像，最终使用画廊图标占位并限频重试。此适配不解决多个美化包互相覆盖的问题，也不包含Overgrown/Earthy专用画廊皮肤。
 
@@ -75,6 +75,10 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 - 详情中的“自定义事件名”可保存或恢复默认名称。更新或卸载前保留`user-data/`及`event-photos/`，即可保留个人命名和截图。
 - “一键解锁全部”只改变画廊中的查看权限，不会修改存档的实际好感度或事件进度。
 
+### 事件来源查询
+
+在事件详情页的地点下方查看来源；点击来源可查看主事件提供者、修改记录和证据状态，再点击返回条件。在 GMCM 中开启“事件来源追踪（重启生效）”并保存、重启即可使用；未安装 GMCM 时可设置 `EnableEventSourceDiagnostics=true`。默认关闭，缺少证据时显示未知。追踪当前适配 SMAPI 4.5.2.0，其他版本会停用来源追踪并保留画廊功能；仅追踪主事件定义，不代表分支或全部文本作者。真实 CP/SVE 组合验收仍待完成。详见[实现说明](docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md)。
+
 ### 兼容性与限制
 
 - 事件目录取决于当前存档状态、已安装 Mod 及其条件，因此不同存档可能看到不同的当前版本。
@@ -95,7 +99,7 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、快捷键、回
 
 ### 验证与构建
 
-2.6.0已获单个美化模组支持的用户实测确认，复用2.5.0的既有功能验收。逻辑、本地化、存储及12语言隔离界面检查通过；多个美化模组互相覆盖请自行实测，不等同于所有模组版本、组合、Linux或macOS全面实机验证。
+2.7.0 完成主项目构建、逻辑/存储检查及 36 项 SMAPI 来源管线检查，包含中文资源、原版 XNB 与读档缓存回归；12 种语言的键和占位符一致。修复后的来源界面、实际手柄操作及真实 CP/SVE 组合尚待游戏内验收。2.6.0 的单个美化模组支持已有用户确认，多个美化覆盖组合仍需自行实测。
 
 构建需要.NET SDK 8，以及已安装SMAPI的游戏目录；`global.json`固定使用已安装的正式版8.0 SDK，目标框架保持`net6.0`。完整环境与打包步骤见[构建说明](BUILDING.md)。在仓库根目录运行：
 
@@ -154,7 +158,7 @@ All Events includes these three categories. Pure transitions stay outside story 
 2. Extract the download and place the `StardewGallery` folder in the game's `Mods` folder.
 3. Launch the game through SMAPI.
 
-GMCM is optional. It configures ordinary replay, keybinds, warnings, dialogue auto-advance and diagnostics. Without GMCM, set `EnableOrdinaryEventReplay` in config.json; its default is false.
+GMCM is optional. It configures ordinary replay, event source tracing, keybinds, warnings, dialogue auto-advance and diagnostics. Without GMCM, set `EnableOrdinaryEventReplay` in config.json; its default is false.
 
 Cosmetic frameworks are optional too. The gallery reads currently active CP portraits/sprites and integrates with supported DDFC, Scale Up Unofficial and Portraiture formats. None is required just to use the gallery. Select and verify Portraiture packs in normal game dialogue first; a CP/PyTK pack does not automatically become a Portraiture set. Failed reads use an available portrait or the gallery icon, with throttled retries. This does not resolve conflicts between cosmetic packs or provide dedicated Overgrown/Earthy gallery skins.
 
@@ -181,6 +185,10 @@ Close the game and back up `Mods/StardewGallery` before replacing the mod files.
 - Use Rename Event in details to save a personal name or restore the default. Preserve `user-data/` and `event-photos/` when updating or uninstalling.
 - "Unlock all" changes gallery visibility only. It does not alter friendship or event progress in the save.
 
+### Event source lookup
+
+Event details show a source row below the location. Click it to view the main definition provider, recorded changes and evidence status; click again to return to requirements. Enable event source tracing in GMCM, save, and restart SMAPI (off by default). Without GMCM, set `EnableEventSourceDiagnostics=true`. Tracing currently supports SMAPI 4.5.2.0; other versions disable tracing while keeping the gallery available. Missing evidence remains unknown, and main-definition provenance does not establish branch or full-text authorship. In-game CP/SVE combination acceptance is pending; see the [implementation notes](docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md).
+
 ### Compatibility and limitations
 
 - The catalog depends on the current save state, installed mods, and their conditions, so different saves may expose different current versions.
@@ -201,7 +209,7 @@ Delete the `Mods/StardewGallery` folder.
 
 ### Validation And Building
 
-Tested individual cosmetic mods have received user acceptance for 2.6.0, reusing prior 2.5.0 gameplay acceptance. Logic, localization, persistence and isolated rendering checks passed across all 12 languages. Overlapping cosmetic combinations require user testing; this does not represent exhaustive testing of every mod version, Linux or macOS.
+2.7.0 passes the full build, logic/persistence checks and 36 SMAPI source pipeline assertions, including localized resources, a vanilla XNB and save-load cache regressions. Keys and placeholders match across all 12 languages. The corrected source UI, actual controller input and real CP/SVE combinations still need in-game acceptance. Tested individual cosmetic mods received user confirmation in 2.6.0; overlapping cosmetic combinations still require testing.
 
 Use a .NET 8 SDK and a game installation with SMAPI. `global.json` selects an installed stable 8.0 SDK; the mod still targets `net6.0`. See [BUILDING.md](BUILDING.md) for setup and packaging. From the repository root:
 

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="0Harmony"><HintPath>$(GamePath)/smapi-internal/0Harmony.dll</HintPath></Reference>
+    <Reference Include="StardewModdingAPI"><HintPath>$(GamePath)/StardewModdingAPI.dll</HintPath></Reference>
+    <Reference Include="SMAPI.Toolkit.CoreInterfaces"><HintPath>$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll</HintPath></Reference>
+    <Compile Include="../Sources/SmapiEventSourceObserver.cs" Link="Sources/SmapiEventSourceObserver.cs" />
+    <Compile Include="../Sources/EventSourceInfo.cs" Link="Sources/EventSourceInfo.cs" />
+    <Compile Include="../Sources/EventSourceIndex.cs" Link="Sources/EventSourceIndex.cs" />
+    <Compile Include="../Domain/EventHashes.cs" Link="Domain/EventHashes.cs" />
+  </ItemGroup>
+  <Target Name="ValidateSmapiPath" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="'$(GamePath)' == ''" Text="Set GamePath to an installed Stardew Valley directory with SMAPI 4.5.2." />
+    <Error Condition="!Exists('$(GamePath)/StardewModdingAPI.dll')" Text="SMAPI was not found under GamePath." />
+    <Error Condition="!Exists('$(GamePath)/smapi-internal/0Harmony.dll')" Text="Harmony was not found under GamePath/smapi-internal." />
+    <Error Condition="!Exists('$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll')" Text="SMAPI.Toolkit.CoreInterfaces was not found under GamePath/smapi-internal." />
+  </Target>
+</Project>

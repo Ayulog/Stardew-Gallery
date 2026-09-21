@@ -11,6 +11,9 @@ internal sealed class ModConfig
 
     public bool DebugDiagnostics { get; set; }
 
+    /// <summary>Opt-in source tracing prototype; requires restart and SMAPI 4.5.2.</summary>
+    public bool EnableEventSourceDiagnostics { get; set; }
+
     public bool EnableOrdinaryEventReplay { get; set; }
 
     public KeybindList GalleryKeys { get; set; } = new(SButton.G);

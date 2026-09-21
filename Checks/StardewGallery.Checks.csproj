@@ -10,6 +10,12 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="AppearanceChecks.cs" />
+    <Compile Include="EventSourceChecks.cs" />
+    <Compile Include="EventSourceDetailChecks.cs" />
+    <Compile Include="..\Sources\EventSourcePresentation.cs" Link="Sources\EventSourcePresentation.cs" />
+    <Compile Include="..\Sources\EventSourceDetailLookup.cs" Link="Sources\EventSourceDetailLookup.cs" />
+    <Compile Include="..\Sources\EventSourceInfo.cs" Link="Sources\EventSourceInfo.cs" />
+    <Compile Include="..\Sources\EventSourceIndex.cs" Link="Sources\EventSourceIndex.cs" />
     <Compile Include="..\Appearance\AppearanceGeometry.cs" Link="Appearance\AppearanceGeometry.cs" />
     <Compile Include="..\Appearance\PortraitureRegion.cs" Link="Appearance\PortraitureRegion.cs" />
     <Compile Include="..\Appearance\DialoguePortraitSelection.cs" Link="Appearance\DialoguePortraitSelection.cs" />

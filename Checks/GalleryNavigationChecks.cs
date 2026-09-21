@@ -32,7 +32,8 @@ internal static class GalleryNavigationChecks
 
         GalleryPageHistory trail = new(); trail.Reset();
         GalleryPageState home = trail.Current!; home.Scroll = 4; home.Focus = 7;
-        GalleryPageState a = new(GalleryPage.Detail) { Event = town.Resolved.Identity, Scroll = 180 };
+        GalleryPageState a = new(GalleryPage.Detail) { Event = town.Resolved.Identity, Scroll = 180, Focus = 1004,
+            SourceExpanded = true, SourceScroll = 180, ConditionScroll = 60 };
         GalleryPageState b = new(GalleryPage.Detail) { Event = beach.Resolved.Identity };
         trail.Open(a); trail.Open(b);
         Check(trail.Count == 3 && ReferenceEquals(trail.Current, b), "same ID different asset is a different page");
@@ -42,6 +43,8 @@ internal static class GalleryNavigationChecks
         trail.Open(new(GalleryPage.Detail) { Event = town.Resolved.Identity });
         Check(ReferenceEquals(trail.Current, a) && trail.Current.Scroll == 180 && trail.Count == 2,
             "cycle returns explicit page state, truncating descendants");
+        Check(a.SourceExpanded && a.SourceScroll == 180 && a.ConditionScroll == 60 && a.Focus == 1004,
+            "returning to event details restores source mode, independent scroll offsets and source focus");
         Check(trail.Back() && ReferenceEquals(trail.Current, home) && home.Scroll == 4 && home.Focus == 7,
             "back restores scroll/focus without retaining a concrete menu");
         Check(!trail.Back() && trail.Current is null, "root back closes navigation");

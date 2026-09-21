@@ -1,5 +1,14 @@
 # Changelog / 更新日志
 
+## 2.7.0 - 2026-09-21 - Event Sources / 事件来源查询
+
+- Show event sources below the location in event details; click to view the main definition provider, executing framework, recorded edits and evidence status. / 在事件详情的地点下方显示来源，点击查看主事件提供者、执行框架、修改记录和证据状态。
+- Add an opt-in GMCM source tracing switch; save and restart to apply. Without GMCM, use EnableEventSourceDiagnostics in config.json. / GMCM 新增默认关闭的来源追踪开关，保存并重启生效；未安装 GMCM 时使用 config.json 的 EnableEventSourceDiagnostics。
+- Preserve observed source evidence when a save finishes loading, fixing cached events showing unknown sources. / 修复读档完成时清空已收集证据、导致缓存事件来源未知的问题。
+- Add all 12 translations, separate condition/source scroll positions, controller focus and wrapping for long identifiers. / 补齐 12 语言文案、条件与来源独立滚动位置、手柄焦点和长标识换行。
+- Use two non-generic Harmony observation points with public SMAPI events. Source tracing currently targets SMAPI 4.5.2.0 and only current main Data/Events definitions; missing evidence remains unknown. / 仅用两个非泛型 Harmony 观察点及 SMAPI 公开事件；来源追踪当前适配 SMAPI 4.5.2.0，仅覆盖当前 Data/Events 主定义，缺证据时保留未知。
+
+See `docs/RELEASE_2.7.0_NOTES.md` for usage, validation and limits. / 使用、验证与限制见对应版本说明。
 ## 2.6.0 - 2026-09-10 - Character Appearance Compatibility / 角色外观兼容
 
 - Read current NPC outfits and portraits through an independent appearance module, with support for reviewed DDFC, Scale Up Unofficial and Portraiture formats. / 独立外观模块读取当前服装与肖像，接入已核查的DDFC、Scale Up Unofficial和Portraiture格式。
