@@ -2,7 +2,7 @@
 
 2026-10-08
 
-署名更新 / Attribution update：发布附件中的作者和版权署名统一为 `ayulog`，保留此前验证的 2.9.0 DLL。The package author and copyright attribution now use `ayulog`; the verified 2.9.0 DLL is retained.
+署名更新 / Attribution update：发布附件中的作者和版权署名统一为 `Ayulog`，保留此前验证的 2.9.0 DLL。The package author and copyright attribution now use `Ayulog`; the verified 2.9.0 DLL is retained.
 
 ## 中文
 

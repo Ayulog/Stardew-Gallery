@@ -4,11 +4,23 @@
 
 **2.9.0**: includes the GMCM exclusion setting (off by default), fixes replay restoration, speed, green rain, condition filters and controller input, and removes retired history/preview code and SQLite dependencies. See the [release notes](docs/RELEASE_2.9.0_NOTES.md) for updating and validation scope.
 
-Copyright (C) 2026 ayulog. Licensed under the GNU General Public License v3.0.
+Copyright (C) 2026 Ayulog. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 
-[Download 2.9.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.9.0) · [Changelog / 更新日志](CHANGELOG.md)
+[Download 2.9.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.9.0) · [Changelog / 更新日志](CHANGELOG.md) · [在线图文说明 / Online README](https://github.com/Ayulog/Stardew-Gallery#readme)
+
+## 画廊一览 / In-game gallery
+
+按角色收藏剧情，查看事件条件与来源，再用查询器找到想重温的故事。 / Browse stories by character, inspect conditions and sources, and find the event you want to revisit.
+
+| 角色画廊 / Character gallery | 好感相册 / Heart-event album |
+| --- | --- |
+| [![角色画廊：角色肖像、剧情数量及查询入口](docs/images/gallery-overview.png)](docs/images/gallery-overview.png) | [![角色相册：好感、生日和好感事件列表](docs/images/character-album.png)](docs/images/character-album.png) |
+| **条件与来源 / Conditions and sources** | **事件查询 / Event query** |
+| [![事件详情：地点、来源、好感要求和满足状态](docs/images/event-details.png)](docs/images/event-details.png) | [![事件查询：按名称、角色、地点和来源搜索剧情](docs/images/event-query.png)](docs/images/event-query.png) |
+
+点击图片查看原图。截图展示含额外内容与外观模组的游戏环境。 / Click an image for full size. Screenshots show a game with additional content and cosmetic mods installed.
 
 ## 中文
 
