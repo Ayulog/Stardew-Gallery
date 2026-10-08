@@ -2,6 +2,8 @@
 
 2026-10-08
 
+署名更新 / Attribution update：发布附件中的作者和版权署名统一为 `ayulog`，保留此前验证的 2.9.0 DLL。The package author and copyright attribution now use `ayulog`; the verified 2.9.0 DLL is retained.
+
 ## 中文
 
 2.9.0 修复本轮审计确认的 B1–B11，将名单排除改为 GMCM 中默认关闭的可选功能，并移除停用的历史／预览代码和 SQLite 依赖。

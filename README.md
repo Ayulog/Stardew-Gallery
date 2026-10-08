@@ -4,7 +4,7 @@
 
 **2.9.0**: includes the GMCM exclusion setting (off by default), fixes replay restoration, speed, green rain, condition filters and controller input, and removes retired history/preview code and SQLite dependencies. See the [release notes](docs/RELEASE_2.9.0_NOTES.md) for updating and validation scope.
 
-Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
+Copyright (C) 2026 ayulog. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 

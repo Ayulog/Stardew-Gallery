@@ -56,7 +56,7 @@ EventIdentity = normalized AssetName + case-sensitive EventId
 
 ## 5. 参考依据
 
-- 实施任务书：`C:/Users/sjt38/Downloads/PHASE1_TASK.md.md`。
+- 实施任务书：`PHASE1_TASK.md.md`（原始任务文档）。
 - 当前 Stardew Gallery 1.0.0 全部受版本控制源码、配置、文档和 UI 资产。
 - 现有原版扫描研究：`drafts/星露谷画廊/research/vanilla-scan-foundation.md`。
 - 现有自然观看快照记录：`memory/星露谷画廊/0.16.0-自然观看版本快照-20260902.md`。
