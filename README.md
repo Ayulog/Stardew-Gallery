@@ -1,5 +1,9 @@
 # Stardew Gallery / 星露谷画廊
 
+[![Stardew Gallery AI 宣传海报：山谷景色中的剧情相册，署名 Ayulog](docs/images/stardew-gallery-ai-poster.png)](docs/images/stardew-gallery-ai-poster.png)
+
+*AI 宣传插画 / AI-generated promotional artwork*
+
 **2.9.0**：整合 GMCM 名单开关（默认关闭），修复回放恢复、倍速、绿雨、条件筛选及手柄输入，清除停用历史／预览代码和 SQLite 依赖。升级步骤与验证范围见[版本说明](docs/RELEASE_2.9.0_NOTES.md)。
 
 **2.9.0**: includes the GMCM exclusion setting (off by default), fixes replay restoration, speed, green rain, condition filters and controller input, and removes retired history/preview code and SQLite dependencies. See the [release notes](docs/RELEASE_2.9.0_NOTES.md) for updating and validation scope.

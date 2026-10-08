@@ -1,5 +1,9 @@
 # README 宣传素材 / README media
 
+`stardew-gallery-ai-poster.png` 是项目维护者提供的 AI 宣传插画，保留原图及 `Ayulog` 署名，用于 README 顶部展示；画面中的相册与场景为宣传创作，实际界面见下列实机截图。
+
+The AI-generated promotional poster is supplied by the project maintainer and retains the original artwork and `Ayulog` credit. It appears at the top of the README; the screenshots below show the actual game interface.
+
 这四张截图由项目维护者提供，保留原图内容及 1280×720 尺寸，用于展示实际游戏界面。截图中的角色与事件取决于游戏安装的内容和外观模组，不作为所有模组组合的兼容性证明。
 
 | 文件 | 内容 |
