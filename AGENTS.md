@@ -30,7 +30,7 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 - `ModEntry.cs` / `ModConfig.cs`：SMAPI 入口、配置和模块接线；详细职责见 `docs/MODULES.md`。
 - `Catalog/` / `Domain/`：当前事件资料、分类与身份；`Conditions/`：条件解析、说明与前置依赖。
 - `Navigation/` / `UI/` 及 `Gallery*Menu.cs`：页面状态、导航和界面；菜单通过统一导航创建，页面不借另一页面读取业务数据。
-- `Preview/`、`ReplayCoordinator.cs`、`ReplaySaveGuard.cs`、`ReplaySnapshot.cs`：回放权限、生命周期、保存保护与恢复。
+- `Replay/`、`ReplayCoordinator.cs`、`ReplaySaveGuard.cs`、`ReplaySnapshot.cs`：当前回放权限、生命周期、保存保护与恢复。`Conditions/CurrentStateSnapshot` 与 `RuntimeStateReader` 为当前条件读取，不做预览注入。
 - `Appearance/`：角色外观适配与缓存；`Screenshots/`：截图封面；`Persistence/`：本地存储；`i18n/`：12 种语言。
 - `Checks/`：逻辑检查；`PersistenceChecks/`：存储检查；`tools/`：素材和发布工具。
 
@@ -43,8 +43,9 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 - 事件身份包含资产与 ID；同名地点、同 ID 或演员别名的查询分组不能覆盖真实身份、原始脚本和回放地点。
 - 回放仅支持单人。保留回放期间禁止保存、备份、正常结束/跳过/异常时恢复玩家及环境的机制。
 - 原版快照不能保证恢复第三方私有状态、外部文件或任意回调；研究和验证结论要写清实际覆盖范围。
-- `config.json`、`ai-mod-exclusion.json`、`event-photos/`、`user-data/` 为玩家数据；更新与测试必须保留它们。照片按存档区分，事件自定义名称在本机存档间共用。
+- `config.json`、`event-photos/`、`user-data/` 为玩家数据；更新与测试必须保留它们。照片按存档区分，事件自定义名称在本机存档间共用。AI 名单排除统一使用 `config.json` 的 `EnableAiModExclusion`，默认关闭；按已授权的配置替换范围，运行时清理已废弃的 `ai-mod-exclusion.json`，不迁移其旧值。
 - 存储变更保持已有数据兼容，验证迁移、失败恢复与未来 schema 保护；使用临时数据或测试副本验证，不把真实存档用作可丢弃夹具。
+- 已删除旧历史采集、冻结回放、预览注入及 SQLite 源码和依赖；当前持久化只保留照片、名称和必要的存档身份。不要重新引入死功能，也不要删除玩家已有历史数据库。
 - GMCM、Portraiture、DDFC、Scale Up 均为可选依赖；缺失或读取失败时保留可用回退、恢复重试与日志限频，不能令基础画廊不可用。
 
 ## 验证与逆向研究
@@ -63,7 +64,7 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 - 版本调整同步 `StardewGallery.csproj`、`manifest.json`、更新日志及相关发布说明，保留稳定的 `UniqueID` 和 `EntryDll`。
 - 构建成功后用 `./tools/Package-Release.ps1 -Destination ./release/StardewGallery-<版本>-Nexus.zip` 打包；替换 `<版本>` 为 manifest 实际版本，目标文件必须尚不存在。
 - 打包脚本读取构建 ZIP、检查版本与 12 语言、排除玩家数据，并附带 README、更新日志和许可声明，最后输出 SHA256；不要绕过它的内容检查。
-- 遵循项目 GPL-3.0、`THIRD-PARTY-NOTICES.md` 和 `licenses/`；不捆绑第三方 Mod 或立绘。
+- 遵循项目 GPL-3.0 和 `THIRD-PARTY-NOTICES.md`；今后增加需分发许可的依赖时再维护 `licenses/`。不捆绑第三方 Mod 或立绘。
 - `bin/`、`obj/`、`release/`、诊断输出、玩家配置和存档不提交；正式发布只包含预期的程序、资源、翻译与说明。
 - 提交、推送、安装和发布按用户当前任务已经授权的范围执行；交付说明实际检查、结果与待实测场景。
 - 历史归档以 `Stardew-Gallery` 独立文件夹保存，按日期时间新增快照，记录 Git 提交、版本和校验信息；快照保存在仓库外，不覆盖旧归档。

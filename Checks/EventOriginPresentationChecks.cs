@@ -30,6 +30,34 @@ internal static class EventOriginPresentationChecks
         Check(fallback.Summary.Contains("Translation Pack") && fallback.Status == "source.origin-runtime", "Runtime-only fallback is explicitly identified as observed rather than file origin");
         var mismatch = EventOriginPresentation.Build(resolved, unknown, observed with { ScriptMatches = false }, EventSourceDisplayState.Ready, Translate);
         Check(!mismatch.Summary.Contains("Translation Pack"), "Stale runtime evidence cannot become a fallback original provider");
+        foreach (EventOriginMatch matchedOrigin in new[] { origin, ambiguous, unknown })
+        {
+            EventSourceDisplay partial = EventOriginPresentation.Build(resolved, matchedOrigin,
+                observed with { Status = EventSourceStatus.Partial, Reason = "private failure" }, EventSourceDisplayState.Ready, Translate);
+            Check(partial.Details.Contains("source.partial") && partial.Details.Contains("source.partial-help"),
+                "Incomplete runtime evidence stays visible with original origin " + matchedOrigin.Status);
+            Check(partial.Details.Contains("source.no-modifications") && !partial.Details.Any(line => line.Contains("private failure")),
+                "Zero observed mutations neither hide incompleteness nor expose private errors");
+        }
+        Check(knownDisplay.Details.Contains("source.complete") && !knownDisplay.Details.Contains("source.partial-help"),
+            "Complete runtime evidence is shown independently of matched original source");
+        foreach (EventSourceInfo stale in new[] { observed with { ScriptMatches = false }, observed with { IsDeleted = true }, observed with { Status = EventSourceStatus.Unknown } })
+        {
+            EventSourceDisplay staleDisplay = EventOriginPresentation.Build(resolved, origin, stale, EventSourceDisplayState.Ready, Translate);
+            Check(staleDisplay.Details.Contains("source.missing-help") && !staleDisplay.Details.Contains("source.complete")
+                && !staleDisplay.Details.Contains("source.no-modifications"), "Stale/deleted/unknown evidence never claims complete unchanged content");
+        }
+        foreach (EventSourceDisplayState state in new[] { EventSourceDisplayState.Disabled, EventSourceDisplayState.RestartRequired, EventSourceDisplayState.Unavailable })
+        {
+            EventSourceDisplay inactive = EventOriginPresentation.Build(resolved, origin, observed with { Status = EventSourceStatus.Partial }, state, Translate);
+            Check(!inactive.Details.Contains("source.partial") && !inactive.Details.Contains("source.no-modifications"),
+                "Disabled tracing doesn't reuse prior runtime evidence: " + state);
+        }
+        string CollidingTranslate(string key, object? args) => key is "source.asset" or "source.modifications" ? "same translated label" : Translate(key, args);
+        EventSourceDisplay collision = EventOriginPresentation.Build(resolved, origin,
+            observed with { Status = EventSourceStatus.Partial }, EventSourceDisplayState.Ready, CollidingTranslate);
+        Check(collision.Details.Contains("source.partial-help") && collision.Details.Contains("source.no-modifications"),
+            "Runtime evidence structure does not depend on translated label equality");
         Console.WriteLine($"Event origin presentation checks passed: {checks}");
     }
 }

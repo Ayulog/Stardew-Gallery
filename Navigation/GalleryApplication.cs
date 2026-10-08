@@ -71,9 +71,7 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
     }
     public void ApplyFilters(QueryFilter filter)
     {
-        if (history.Current?.Page != GalleryPage.Filters) return;
-        history.Back();
-        if (history.Current is { Page: GalleryPage.Query } query) { query.Filter = filter; query.Scroll = 0; query.Focus = -1; ShowCurrent(); }
+        if (history.ApplyFilters(filter)) ShowCurrent();
     }
     public void Rename(EventIdentity identity)
     {
@@ -119,8 +117,9 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
         if (view is null || history.Current is not { } page || !Context.IsWorldReady) return;
         if (page.Page == GalleryPage.Album && !view.Catalog.Characters.Any(character => character.Name == page.CharacterName)
             || page.Page == GalleryPage.Prerequisite && view.Catalog.FindPrerequisite(page.PrerequisiteId!) is null) { Back(); return; }
-        if (page.Event is { } identity && view.Catalog.Find(identity) is not { Kind: not StoryKind.Internal }
-            && !(page.Page == GalleryPage.Rename && view.Catalog.FindPrerequisite(identity.EventId)?.Identity == identity)) { Back(); return; }
+        // An already-open name editor may finish or cancel after exclusion removes its event.
+        // The refreshed catalog still governs every content page and replay entry point.
+        if (page.Page != GalleryPage.Rename && page.Event is { } identity && view.Catalog.Find(identity) is not { Kind: not StoryKind.Internal }) { Back(); return; }
         Game1.activeClickableMenu = page.Page switch
         {
             GalleryPage.Home => new GalleryMenu(view, page),

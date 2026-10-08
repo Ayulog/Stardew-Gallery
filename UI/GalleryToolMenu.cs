@@ -124,8 +124,9 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
     public override void releaseLeftClick(int x, int y) => dragging = false;
     public override void receiveGamePadButton(Buttons button)
     {
-        if (button == Buttons.A) Activate(FocusId);
-        else if (button == Buttons.B) HandleControllerBack();
+        // Game1 synthesizes A/X clicks while areGamePadControlsImplemented is false.
+        // Keep activation there so snapped and free-cursor modes both execute once.
+        if (button == Buttons.B) HandleControllerBack();
         else if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
         {
             int delta = button == Buttons.LeftShoulder ? -8 : 8;

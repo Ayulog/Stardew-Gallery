@@ -43,9 +43,10 @@ internal static class ReplaySceneEnvironmentResolver
         {
             "sun" or "sunny" => "Sun",
             "rain" => "Rain",
-            "rainy" => current is "Rain" or "Storm" ? current : "Rain",
+            "rainy" => current is "Rain" or "Storm" or "GreenRain" ? current : "Rain",
             "storm" or "stormy" => "Storm",
             "snow" or "snowy" => "Snow",
+            "greenrain" => "GreenRain",
             "wind" or "windy" => "Wind",
             _ => null
         };

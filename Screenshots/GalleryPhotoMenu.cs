@@ -122,8 +122,8 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
     public override void update(GameTime time) { base.update(time); SaveState(); }
     public override void receiveGamePadButton(Buttons button)
     {
+        // A/X use Game1's mouse emulation, including free-cursor mode.
         if (button == Buttons.B) Return();
-        else if (button == Buttons.A) Activate(currentlySnappedComponent?.myID ?? 100);
         else base.receiveGamePadButton(button);
     }
     public override void applyMovementKey(int direction)

@@ -7,6 +7,8 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Stardew Valley"><HintPath>$(GamePath)/Stardew Valley.dll</HintPath></Reference>
+    <Reference Include="MonoGame.Framework"><HintPath>$(GamePath)/MonoGame.Framework.dll</HintPath></Reference>
     <Reference Include="0Harmony"><HintPath>$(GamePath)/smapi-internal/0Harmony.dll</HintPath></Reference>
     <Reference Include="StardewModdingAPI"><HintPath>$(GamePath)/StardewModdingAPI.dll</HintPath></Reference>
     <Reference Include="SMAPI.Toolkit.CoreInterfaces"><HintPath>$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll</HintPath></Reference>

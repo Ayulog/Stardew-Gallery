@@ -40,8 +40,7 @@ internal static class EventOriginPresentation
             if (origin.Status == EventOriginMatchStatus.Unknown)
                 details.AddRange(runtime.Details);
             else
-                details.AddRange(runtime.Details.SkipWhile(line => line != Text("source.modifications"))
-                    .TakeWhile(line => line != Text("source.asset", new { asset = observed.Scope.AssetName })));
+                details.AddRange(runtime.EvidenceDetails);
         }
         else
         {

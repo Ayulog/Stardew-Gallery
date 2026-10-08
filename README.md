@@ -1,14 +1,14 @@
 # Stardew Gallery / 星露谷画廊
 
-**2.8.0 来源筛选与原始来源识别**：自动扫描模组事件定义，按来源查询剧情，并通过独立开关默认启用 AI Mod Exclusion 名单排除。修复来源未知与 SMAPI 加载兼容问题。详见[版本说明](docs/RELEASE_2.8.0_NOTES.md)。
+**2.9.0**：整合 GMCM 名单开关（默认关闭），修复回放恢复、倍速、绿雨、条件筛选及手柄输入，清除停用历史／预览代码和 SQLite 依赖。升级步骤与验证范围见[版本说明](docs/RELEASE_2.9.0_NOTES.md)。
 
-**2.8.0 source filters and original providers**: automatically match event definitions to their original mod, query by source, and apply the AI Mod Exclusion list by default through a separate settings file. Fixes unknown sources and SMAPI loading compatibility. See the [release notes](docs/RELEASE_2.8.0_NOTES.md).
+**2.9.0**: includes the GMCM exclusion setting (off by default), fixes replay restoration, speed, green rain, condition filters and controller input, and removes retired history/preview code and SQLite dependencies. See the [release notes](docs/RELEASE_2.9.0_NOTES.md) for updating and validation scope.
 
 Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 
 [中文](#中文) · [English](#english)
 
-[Download 2.8.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.8.0) · [Changelog / 更新日志](CHANGELOG.md)
+[Download 2.9.0 / 下载](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.9.0) · [Changelog / 更新日志](CHANGELOG.md)
 
 ## 中文
 
@@ -48,7 +48,7 @@ Copyright (C) 2026 sjt38. Licensed under the GNU General Public License v3.0.
 2. 解压下载文件，将 `StardewGallery` 文件夹放入游戏的 `Mods` 文件夹。
 3. 通过 SMAPI 启动游戏。
 
-GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追踪、快捷键、回放提示、自动对白和调试诊断。未安装GMCM时可在config.json设置`EnableOrdinaryEventReplay`，默认false。
+GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追踪、AI 名单排除、快捷键、回放提示、自动对白和调试诊断。未安装GMCM时可在config.json设置`EnableOrdinaryEventReplay`，默认false。
 
 角色美化同样为可选：画廊读取当前生效的CP肖像与小人，按已支持的协议接入DDFC、Scale Up Unofficial和Portraiture。无需为了画廊安装这些框架，也不需要在画廊里选择美化来源。Portraiture素材须先在游戏正常对话中生效，再检查画廊；CP/PyTK版素材并不自动成为Portraiture选包。读取失败时尝试可用肖像，最终使用画廊图标占位并限频重试。此适配不解决多个美化包互相覆盖的问题，也不包含Overgrown/Earthy专用画廊皮肤。
 
@@ -56,10 +56,11 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追
 
 退出游戏，先备份原`Mods/StardewGallery`，再用新版替换模组文件。保留并放回以下内容：
 
+从旧版更新时，将新包解压到干净的 `StardewGallery` 文件夹，再放回下列玩家数据，以去掉旧 SQLite 程序库和运行时目录。以前的历史数据库无需迁移，本版不会读取或删除它们。
+
 | 文件或目录 | 玩家数据 |
 | --- | --- |
 | `config.json` | 快捷键和设置 |
-| `ai-mod-exclusion.json` | 来源名单排除开关 |
 | `event-photos/` | 按存档保存的截图及封面 |
 | `user-data/` | 本机各存档共用的自定义事件名称 |
 
@@ -80,15 +81,9 @@ GMCM 不是必需依赖；安装后可配置普通事件回放、事件来源追
 
 在事件查询的“筛选 → 来源”中选择原版、具体模组、未知或多个候选来源；搜索框也支持模组名称和完整 Mod ID。模组同名时通过 ID 区分，可与角色、地点、进度等筛选组合。
 
-默认按 [AI Mod Exclusion](https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion) 名单隐藏已确认由名单内模组提供的事件。每次启动及读档异步获取最新名单；等待期间及下载失败时使用发布包内置名单，不使用以前下载的缓存。只匹配原始提供者的 Mod ID（包括名单明确给出的通配规则）；不按角色、地点或修改者推断。原版、未知、来源冲突和名单外模组的事件保留，存档进度、照片及名称不删除。
+在 GMCM 开启“排除 AI 名单模组”后，按 [AI Mod Exclusion](https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion) 名单隐藏已确认由名单内模组提供的事件。每次启动及读档异步获取最新名单；等待期间及下载失败时使用发布包内置名单，不使用以前下载的缓存。只匹配原始提供者的 Mod ID（包括名单明确给出的通配规则）；不按角色、地点或修改者推断。原版、未知、来源冲突和名单外模组的事件保留，存档进度、照片及名称不删除。
 
-独立开关首次运行自动生成于模组根目录的 `ai-mod-exclusion.json`，默认如下；此项不在 `config.json` 或 GMCM 中。改为 `false` 后重新读档或重启，会停止排除与名单下载。更新模组时保留此文件。
-
-```json
-{
-  "Enabled": true
-}
-```
+开关统一保存在 `config.json` 的 `EnableAiModExclusion`，默认 `false`。在 GMCM 保存后生效；回放或确认尚未结束时延后应用。关闭后停止下载并恢复事件可见性，无需重新读档或重启。未安装 GMCM 时可编辑此配置并重启。旧的 `ai-mod-exclusion.json` 会在启动或读档时删除，不再读取、生成或迁移其中的 `Enabled` 值；内置名单 `assets/ai-mod-exclusion.seed.json` 仍作为开启后的回退数据保留。
 
 ### 事件来源查询
 
@@ -116,7 +111,7 @@ GMCM 的“追踪事件修改（重启生效）”仅控制可选的运行时修
 
 ### 验证与构建
 
-2.8.0 通过完整构建、逻辑与存储检查、真实 SMAPI 加载器兼容检查。12 语言各 538 键一致。生产代码对本机 1645 条事件快照全部识别来源；名单过滤保留全部 176 条原版和所有名单外来源。此为隔离验证，来源页面、长文本换行及实际手柄操作仍待游戏内确认。
+2.9.0 的验证覆盖完整构建、逻辑与存储检查、真实 SMAPI 加载器、回放状态／天气／倍速、菜单草稿、手柄分派及 GMCM 回调；12 语言各 533 键一致。发布验证见 [2.9.0 版本说明](docs/RELEASE_2.9.0_NOTES.md)，修复过程见 [2026-10-08 整合记录](docs/INTEGRATION_2026-10-08.md)。隔离检查不替代 GMCM 画面、来源页面、长文本换行及实际手柄操作的游戏内验收。
 
 可选运行时修改追踪另有 36 项 SMAPI 来源管线检查，包含中文资源、原版 XNB 与读档缓存回归；这些检查不等于真实 CP/SVE 组合验收。2.6.0 的单个美化模组支持已有用户确认，多个美化覆盖组合仍需自行实测。
 
@@ -177,7 +172,7 @@ All Events includes these three categories. Pure transitions stay outside story 
 2. Extract the download and place the `StardewGallery` folder in the game's `Mods` folder.
 3. Launch the game through SMAPI.
 
-GMCM is optional. It configures ordinary replay, event source tracing, keybinds, warnings, dialogue auto-advance and diagnostics. Without GMCM, set `EnableOrdinaryEventReplay` in config.json; its default is false.
+GMCM is optional. It configures ordinary replay, event source tracing, AI list exclusion, keybinds, warnings, dialogue auto-advance and diagnostics. Without GMCM, set `EnableOrdinaryEventReplay` in config.json; its default is false.
 
 Cosmetic frameworks are optional too. The gallery reads currently active CP portraits/sprites and integrates with supported DDFC, Scale Up Unofficial and Portraiture formats. None is required just to use the gallery. Select and verify Portraiture packs in normal game dialogue first; a CP/PyTK pack does not automatically become a Portraiture set. Failed reads use an available portrait or the gallery icon, with throttled retries. This does not resolve conflicts between cosmetic packs or provide dedicated Overgrown/Earthy gallery skins.
 
@@ -185,10 +180,11 @@ Cosmetic frameworks are optional too. The gallery reads currently active CP port
 
 Close the game and back up `Mods/StardewGallery` before replacing the mod files. Preserve and restore:
 
+Extract this build into a clean `StardewGallery` folder, then restore the player data below so retired SQLite libraries and runtime folders are not retained. Existing historical databases need no migration; this build neither reads nor deletes them.
+
 | File or folder | Player data |
 | --- | --- |
 | `config.json` | Settings and key bindings |
-| `ai-mod-exclusion.json` | Source exclusion switch |
 | `event-photos/` | Photos and covers for each save |
 | `user-data/` | Personal event names shared across local saves |
 
@@ -209,9 +205,9 @@ Close the game and back up `Mods/StardewGallery` before replacing the mod files.
 
 Use event query → Filters → Source to select the base game, a specific mod, unknown, or ambiguous sources. Search also accepts provider names and Mod IDs. Same-name mods have distinct ID labels, and source filters combine with existing filters.
 
-By default, events with a confirmed original provider listed in [AI Mod Exclusion](https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion) are hidden. Startup and each save load fetch the latest list asynchronously; the bundled release list applies while waiting and on failure. Previous downloads are never a fallback. Only the original provider's complete Mod ID or an explicitly declared wildcard rule is used; NPCs, locations and modifying packs do not imply exclusion. Vanilla, unknown, ambiguous and unlisted sources remain visible. Save progress, photos and names are not deleted.
+After enabling “Exclude AI-listed mods” in GMCM, events with a confirmed original provider listed in [AI Mod Exclusion](https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion) are hidden. Startup and each save load fetch the latest list asynchronously; the bundled release list applies while waiting and on failure. Previous downloads are never a fallback. Only the original provider's complete Mod ID or an explicitly declared wildcard rule is used; NPCs, locations and modifying packs do not imply exclusion. Vanilla, unknown, ambiguous and unlisted sources remain visible. Save progress, photos and names are not deleted.
 
-The separate `ai-mod-exclusion.json` file is created in the mod folder with `{ "Enabled": true }`. It is absent from config.json and GMCM. Set it to `false` and reload the save or restart to disable both filtering and downloads. Preserve this file when updating.
+The setting is stored in standard `config.json` as `EnableAiModExclusion`, defaulting to `false`. Save in GMCM to apply; changes wait until any replay or confirmation has finished. Disabling stops downloads and restores event visibility without reloading or restarting. Without GMCM, edit this setting and restart. The retired `ai-mod-exclusion.json` is deleted on startup or save load; its `Enabled` value is no longer read, created or migrated. The bundled `assets/ai-mod-exclusion.seed.json` remains as fallback data when the feature is enabled.
 
 ### Event source lookup
 
@@ -239,7 +235,7 @@ Delete the `Mods/StardewGallery` folder.
 
 ### Validation And Building
 
-2.8.0 passes the full build, logic and persistence checks, and actual SMAPI assembly-loader compatibility checks. All 12 locales contain matching sets of 538 keys. Production code identifies all 1645 events in the local snapshot; exclusion retains all 176 vanilla events and all unlisted providers. These are isolated checks; in-game source pages, long text wrapping and physical controller input still need confirmation.
+Validation for 2.9.0 covers the build, logic/persistence suites, the actual SMAPI loader, replay state/weather/speed, menu drafts, controller dispatch and GMCM callbacks. All 12 locales contain matching sets of 533 keys. See the [2.9.0 release notes](docs/RELEASE_2.9.0_NOTES.md) and [2026-10-08 integration report](docs/INTEGRATION_2026-10-08.md). Isolated checks do not replace in-game acceptance of GMCM, source pages, long text wrapping or physical controller input.
 
 Optional runtime modification tracking has 36 SMAPI source pipeline assertions, including localized resources, a vanilla XNB and save-load cache regressions. These do not establish real CP/SVE combination acceptance. Tested individual cosmetic mods received user confirmation in 2.6.0; overlapping cosmetic combinations still require testing.
 

@@ -10,6 +10,6 @@ internal static class ReplayEffectPolicy
         "AddItem", "RemoveItem", "AwardFestivalPrize", "AddWorldState",
         "Friendship", "GainSkill", "RustyKey", "BroadcastEvent",
         "MineDeath", "HospitalDeath", "Cave", "AnimalNaming", "CatQuestion",
-        "GrandpaEvaluation", "GrandpaEvaluation2", "Action", "DoAction"
+        "GrandpaCandles", "GrandpaEvaluation", "GrandpaEvaluation2", "Action", "DoAction"
     };
 }

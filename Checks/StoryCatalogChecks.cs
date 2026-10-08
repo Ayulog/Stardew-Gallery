@@ -4,6 +4,7 @@ internal static class StoryCatalogChecks
 {
     internal static void Run()
     {
+        CheckQueryRelationships();
         GalleryCatalogBuilder builder = new(key => key.Split('/'), script => script.Split('|'), Split, Split, () => "Abigail");
         GalleryCharacter[] characters = [new("Abigail", "Abigail", true, 2000), new("Lewis", "Lewis", true, 500)];
         ResolvedEvent[] source =
@@ -104,6 +105,79 @@ internal static class StoryCatalogChecks
         Check(visibleFlow.Kind == StoryKind.Internal && visibleFlow.ClassificationReason == "internal-timing-only",
             "exact visible-camera pause/end fixture is internal without duration or offscreen heuristics");
         Console.WriteLine("Story catalog checks passed.");
+    }
+
+    private static void CheckQueryRelationships()
+    {
+        GalleryCatalogBuilder builder = new(key => key.Split('/'), script => script.Split('|'), Split, Split, () => null);
+        const string scene = "none|0 0|farmer 1 1 2|message hello|end";
+        (string Id, string Condition, int? Points)[] positive =
+        [
+            ("legacy", "f Sam 500", 500),
+            ("hearts", "G PLAYER_HEARTS Current Sam 2", 500),
+            ("points", "G PLAYER_FRIENDSHIP_POINTS Current Sam 500", 500),
+            ("bounded", "G PLAYER_HEARTS Current Sam 2 4", 500),
+            ("target", "G PLAYER_HEARTS Target Sam 2", 500),
+            ("fractional", "G PLAYER_FRIENDSHIP_POINTS Current Sam 501", 501),
+            ("conjunction", "G PLAYER_HEARTS Current Sam 2, !PLAYER_NPC_RELATIONSHIP Current Sam Divorced", 500),
+            ("dating", "G PLAYER_NPC_RELATIONSHIP Current Sam Dating", null),
+            ("romance-options", "G PLAYER_NPC_RELATIONSHIP Current Sam Dating Engaged Married", null),
+            ("roommate", "G PLAYER_NPC_RELATIONSHIP Current Krobus Roommate", null),
+            ("double-negative", "!G !PLAYER_HEARTS Current Sam 2", 500)
+        ];
+        (string Id, string Condition)[] uncertain =
+        [
+            ("negated", "G !PLAYER_HEARTS Current Sam 2"),
+            ("outer-negated", "!G PLAYER_HEARTS Current Sam 2"),
+            ("negated-conjunction", "!G !PLAYER_HEARTS Current Sam 2, PLAYER_HAS_MAIL Current letter"),
+            ("zero", "G PLAYER_HEARTS Current Sam 0"),
+            ("upper-only", "G PLAYER_HEARTS Current Sam 0 2"),
+            ("negative", "G PLAYER_FRIENDSHIP_POINTS Current Sam -1 500"),
+            ("reversed", "G PLAYER_HEARTS Current Sam 4 2"),
+            ("overflow", "G PLAYER_HEARTS Current Sam 2147483647"),
+            ("host", "G PLAYER_HEARTS Host Sam 2"),
+            ("any-player", "G PLAYER_HEARTS Any Sam 2"),
+            ("all-players", "G PLAYER_HEARTS All Sam 2"),
+            ("player-id", "G PLAYER_FRIENDSHIP_POINTS 123 Sam 500"),
+            ("host-romance", "G PLAYER_NPC_RELATIONSHIP Host Sam Married"),
+            ("any-npc", "G PLAYER_NPC_RELATIONSHIP Current Any Married"),
+            ("any-dateable", "G PLAYER_NPC_RELATIONSHIP Current AnyDateable Dating"),
+            ("friendly", "G PLAYER_NPC_RELATIONSHIP Current Sam Friendly"),
+            ("divorced", "G PLAYER_NPC_RELATIONSHIP Current Sam Divorced"),
+            ("friendly-option", "G PLAYER_NPC_RELATIONSHIP Current Sam Friendly Dating"),
+            ("negated-romance", "G !PLAYER_NPC_RELATIONSHIP Current Sam Dating"),
+            ("unsupported-clause", "G PLAYER_HEARTS Current Sam 2, Custom.Unsafe true"),
+            ("malformed", "G PLAYER_HEARTS Current Sam two")
+        ];
+        ResolvedEvent[] sources = positive.Select(value => Entry(value.Id + "/" + value.Condition, scene))
+            .Concat(uncertain.Select(value => Entry(value.Id + "/" + value.Condition, scene)))
+            .Append(Entry("internal/G PLAYER_HEARTS Current Sam 2", "none|-500 -500|farmer 1 1 2|mail letter|end"))
+            .ToArray();
+        GalleryCatalog catalog = builder.Build([new("Sam", "Sam", true, 500), new("Krobus", "Krobus", true, 0)], sources).Catalog;
+        foreach (var fixture in positive)
+        {
+            GalleryEvent story = catalog.Find(new("Data/Events/Town", fixture.Id))!;
+            string npc = fixture.Id == "roommate" ? "Krobus" : "Sam";
+            Check(story.Kind == StoryKind.Heart, fixture.Id + " query supplies positive relationship evidence");
+            Check(story.Ownership.Owners.Single() == new EventOwner(npc, fixture.Points)
+                && story.RelatedNpcNames.Contains(npc), fixture.Id + " query keeps its subject and numeric threshold");
+        }
+        foreach (var fixture in uncertain)
+            Check(catalog.Find(new("Data/Events/Town", fixture.Id))!.Kind == StoryKind.Ordinary,
+                fixture.Id + " query does not prove a positive local relationship");
+        Check(catalog.Find(new("Data/Events/Town", "internal"))!.Kind == StoryKind.Internal,
+            "query friendship does not promote internal flows");
+
+        ConditionParser parser = new(key => key.Split('/'), Split);
+        StorySearchIndex index = new(catalog, entry => entry.LocationName, name => name, parser: parser);
+        string[] twoHeartIds = ["bounded", "conjunction", "double-negative", "hearts", "legacy", "points", "target"];
+        Check(index.Search("", new QueryFilter { Kind = QueryKind.Heart, Npc = "Sam", MinimumHearts = 2, MaximumHearts = 2 })
+            .Select(row => row.EventId).SequenceEqual(twoHeartIds), "legacy and query thresholds share exact heart and character filters");
+        Check(index.Search("", new QueryFilter { MinimumHearts = 3 }).Single().EventId == "fractional",
+            "friendship points round up consistently for the required heart filter");
+        Check(index.Search("", new QueryFilter { MaximumHearts = 0 }).Count == 0,
+            "zero, negative and relationship-only queries do not invent numeric thresholds");
+        Check(catalog.AllEntries.All(entry => sources.Contains(entry.Resolved)), "relationship evidence preserves raw source records");
     }
 
     private static string[] Split(string value) => value.Split(' ', StringSplitOptions.RemoveEmptyEntries);

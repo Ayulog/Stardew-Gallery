@@ -11,7 +11,10 @@ $outputZip = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPS
 if (Test-Path -LiteralPath $outputZip) { throw "Archive the existing destination first: $outputZip" }
 
 $documents = @('README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')
-$documents += @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'licenses') -File | ForEach-Object { 'licenses/' + $_.Name })
+$licensesPath = Join-Path $repoRoot 'licenses'
+if (Test-Path -LiteralPath $licensesPath -PathType Container) {
+    $documents += @(Get-ChildItem -LiteralPath $licensesPath -File | ForEach-Object { 'licenses/' + $_.Name })
+}
 foreach ($document in $documents) {
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $document) -PathType Leaf)) { throw "Missing document: $document" }
 }
@@ -23,7 +26,8 @@ try {
         if (-not $entry.FullName.StartsWith('StardewGallery/', [StringComparison]::Ordinal) -or
             $entry.FullName.Contains('..') -or $entry.FullName.Contains('\') -or
             $entry.FullName -match '(?i)(^|/)(config\.json|ai-mod-exclusion\.json|exclusion-cache|event-photos|user-data|diagnostics|backups|catalog-latest\.json|\.env)(/|$)' -or
-            $entry.FullName -match '(?i)\.(cs|pdb|db|sqlite)$') {
+            $entry.FullName -match '(?i)\.(cs|pdb|db|sqlite|sqlite3)(-wal|-shm)?$' -or
+            $entry.FullName -match '(?i)(^|/)(Microsoft\.Data\.Sqlite|SQLitePCLRaw|(?:lib)?e_sqlite3)[^/]*$') {
             throw "Unexpected build entry: $($entry.FullName)"
         }
     }

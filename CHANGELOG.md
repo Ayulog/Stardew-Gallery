@@ -1,5 +1,25 @@
 # Changelog / 更新日志
 
+## 2.9.0 - 2026-10-08 - Replay Fixes and Cleanup / 回放修复与清理
+
+- Fix GSQ season/date and weather filters, including negated and combined conditions, while retaining unknown context. / 修复 GSQ 季节日期与天气筛选的否定及组合条件，缺少上下文时保留未知。
+- Let the game dispatch controller A as one mouse action in details, tools and photo menus, avoiding double toggles and double photo archival. / 详情、工具与照片菜单统一由游戏转发手柄 A 点击，避免重复展开及一次移除两张照片。
+- Recover from oversized bundled exclusion files without retaining prior-session rules or preventing a new download. / 内置名单文件超限时安全回退，不保留旧会话规则，并继续尝试下载新名单。
+- Remove retired historical collection/replay, preview injection, SQLite storage/dependencies/native libraries and obsolete translations. Retain current replay, condition reads, photos, event names and save protection; leave player data untouched. / 删除停用历史采集／回放、预览注入、SQLite 存储／依赖／原生库及旧翻译；保留当前回放、条件读取、照片、名称和存档保护，玩家数据不受清理影响。
+
+- Move AI list exclusion into GMCM and standard config.json as EnableAiModExclusion, defaulting to false. Saved changes apply after replay/confirmation ends; remove the retired ai-mod-exclusion.json without importing its value. / AI 名单排除移入 GMCM 和标准 config.json，EnableAiModExclusion 默认 false；保存后在回放/确认结束时生效，清理旧 ai-mod-exclusion.json 且不迁移其值。
+
+- Preserve case-sensitive event, mail, dialogue, recipe and friendship keys when capturing/restoring replay state and reading current conditions. / 回放快照及当前条件读取保留事件、邮件、对话、配方和好感键的大小写差异，避免恢复时丢失标记或捕获时因重名键失败。
+- Suppress the native GrandpaCandles state change only for events owned by a Gallery replay, preserving the real farm evaluation score while allowing normal events to execute. / 仅在画廊所属回放中拦截 GrandpaCandles，避免改写真实农场的爷爷评价分数，正常事件保持原有行为。
+
+- Apply replay speed once across nested event updates and clean up on exceptions, avoiding compounded 2x/4x timing. / 同一轮嵌套事件更新只应用一次倍速，异常时清理状态，避免2x/4x时间递增放大。
+- Share positive relationship evidence between story classification and heart filters, including supported GSQ conditions; normalize character aliases consistently for heart filtering. / 剧情分类和心数筛选共用正向关系证据，支持可安全识别的GSQ门槛，并统一角色别名的心数匹配。
+- Recognize GreenRain for replay scenery and retain it when the event only requires rainy weather. / 回放演出支持绿雨，rainy条件保留当前已满足要求的绿雨。
+- Preserve rename/filter drafts through catalog refreshes and keep unavailable selected character/location filters visible. / 目录刷新保留改名及筛选草稿；已失效的角色、地点筛选仍显示原选择，避免误显示为“任意”。
+- Show runtime evidence completeness alongside matched original sources without slicing translated text. / 原始来源已匹配时仍展示运行时证据完整性，不再按翻译后的文本截取详情。
+
+See `docs/RELEASE_2.9.0_NOTES.md` for update instructions, validation and limits. / 升级说明、验证及边界见对应版本说明。
+
 ## 2.8.0 - 2026-09-21 - Source Filters and Original Definitions / 来源筛选与原始定义
 
 - Add source filters and provider name/Mod ID text searches to the event query. / 事件查询新增来源筛选，支持搜索提供模组名称和 Mod ID。

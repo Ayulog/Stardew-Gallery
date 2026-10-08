@@ -2,7 +2,11 @@ namespace StardewGallery;
 
 internal enum EventSourceDisplayState { Ready, Disabled, RestartRequired, Unavailable }
 
-internal sealed record EventSourceDisplay(string Summary, string Status, IReadOnlyList<string> Details);
+internal sealed record EventSourceDisplay(string Summary, string Status, IReadOnlyList<string> Details)
+{
+    // Runtime completeness and observed edits, separate from provider and file-origin claims.
+    internal IReadOnlyList<string> EvidenceDetails { get; init; } = [];
+}
 
 /// <summary>Player-facing source text; private adapter errors remain in the SMAPI log.</summary>
 internal static class EventSourcePresentation
@@ -14,6 +18,8 @@ internal static class EventSourcePresentation
         string Actor(EventSourceActor actor) => actor.IsGameBase ? Text("source.game")
             : Text("source.actor", new { name = actor.Name, id = actor.UniqueId, version = actor.Version ?? Text("source.version-unknown") });
         List<string> details = new();
+        List<string> evidence = new();
+        void AddEvidence(string line) { details.Add(line); evidence.Add(line); }
         string status;
         string provider;
         if (state != EventSourceDisplayState.Ready)
@@ -36,16 +42,16 @@ internal static class EventSourcePresentation
             status = Text(info?.Status == EventSourceStatus.Complete && matches ? "source.complete"
                 : info?.Status == EventSourceStatus.Partial ? "source.partial" : "source.missing");
             details.Add(Text("source.provider", new { provider = actor is null ? Text("source.unknown") : Actor(actor) }));
-            details.Add(status);
+            AddEvidence(status);
             if (info?.Status != EventSourceStatus.Complete || !matches)
-                details.Add(Text(info?.Status == EventSourceStatus.Partial ? "source.partial-help" : "source.missing-help"));
+                AddEvidence(Text(info?.Status == EventSourceStatus.Partial ? "source.partial-help" : "source.missing-help"));
             if (matches && info?.ProviderExecutor is { } executor && executor.UniqueId != actor?.UniqueId)
                 details.Add(Text("source.executor", new { executor = Actor(executor) }));
-            details.Add(Text("source.scope"));
+            AddEvidence(Text("source.scope"));
             if (info is not null)
             {
-                details.Add(Text("source.modifications"));
-                if (info.Mutations.Count == 0) details.Add(Text("source.no-modifications"));
+                AddEvidence(Text("source.modifications"));
+                if (info.Mutations.Count == 0) AddEvidence(Text("source.no-modifications"));
                 foreach (EventSourceMutation mutation in info.Mutations)
                 {
                     string kind = Text(mutation.Kind switch
@@ -54,15 +60,15 @@ internal static class EventSourcePresentation
                         EventSourceMutationKind.Delete => "source.kind-delete",
                         _ => "source.kind-change"
                     });
-                    details.Add(Text("source.change", new
+                    AddEvidence(Text("source.change", new
                     {
                         sequence = mutation.Sequence,
                         kind,
                         actor = mutation.Actor is null ? Text("source.unknown") : Actor(mutation.Actor)
                     }));
                     if (mutation.Executor is { } editingFramework && editingFramework.UniqueId != mutation.Actor?.UniqueId)
-                        details.Add(Text("source.executor", new { executor = Actor(editingFramework) }));
-                    if (mutation.Failed) details.Add(Text("source.failed"));
+                        AddEvidence(Text("source.executor", new { executor = Actor(editingFramework) }));
+                    if (mutation.Failed) AddEvidence(Text("source.failed"));
                 }
                 details.Add(Text("source.asset", new { asset = info.Scope.AssetName }));
                 details.Add(Text("source.key", new { key = info.RawEventKey }));
@@ -71,6 +77,6 @@ internal static class EventSourcePresentation
                     details.Add(Text("source.generation", new { load = info.LoadId, generation = info.DefinitionGeneration }));
             }
         }
-        return new EventSourceDisplay(Text("source.summary", new { provider }), status, details.AsReadOnly());
+        return new EventSourceDisplay(Text("source.summary", new { provider }), status, details.AsReadOnly()) { EvidenceDetails = evidence.AsReadOnly() };
     }
 }

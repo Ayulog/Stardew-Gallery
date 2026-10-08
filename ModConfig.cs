@@ -16,6 +16,9 @@ internal sealed class ModConfig
 
     public bool EnableOrdinaryEventReplay { get; set; }
 
+    /// <summary>Opt-in original-provider filtering using the public AI Mod Exclusion list.</summary>
+    public bool EnableAiModExclusion { get; set; }
+
     public KeybindList GalleryKeys { get; set; } = new(SButton.G);
 
     public KeybindList ReplaySpeedKeys { get; set; } = new(SButton.RightShoulder);

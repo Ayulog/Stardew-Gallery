@@ -16,7 +16,13 @@ internal sealed class GalleryPageState(GalleryPage page)
     internal string? LocationFilter { get; set; }
     internal StoryKind? KindFilter { get; set; }
     internal string? PrerequisiteId { get; init; }
+    // Filter is applied on Query pages and is an isolated draft on Filters pages.
     internal QueryFilter Filter { get; set; } = new();
+    internal bool FilterExpanded { get; set; }
+    internal string? FilterPicker { get; set; }
+    internal int FilterReturnFocus { get; set; }
+    // Null means the editor has not loaded its initial value; empty is an intentional draft.
+    internal string? RenameText { get; set; }
 }
 
 internal sealed class GalleryPageHistory
@@ -38,6 +44,13 @@ internal sealed class GalleryPageHistory
         Open(target);
         try { show(); }
         catch { pages.Clear(); pages.AddRange(previous); throw; }
+    }
+    internal bool ApplyFilters(QueryFilter filter)
+    {
+        if (Current?.Page != GalleryPage.Filters || pages.Count < 2 || pages[^2] is not { Page: GalleryPage.Query } query) return false;
+        pages.RemoveAt(pages.Count - 1);
+        query.Filter = filter; query.Scroll = 0; query.Focus = -1;
+        return true;
     }
     internal bool Back()
     {

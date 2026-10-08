@@ -6,21 +6,20 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
 {
     private sealed record Choice(string? Id, string Label);
     private readonly StorySearchIndex index;
-    private QueryFilter draft;
-    private bool more;
-    private string? picker;
-    private int returnFocus;
+    private QueryFilter draft { get => State.Filter; set => State.Filter = value; }
+    private bool more { get => State.FilterExpanded; set => State.FilterExpanded = value; }
+    private string? picker { get => State.FilterPicker; set => State.FilterPicker = value; }
+    private int returnFocus { get => State.FilterReturnFocus; set => State.FilterReturnFocus = value; }
     private readonly List<string> fields = [];
     protected override string Title => Context.I18n.Get(picker is null ? "filter.title" : "filter." + picker);
     protected override string? ApplyLabel => picker is null ? Context.I18n.Get("filter.apply").ToString() : null;
     protected override string? ExtraLabel => Context.I18n.Get(picker is null ? "filter.reset" : "filter.clear");
     internal GalleryFilterMenu(GalleryViewContext context, GalleryPageState state) : base(context, state)
     {
-        draft = state.Filter;
         index = new StorySearchIndex(context.Catalog, e => context.Locations.Get(e.LocationName), context.Characters.Get,
             parser: new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
             characterKey: (entry, id) => context.Characters.Key(id, entry), locationKey: e => context.Locations.Key(e.LocationName), sourceText: T);
-        Rebuild();
+        Rebuild(state.Focus >= 0 ? state.Focus : RowId);
     }
     private string T(string key) => Context.I18n.Get(key);
     private void Rebuild(int focus = RowId)
@@ -38,11 +37,11 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
             foreach (string field in fields)
             {
                 if (field == "more") { Rows.Add(new(T(more ? "filter.less" : "filter.more"), () => { more = !more; Rebuild(RowId + fields.IndexOf("more")); })); continue; }
-                string value = Choices(field).FirstOrDefault(choice => choice.Id == Value(field))?.Label ?? T("filter.any");
+                string value = Choices(field).FirstOrDefault(choice => SameId(field, choice.Id, Value(field)))?.Label ?? T("filter.any");
                 Rows.Add(new(T("filter." + field) + ": " + value, () =>
                 {
                     returnFocus = RowId + fields.IndexOf(field); picker = field;
-                    int selected = Array.FindIndex(Choices(field), choice => choice.Id == Value(field));
+                    int selected = Array.FindIndex(Choices(field), choice => SameId(field, choice.Id, Value(field)));
                     Rebuild(RowId + Math.Max(0, selected));
                 }));
             }
@@ -54,7 +53,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         if (picker is not null || FocusId < RowId || FocusId - RowId >= fields.Count) return;
         string field = fields[FocusId - RowId];
         if (field is "npc" or "location" or "source" or "more") { Activate(FocusId); return; }
-        var choices = Choices(field); int selected = Array.FindIndex(choices, choice => choice.Id == Value(field));
+        var choices = Choices(field); int selected = Array.FindIndex(choices, choice => SameId(field, choice.Id, Value(field)));
         Set(field, choices[Math.Clamp(selected + direction, 0, choices.Length - 1)].Id); Rebuild(FocusId);
     }
     protected override void Apply() => Context.Navigation.ApplyFilters(draft);
@@ -108,8 +107,19 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
             "min" or "max" => new[] { any }.Concat(Enumerable.Range(0, 15).Select(hearts => new Choice(hearts.ToString(), Context.I18n.Get("event.hearts", new { hearts }).ToString()))),
             _ => []
         };
-        return values.ToArray();
+        var choices = values.ToList();
+        // Keep an unavailable active value visible, just as the source picker does. It remains
+        // an exact filter until the player clears it, and naturally rejoins the list if restored.
+        if (field is "npc" or "location" && Value(field) is { } selected && !choices.Any(choice => SameId(field, choice.Id, selected)))
+        {
+            string label = field == "npc" ? Context.Characters.Get(selected)
+                : Context.Locations.Get(selected.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase) ? selected[12..] : selected);
+            choices.Add(new(selected, label));
+        }
+        return choices.ToArray();
     }
+    private static bool SameId(string field, string? left, string? right)
+        => string.Equals(left, right, field is "location" or "source" ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     private IEnumerable<Choice> SourceChoices(Choice any)
     {
         var choices = index.Rows.Select(row => row.Source).DistinctBy(source => source.Key, StringComparer.OrdinalIgnoreCase)

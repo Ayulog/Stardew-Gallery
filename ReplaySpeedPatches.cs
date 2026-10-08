@@ -9,6 +9,8 @@ namespace StardewGallery;
 internal static class ReplaySpeedPatches
 {
     private static ReplayCoordinator replay = null!;
+    [ThreadStatic]
+    private static int eventUpdateDepth;
 
     internal static void Apply(IModHelper helper, ReplayCoordinator coordinator)
     {
@@ -17,18 +19,38 @@ internal static class ReplaySpeedPatches
         System.Reflection.MethodInfo eventUpdate = AccessTools.Method(typeof(Event), nameof(Event.Update));
         System.Reflection.MethodInfo dialogueUpdate = AccessTools.Method(typeof(DialogueBox), nameof(DialogueBox.update));
         harmony.Patch(eventUpdate,
-            prefix: new HarmonyMethod(typeof(ReplaySpeedPatches), nameof(BeforeEventUpdate)));
+            prefix: new HarmonyMethod(typeof(ReplaySpeedPatches), nameof(BeforeEventUpdate)),
+            finalizer: new HarmonyMethod(typeof(ReplaySpeedPatches), nameof(AfterEventUpdate)));
         harmony.Patch(dialogueUpdate,
             prefix: new HarmonyMethod(typeof(ReplaySpeedPatches), nameof(BeforeDialogueUpdate)));
         string owner = helper.ModRegistry.ModID;
         if (Harmony.GetPatchInfo(eventUpdate)?.Prefixes.Any(patch => patch.owner == owner) != true
+            || Harmony.GetPatchInfo(eventUpdate)?.Finalizers.Any(patch => patch.owner == owner) != true
             || Harmony.GetPatchInfo(dialogueUpdate)?.Prefixes.Any(patch => patch.owner == owner) != true)
             throw new InvalidOperationException("倍速 Harmony 补丁验证失败。");
     }
 
     internal static bool IsChoice(DialogueBox dialogue) => dialogue.isQuestion || dialogue.responses.Length > 0;
 
-    private static void BeforeEventUpdate(ref GameTime time) => Scale(ref time, replay.EffectiveSpeedMultiplier);
+    private static void BeforeEventUpdate(ref GameTime time, out bool __state)
+    {
+        // Native commands such as jump and showFrame synchronously call Update again
+        // with this already-scaled time. Only the outer call applies the multiplier.
+        __state = true;
+        if (eventUpdateDepth++ == 0)
+            Scale(ref time, replay.EffectiveSpeedMultiplier);
+    }
+
+    private static void AfterEventUpdate(ref bool __state)
+    {
+        // A finalizer also runs when a command/patch throws. A skipped prefix has no
+        // matching entry, so it must not release another call's depth.
+        if (__state)
+        {
+            __state = false;
+            eventUpdateDepth--;
+        }
+    }
 
     private static void BeforeDialogueUpdate(DialogueBox __instance, ref GameTime time)
     {

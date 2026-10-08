@@ -20,16 +20,17 @@ internal sealed class GalleryRenameMenu : GalleryToolMenu
     {
         identity = state.Event!.Value;
         input = new GalleryTextBox
-            { X = InputBounds.X, Y = InputBounds.Y, Width = InputBounds.Width, Height = InputBounds.Height, Text = context.Names?.Get(identity) ?? "" };
+            { X = InputBounds.X, Y = InputBounds.Y, Width = InputBounds.Width, Height = InputBounds.Height, Text = state.RenameText ?? context.Names?.Get(identity) ?? "" };
         input.OnEnterPressed += _ => Apply();
         Rows.Add(new("ID " + identity.EventId, SelectInput));
-        RefreshRows();
+        RefreshRows(state.Focus >= 0 ? state.Focus : RowId);
     }
     private void SelectInput() { if (GallerySearchInputGuard.Ready) input.SelectMe(); }
     public override void update(GameTime time) { base.update(time); input.Text = GallerySearchInput.CleanText(input.Text); }
     protected override void DrawTop(SpriteBatch b) => input.Draw(b);
     public override void DeselectSearch()
     {
+        State.RenameText = input.Text;
         input.Selected = false;
         if (Game1.keyboardDispatcher.Subscriber == input) Game1.keyboardDispatcher.Subscriber = null;
     }

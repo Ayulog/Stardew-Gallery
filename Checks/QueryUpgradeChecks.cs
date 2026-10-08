@@ -85,7 +85,115 @@ internal static class QueryUpgradeChecks
         Check(!NativeGlobalEventCopies.IsCopy("Data/Events/Town", "558291/y 3/H", "modded scene", farmhouse)
             && !NativeGlobalEventCopies.IsCopy("Data/Events/Town", "558291/other condition", "grandpa scene", farmhouse)
             && !NativeGlobalEventCopies.IsCopy("Data/Events/Town", "another/y 3/H", "grandpa scene", farmhouse), "different script, condition, and ID are not discarded");
+        CheckCanonicalHeartFilters(parser);
+        CheckEnvironmentFilters(parser);
         Console.WriteLine("Query upgrade checks passed.");
     }
+
+    private static void CheckEnvironmentFilters(ConditionParser parser)
+    {
+        string allSpringDays = string.Join(' ', Enumerable.Range(1, 28).Select(day => $"spring {day}"));
+        (string Id, string Condition)[] fixtures =
+        [
+            ("spring-date", "G SEASON_DAY spring 5"),
+            ("several-dates", "G SEASON_DAY spring 5 summer 8"),
+            ("not-one-date", "!G SEASON_DAY spring 5"),
+            ("not-spring", "G !SEASON_DAY " + allSpringDays),
+            ("double-negative", "!G !SEASON_DAY spring 5"),
+            ("different-day", "u 6/G SEASON_DAY spring 5"),
+            ("exclude-only-day", "u 5/G !SEASON_DAY spring 5"),
+            ("rain", "G WEATHER Here Rain"),
+            ("not-rain", "!G WEATHER Here Rain"),
+            ("inner-not-rain", "G !WEATHER Here Rain"),
+            ("double-rain", "!G !WEATHER Here Rain"),
+            ("target-weather", "G WEATHER Target Rain"),
+            ("named-weather", "G WEATHER Town Rain"),
+            ("other-location", "G WEATHER IslandWest Rain"),
+            ("custom-weather", "G WEATHER Here Author.Blizzard"),
+            ("exact-weather-id", "G WEATHER Here Rainy"),
+            ("spring-rain", "G SEASON_DAY spring 5, WEATHER Here Rain"),
+            ("not-spring-rain", "!G SEASON_DAY spring 5, WEATHER Here Rain"),
+            ("fixed-not-spring-rain", "u 5/!G SEASON_DAY spring 5, WEATHER Here Rain"),
+            ("unknown-positive", "G WEATHER Here Rain, PLAYER_HAS_MAIL Current letter"),
+            ("unknown-negative", "!G WEATHER Here Rain, PLAYER_HAS_MAIL Current letter"),
+            ("unsupported", "G WEATHER Here Rain, Author.Unsafe arg"),
+            ("time", "t 900 1200"),
+            ("not-time", "!t 900 1200"),
+            ("unsupported-time", "G TIME 900 1200"),
+            ("legacy", "Season spring/w rainy"),
+            ("unrestricted", "")
+        ];
+        GalleryEvent[] stories = fixtures.Select(fixture => new GalleryEvent(
+            new(new("Data/Events/Town", fixture.Id), "Town", fixture.Id + "/" + fixture.Condition,
+                "none/0 0/farmer 1 1 2/message hello/end", new([], []), "d", "s"), new(OwnershipKind.Excluded, []))).ToArray();
+        StorySearchIndex index = new(new([], stories, []), _ => "Translated Town", name => name, parser: parser);
+        bool Has(string id, QueryFilter filter) => index.Search("", filter).Any(row => row.EventId == id);
+        QueryFilter spring = new() { Season = "spring" }, winter = new() { Season = "winter" };
+        QueryFilter rain = new() { Weather = "Rain" }, sun = new() { Weather = "Sun" };
+        Check(Has("spring-date", spring) && !Has("spring-date", winter), "GSQ date cannot appear in an incompatible season");
+        Check(Has("several-dates", spring) && Has("several-dates", new() { Season = "summer" }) && !Has("several-dates", winter),
+            "GSQ date alternatives project to each allowed season");
+        Check(Has("not-one-date", spring) && Has("not-one-date", winter) && !Has("not-spring", spring) && Has("not-spring", winter),
+            "negating a date does not negate its whole season unless every day is excluded");
+        Check(Has("double-negative", spring) && !Has("double-negative", winter), "date query applies both negations once");
+        Check(!Has("different-day", spring) && !Has("exclude-only-day", spring) && Has("exclude-only-day", winter),
+            "legacy day and GSQ dates share the same candidate date");
+        foreach (string id in new[] { "rain", "target-weather", "named-weather", "double-rain" })
+            Check(Has(id, rain) && !Has(id, sun), id + " uses the candidate event weather");
+        foreach (string id in new[] { "not-rain", "inner-not-rain" })
+            Check(!Has(id, rain) && Has(id, sun), id + " excludes rainy candidates");
+        Check(Has("other-location", rain) && Has("other-location", sun), "another location's weather stays unknown");
+        Check(Has("custom-weather", new() { Weather = "author.blizzard" }) && !Has("custom-weather", rain),
+            "GSQ custom weather retains exact identity and query comparison semantics");
+        Check(!Has("exact-weather-id", rain), "GSQ weather IDs do not borrow legacy rainy aliases");
+        Check(Has("spring-rain", spring with { Weather = "Rain" }) && !Has("spring-rain", spring with { Weather = "Sun" })
+            && !Has("spring-rain", winter with { Weather = "Rain" }), "compound date and weather constraints apply together");
+        Check(Has("not-spring-rain", spring with { Weather = "Rain" }), "negated conjunction can match on another day in the same season");
+        Check(!Has("fixed-not-spring-rain", spring with { Weather = "Rain" }) && Has("fixed-not-spring-rain", spring with { Weather = "Sun" })
+            && Has("fixed-not-spring-rain", winter with { Weather = "Rain" }), "outer negation covers the whole conjunction");
+        Check(!Has("unknown-positive", sun) && Has("unknown-positive", rain) && Has("unknown-negative", rain),
+            "unknown state does not become a proven match inside a negated conjunction");
+        Check(Has("unsupported", sun) && Has("unsupported-time", new() { Time = 800 }), "unsupported GSQ remains unknown without running delegates");
+        Check(Has("time", new() { Time = 900 }) && Has("time", new() { Time = 1200 }) && !Has("time", new() { Time = 1210 })
+            && !Has("not-time", new() { Time = 900 }) && Has("not-time", new() { Time = 1210 }), "legacy time boundaries and negation remain intact");
+        Check(Has("legacy", spring with { Weather = "GreenRain" }) && !Has("legacy", winter) && Has("unrestricted", winter with { Weather = "Sun" }),
+            "existing legacy and unrestricted environment filters remain compatible");
+    }
+
+    private static void CheckCanonicalHeartFilters(ConditionParser parser)
+    {
+        string[] Split(string value) => value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        GalleryCatalogBuilder builder = new(key => key.Split('/'), script => script.Split('|'), Split, Split, () => null);
+        string[] keys = ["legacy/f Marlon 500", "hearts/G PLAYER_HEARTS Current Marlon 2",
+            "points/G PLAYER_FRIENDSHIP_POINTS Current Marlon 500", "multiple/f Marlon 500 Sam 2000",
+            "merged/f Marlon 250 MarlonFay 750", "hidden/f SpriteOnly 3000"];
+        const string script = "none|0 0|farmer 1 1 2|message hello|end";
+        ResolvedEvent[] sources = keys.Select(key => new ResolvedEvent(new("Data/Events/Town", key.Split('/')[0]), "Town", key,
+            script, new([script], []), "definition", "script")).ToArray();
+        GalleryCatalog catalog = builder.Build([], sources).Catalog;
+        StorySearchIndex index = new(catalog, entry => entry.LocationName, name => name, parser: parser,
+            characterKey: (entry, name) => entry?.AssetName == "Data/Events/Town"
+                ? name switch { "Marlon" => "MarlonFay", "SpriteOnly" => null, _ => name } : name);
+        Check(index.Search("", new QueryFilter { Npc = "MarlonFay" }).Count == 5,
+            "canonical character filter includes every Marlon relationship");
+        Check(index.Search("legacy", new QueryFilter { Npc = "MarlonFay", MinimumHearts = 2 }).Count == 1,
+            "adding a heart minimum retains the canonical Marlon alias match");
+        Check(index.Search("", new QueryFilter { Npc = "MarlonFay", MinimumHearts = 2, MaximumHearts = 2 })
+            .Select(row => row.EventId).SequenceEqual(["hearts", "legacy", "multiple", "points"]),
+            "canonical heart range includes native queries and excludes unrelated NPC thresholds");
+        Check(index.Search("", new QueryFilter { Npc = "MarlonFay", MinimumHearts = 3, MaximumHearts = 3 }).Single().EventId == "merged",
+            "multiple raw aliases use the maximum threshold for the same canonical NPC");
+        Check(index.Search("", new QueryFilter { Npc = "Sam", MinimumHearts = 8 }).Single().EventId == "multiple"
+            && index.Search("", new QueryFilter { Npc = "MarlonFay", MinimumHearts = 8 }).Count == 0,
+            "selected canonical NPC does not borrow another subject's heart gate");
+        Check(index.Search("", new QueryFilter { MinimumHearts = 12 }).Count == 0,
+            "characters rejected by the canonical projection do not supply heart filters");
+        StorySearchRow legacy = index.Search("legacy").Single();
+        Check(ReferenceEquals(legacy.Event!.Resolved, sources[0]) && legacy.Identity == new EventIdentity("Data/Events/Town", "legacy")
+            && legacy.Event.EventKey == "legacy/f Marlon 500" && legacy.Event.Script == script
+            && legacy.Requirements.OfType<FriendshipCondition>().Single().Requirements.Single().Npc == "Marlon",
+            "canonical evidence leaves event identity, raw key, script and parsed requirements intact");
+    }
+
     private static void Check(bool value, string label) { if (!value) throw new InvalidOperationException(label); }
 }

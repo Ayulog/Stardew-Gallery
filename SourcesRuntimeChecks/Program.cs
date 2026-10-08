@@ -4,10 +4,17 @@ using HarmonyLib;
 using StardewGallery;
 using StardewModdingAPI;
 
+bool checkGmcm = args is [_, "--gmcm-exclusion", _];
 bool checkAssembly = args is [_, "--assembly", _];
+bool checkReplay = args is [_, "--replay", _];
+bool checkReplayEffects = args is [_, "--replay-effects", _];
+bool checkReplayWeather = args is [_, "--replay-weather", _];
+bool checkReplaySpeed = args is [_, "--replay-speed", _];
+bool checkController = args is [_, "--controller-input", _];
+bool checkGalleryDrafts = args is [_, "--gallery-drafts", _];
 if (args.Length < 1 || !Directory.Exists(args[0])
-    || !(args.Length == 1 || args is [_, "--generic-probe"] || checkAssembly))
-    throw new ArgumentException("Pass the SMAPI game directory, optionally followed by --generic-probe or --assembly <mod-dll>; also supply -p:GamePath when building.");
+    || !(args.Length == 1 || args is [_, "--generic-probe"] || checkGmcm || checkAssembly || checkReplay || checkReplayEffects || checkReplayWeather || checkReplaySpeed || checkGalleryDrafts || checkController))
+    throw new ArgumentException("Pass the SMAPI game directory, optionally followed by --gmcm-exclusion <mod-dll> or --generic-probe or --assembly <mod-dll> or --replay <mod-dll> or --replay-effects <mod-dll> or --replay-weather <mod-dll> or --replay-speed <mod-dll> or --gallery-drafts <mod-dll> or --controller-input <mod-dll>; also supply -p:GamePath when building.");
 string game = Path.GetFullPath(args[0]);
 AssemblyLoadContext.Default.Resolving += (context, name) =>
 {
@@ -18,7 +25,14 @@ AssemblyLoadContext.Default.Resolving += (context, name) =>
     }
     return null;
 };
-if (checkAssembly) AssemblyLoadChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(game, "StardewModdingAPI.dll")), game, args[2]);
+if (checkGmcm) GmcmExclusionChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])));
+else if (checkAssembly) AssemblyLoadChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(game, "StardewModdingAPI.dll")), game, args[2]);
+else if (checkReplay) ReplaySnapshotChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])), game);
+else if (checkReplayEffects) ReplayEffectChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])), game);
+else if (checkReplayWeather) ReplayWeatherChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])), game);
+else if (checkReplaySpeed) ReplaySpeedChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])));
+else if (checkController) ControllerInputChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])));
+else if (checkGalleryDrafts) GalleryDraftChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(args[2])), game);
 else if (args.Length == 2) GenericSharingProbe.Run();
 else RuntimeChecks.Run(AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(game, "StardewModdingAPI.dll")), game);
 

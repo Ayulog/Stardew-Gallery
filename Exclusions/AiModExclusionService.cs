@@ -12,7 +12,7 @@ namespace StardewGallery;
 /// </summary>
 internal sealed class AiModExclusionService : IDisposable
 {
-    internal const string SettingsFileName = "ai-mod-exclusion.json";
+    internal const string LegacySettingsFileName = "ai-mod-exclusion.json";
     internal const string SeedRelativePath = "assets/ai-mod-exclusion.seed.json";
     internal const string DownloadUrl = "https://stardewmodding.wiki.gg/wiki/AI_Mod_Exclusion.json?action=raw";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -26,7 +26,7 @@ internal sealed class AiModExclusionService : IDisposable
     private long session;
     private bool disposed;
 
-    internal bool Enabled { get; private set; } = true;
+    internal bool Enabled { get; private set; }
     internal AiModExclusionRules Rules { get; private set; } = AiModExclusionRules.Empty;
     internal long Revision { get; private set; }
 
@@ -44,17 +44,18 @@ internal sealed class AiModExclusionService : IDisposable
 
     internal bool ShouldExclude(EventOriginMatch? origin) => Enabled && Rules.ShouldExclude(origin);
 
-    /// <summary>Start from the bundled list every time; no previous download is used as a fallback.</summary>
-    internal void StartSession()
+    /// <summary>Use only the saved opt-in; enabled sessions start from the bundled list, never a previous download.</summary>
+    internal void StartSession(bool enabled = false)
     {
         if (disposed) return;
         EndSession();
-        Enabled = ReadEnabled();
-        Rules = LoadSeed();
+        RemoveLegacySettings();
+        Enabled = enabled;
+        Rules = enabled ? LoadSeed() : AiModExclusionRules.Empty;
         Revision++;
         if (!Enabled)
         {
-            info("AI mod exclusion is disabled by ai-mod-exclusion.json.");
+            info("AI mod exclusion is disabled in the mod configuration.");
             return;
         }
         info($"AI mod exclusion: using {Rules.Count} bundled ModId rules while checking the current list.");
@@ -102,42 +103,17 @@ internal sealed class AiModExclusionService : IDisposable
         disposed = true;
     }
 
-    private bool ReadEnabled()
+    private void RemoveLegacySettings()
     {
-        string path = Path.Combine(modDirectory, SettingsFileName);
+        string path = Path.Combine(modDirectory, LegacySettingsFileName);
         try
         {
-            if (!File.Exists(path))
-            {
-                try
-                {
-                    // Never replace an existing player file, including an invalid or future-schema one.
-                    using FileStream created = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                    using StreamWriter writer = new(created, new UTF8Encoding(false));
-                    writer.Write("{\n  \"Enabled\": true\n}\n");
-                    return true;
-                }
-                catch (IOException) when (File.Exists(path)) { }
-            }
-            using JsonDocument settings = JsonDocument.Parse(ReadBoundedFile(path, 4096), new JsonDocumentOptions { MaxDepth = 8 });
-            if (settings.RootElement.ValueKind != JsonValueKind.Object)
-                throw new FormatException("Settings must be an object containing Enabled.");
-            JsonElement enabled = default;
-            int fields = 0;
-            foreach (JsonProperty property in settings.RootElement.EnumerateObject())
-            {
-                if (!property.Name.Equals("Enabled", StringComparison.Ordinal)) continue;
-                enabled = property.Value;
-                fields++;
-            }
-            if (fields != 1 || enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                throw new FormatException("Settings must contain exactly one boolean Enabled value.");
-            return enabled.GetBoolean();
+            if (File.Exists(path))
+                File.Delete(path);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or DecoderFallbackException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            warn($"AI mod exclusion: could not read ai-mod-exclusion.json; using Enabled=true and preserving the file. {Reason(ex)}");
-            return true;
+            warn($"AI mod exclusion: could not remove retired ai-mod-exclusion.json; it is ignored. {Reason(ex)}");
         }
     }
 
@@ -148,7 +124,7 @@ internal sealed class AiModExclusionService : IDisposable
             string path = Path.Combine(modDirectory, SeedRelativePath.Replace('/', Path.DirectorySeparatorChar));
             return AiModExclusionRules.Parse(ReadBoundedFile(path, AiModExclusionRules.MaximumBytes));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or DecoderFallbackException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or FormatException or DecoderFallbackException)
         {
             warn($"AI mod exclusion: bundled list is unavailable or invalid; no events are excluded without valid rules. {Reason(ex)}");
             return AiModExclusionRules.Empty;

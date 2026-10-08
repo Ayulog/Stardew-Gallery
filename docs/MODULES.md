@@ -6,7 +6,7 @@
 | 当前事件资料 | `GalleryCatalogCache`、`Catalog/GalleryCatalogBuilder`、`GalleryCatalog` | 从当前游戏读取并分类；供其他模块取资料，不创建菜单或回放。 |
 | 条件与前置 | `GalleryConditionPresentation`、`ConditionStateReader`、`StoryDependencyLookup`、`PrerequisiteCatalog` | 当前TriggerActions标记和明确内部解锁依赖单独建资料；不生成可播放事件。条件与动作、已获得状态分离。 |
 | 自助搜索 | `StorySearchIndex`、`QueryFilter`、`QueryWeather` | 预计算角色/地点/原始来源，按来源Mod ID、类别、进度、已知条件筛选，并支持来源名称搜索。 |
-| 来源排除 | `Exclusions/AiModExclusionRules`、`AiModExclusionService`、`Catalog/GalleryCatalogVisibility` | 独立JSON默认开启；启动与读档异步下载公开ModId名单，失败使用内置种子。按确认原始来源投影画廊目录，保留原版/未知/歧义，保护前置去重和进行中的回放。 |
+| 来源排除 | `Exclusions/AiModExclusionRules`、`AiModExclusionService`、`Catalog/GalleryCatalogVisibility` | GMCM/config.json 的 EnableAiModExclusion 默认关闭；启用时启动与读档异步下载公开 ModId 名单，失败使用内置种子。按确认原始来源投影画廊目录，保留原版/未知/歧义，保护前置去重和进行中的回放。 |
 | 查询名称 | `GalleryLocationNames`、`GalleryCharacterNames`、`GalleryNameText` | 优先现成译名，识别缺译诊断串；角色别名按剧情解析，地点旧名和已核实副本只在查询层分组。 |
 | 玩家命名 | `EventNameStore`、`GalleryRenameMenu` | 本机存档共用的用户别名，按资产+ID定位，独立原子保存，不写游戏进度。 |
 | 页面与共用绘制 | `GalleryMenu`、`GalleryCharacterMenu`、`GalleryQueryMenu`、`GalleryEventDetailMenu`、`GalleryDrawing` | 按资料画界面，写`GalleryPageState`，通过`IGalleryNavigation`发出操作。 |
@@ -27,4 +27,6 @@ dev.6的`NativeGlobalEventCopies`只识别游戏TryGetLocationEvents注入的两
 
 2.7.0 的事件来源功能基于运行时操作调研，独立于上述历史 dev.4 已移除的实现；当前已有详情页展示与GMCM开关，并保留开发者诊断，不恢复旧数据表或旧来源推断。范围、启用方式及验收限制见 `EVENT_MOD_SOURCE_IMPLEMENTATION.md`。
 
-当前工作区（未发布）将静态原始定义与运行时修改记录分开：来源扫描始终可用，返回标题或事件资产刷新清空索引，控制台 rescan 可刷新；不改写游戏资产，不使用完整脚本相同作为原始来源的必要条件。
+已发布 2.8.0 将静态原始定义与运行时修改记录分开：来源扫描始终可用，返回标题或事件资产刷新清空索引，控制台 rescan 可刷新；不改写游戏资产，不使用完整脚本相同作为原始来源的必要条件。
+
+2.9.0 已删除停用的历史采集/冻结回放、历史 SQLite 仓库、执行轨迹观察和预览状态注入。`Replay/` 保留当前回放权限、确认与环境解析；`Conditions/CurrentStateSnapshot`、`RuntimeStateReader` 继续提供只读条件状态。`Persistence/` 仅维护 `SaveProfileKey`、`EventNameStore`，照片仍由 `Screenshots/EventPhotoStore` 持久化。玩家已有数据库与归档文档保持原样。当前检查聚焦有效功能，不再为已删除历史功能编译 SQLite 或预览注入夹具。

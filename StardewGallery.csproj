@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <RootNamespace>StardewGallery</RootNamespace>
     <AssemblyName>StardewGallery</AssemblyName>
-    <Version>2.8.0</Version>
+    <Version>2.9.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -14,7 +14,6 @@
 
   <ItemGroup>
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(GamePath)\smapi-internal\Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>

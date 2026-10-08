@@ -227,11 +227,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             Return();
             return;
         }
-        if (button == Buttons.A && Game1.options.snappyMenus)
-        {
-            ActivateFocused();
-            return;
-        }
+        // A/X use Game1's mouse emulation; handling A here would activate twice.
         if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
         {
             ScrollBy(button == Buttons.LeftShoulder ? -contentBounds.Height : contentBounds.Height);

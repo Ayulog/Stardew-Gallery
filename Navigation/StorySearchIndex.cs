@@ -11,6 +11,7 @@ internal sealed record StorySearchRow(GalleryEvent? Event, string Location, stri
     internal IReadOnlyList<string> Npcs { get; init; } = [];
     internal string LocationKey { get; init; } = "";
     internal IReadOnlyList<ConditionExpression> Requirements { get; init; } = [];
+    internal IReadOnlyList<RelationshipEvidence> Relationships { get; init; } = [];
 }
 
 internal sealed class StorySearchIndex
@@ -30,14 +31,22 @@ internal sealed class StorySearchIndex
     {
         this.completed = completed ?? new HashSet<string>();
         this.conditionState = conditionState;
-        string[] Npcs(GalleryEvent? entry, IEnumerable<string> ids) => ids.Select(id => characterKey is null ? id : characterKey(entry, id))
+        string? CanonicalNpc(GalleryEvent? entry, string id) => characterKey is null ? id : characterKey(entry, id);
+        string[] Npcs(GalleryEvent? entry, IEnumerable<string> ids) => ids.Select(id => CanonicalNpc(entry, id))
             .Where(id => id is not null).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
         var projected = catalog.StoryEntries.DistinctBy(entry => entry.Resolved.Identity)
-            .Select(entry => new StorySearchRow(entry, locationName(entry), string.Join(", ", Npcs(entry, entry.RelatedNpcNames).Select(characterName)))
+            .Select(entry =>
             {
-                Title = names?.Invoke(entry.Resolved.Identity) ?? entry.EventId,
-                Npcs = Npcs(entry, entry.RelatedNpcNames), LocationKey = locationKey?.Invoke(entry) ?? entry.AssetName,
-                Requirements = parser?.ParseRawKey(entry.EventKey).Conditions ?? []
+                IReadOnlyList<ConditionExpression> requirements = parser?.ParseRawKey(entry.EventKey).Conditions ?? [];
+                return new StorySearchRow(entry, locationName(entry), string.Join(", ", Npcs(entry, entry.RelatedNpcNames).Select(characterName)))
+                {
+                    Title = names?.Invoke(entry.Resolved.Identity) ?? entry.EventId,
+                    Npcs = Npcs(entry, entry.RelatedNpcNames), LocationKey = locationKey?.Invoke(entry) ?? entry.AssetName,
+                    Requirements = requirements,
+                    Relationships = ConditionRelationshipEvidence.Read(requirements)
+                        .Select(evidence => CanonicalNpc(entry, evidence.Npc) is string npc ? evidence with { Npc = npc } : null)
+                        .OfType<RelationshipEvidence>().ToArray()
+                };
             })
             .Concat(catalog.Prerequisites.Select(entry =>
             {
@@ -101,30 +110,77 @@ internal sealed class StorySearchIndex
     {
         if (row.Prerequisite is not null && (filter.Season is not null || filter.Weather is not null || filter.Time is not null
             || filter.MinimumHearts is not null || filter.MaximumHearts is not null)) return false;
-        foreach (ConditionExpression requirement in row.Requirements)
-        {
-            if (filter.Weather is not null && requirement is NativeQueryCondition query && !query.Negated
-                && SafeGameQuery.TryParse(query.Query, out var clauses))
-                foreach (var clause in clauses.Where(clause => clause.Name == "WEATHER"))
-                    if (clause.Arguments.Skip(1).Select(QueryWeather.Normalize).Contains(QueryWeather.Normalize(filter.Weather)) == clause.Negated) return false;
-            bool? matches = requirement switch
-            {
-                SeasonCondition season when filter.Season is not null => season.Seasons.Contains(filter.Season, StringComparer.OrdinalIgnoreCase),
-                TimeCondition time when filter.Time is int value => value >= time.Min && value <= time.Max,
-                WeatherCondition weather when filter.Weather is not null => QueryWeather.Matches(weather, filter.Weather),
-                _ => null
-            };
-            if (matches is not null && matches.Value == requirement.Negated) return false;
-        }
+        if (!MatchesEnvironment(row, filter)) return false;
         if (filter.MinimumHearts is not null || filter.MaximumHearts is not null)
         {
-            int? points = row.Requirements.OfType<FriendshipCondition>().Where(condition => !condition.Negated)
-                .SelectMany(condition => condition.Requirements).Where(requirement => filter.Npc is null || requirement.Npc == filter.Npc)
-                .Select(requirement => (int?)requirement.Points).DefaultIfEmpty(null).Max();
+            int? points = row.Relationships.Where(requirement => filter.Npc is null || requirement.Npc == filter.Npc)
+                .Select(requirement => requirement.MinimumPoints).DefaultIfEmpty(null).Max();
             if (points is null) return false;
             int hearts = (int)Math.Ceiling(points.Value / 250d);
             if (filter.MinimumHearts is int min && hearts < min || filter.MaximumHearts is int max && hearts > max) return false;
         }
         return true;
+    }
+
+    private static bool MatchesEnvironment(StorySearchRow row, QueryFilter filter)
+    {
+        if (filter.Season is null && filter.Weather is null && filter.Time is null) return true;
+        Dictionary<NativeQueryCondition, IReadOnlyList<SafeQueryClause>> queries = [];
+        Dictionary<string, bool?> weatherFacts = [];
+        foreach (NativeQueryCondition query in row.Requirements.OfType<NativeQueryCondition>())
+        {
+            // The same restricted parser/evaluator used by condition details. Unsupported
+            // queries stay unknown; indexing never invokes registered GSQ delegates.
+            if (!SafeGameQuery.TryParse(query.Query, out var clauses)) continue;
+            queries[query] = clauses;
+            if (filter.Weather is not null)
+                foreach (SafeQueryClause clause in clauses.Where(value => value.Name == "WEATHER"))
+                {
+                    string location = clause.Arguments[0];
+                    // At the event entrance Here and Target are the event location. A
+                    // weather requirement elsewhere cannot constrain this location.
+                    if (location.Equals("Here", StringComparison.OrdinalIgnoreCase)
+                        || location.Equals("Target", StringComparison.OrdinalIgnoreCase)
+                        || location.Equals(row.Event?.LocationName, StringComparison.OrdinalIgnoreCase))
+                        weatherFacts[SafeGameQuery.FactKey(clause)] = clause.Arguments.Skip(1)
+                            .Contains(QueryWeather.Normalize(filter.Weather), StringComparer.OrdinalIgnoreCase);
+                }
+        }
+
+        // SEASON_DAY alternatives must be checked against a shared date. In particular,
+        // excluding spring 5 still permits other spring days, and !(date && weather)
+        // must negate the whole conjunction, not each projected constraint.
+        bool hasDates = queries.Values.Any(clauses => clauses.Any(clause => clause.Name == "SEASON_DAY"));
+        string?[] seasons = filter.Season is not null ? [filter.Season]
+            : hasDates ? ["spring", "summer", "fall", "winter"] : [null];
+        ConditionEvaluationContext context = new(null, null, null, filter.Time, filter.Weather,
+            null, null, null, null, null, null, null, null, null, null)
+            { Details = new() { QueryFacts = weatherFacts } };
+        foreach (string? season in seasons)
+            for (int day = 1; day <= (hasDates ? 28 : 1); day++)
+            {
+                context = context with { Season = season, DayOfMonth = hasDates ? day : null };
+                bool possible = true;
+                foreach (ConditionExpression requirement in row.Requirements)
+                {
+                    bool? matches = requirement switch
+                    {
+                        SeasonCondition value when season is not null => value.Seasons.Contains(season, StringComparer.OrdinalIgnoreCase),
+                        DayOfMonthCondition value when hasDates => value.Days.Contains(day),
+                        TimeCondition value when filter.Time is int time => time >= value.Min && time <= value.Max,
+                        WeatherCondition value when filter.Weather is not null => QueryWeather.Matches(value, filter.Weather),
+                        NativeQueryCondition value when queries.TryGetValue(value, out var clauses) => SafeGameQuery.Evaluate(clauses, context),
+                        _ => null
+                    };
+                    if (matches is not null && matches.Value == requirement.Negated)
+                    {
+                        possible = false;
+                        break;
+                    }
+                }
+                // Unknown is not a confirmed conflict with the user's filter.
+                if (possible) return true;
+            }
+        return false;
     }
 }

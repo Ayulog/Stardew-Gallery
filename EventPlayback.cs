@@ -12,7 +12,4 @@ internal sealed record EventPlayback(
 
     internal static EventPlayback ForCurrent(ResolvedEvent resolved)
         => new(resolved.Identity, resolved.LocationName, resolved.ResolvedScript);
-
-    internal static EventPlayback ForHistorical(WatchedEventSnapshot snapshot)
-        => new(snapshot.Identity, snapshot.LocationName, snapshot.RootScript);
 }

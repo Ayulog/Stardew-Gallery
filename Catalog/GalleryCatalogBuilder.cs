@@ -100,26 +100,16 @@ internal sealed class GalleryCatalogBuilder(
     {
         Dictionary<string, int> friendship = new(StringComparer.Ordinal);
         HashSet<string> relationships = new(StringComparer.Ordinal);
-        List<string> prerequisites = [];
-        foreach (ConditionExpression condition in conditionParser.ParseRawKey(entry.RawEventKey).Conditions)
+        IReadOnlyList<ConditionExpression> conditions = conditionParser.ParseRawKey(entry.RawEventKey).Conditions;
+        foreach (RelationshipEvidence relationship in ConditionRelationshipEvidence.Read(conditions))
         {
-            switch (condition)
-            {
-                case FriendshipCondition { Negated: false } friends:
-                    foreach (FriendshipRequirement requirement in friends.Requirements.Where(value => value.Points > 0))
-                        friendship[requirement.Npc] = Math.Max(friendship.GetValueOrDefault(requirement.Npc), requirement.Points);
-                    break;
-                case SawEventCondition { Negated: false } previous:
-                    prerequisites.AddRange(previous.EventIds);
-                    break;
-                case DatingCondition { Negated: false } dating:
-                    relationships.Add(dating.Npc);
-                    break;
-                case SpouseCondition { Negated: false } spouse:
-                    relationships.Add(spouse.Npc);
-                    break;
-            }
+            if (relationship.MinimumPoints is int points)
+                friendship[relationship.Npc] = Math.Max(friendship.GetValueOrDefault(relationship.Npc), points);
+            else
+                relationships.Add(relationship.Npc);
         }
+        List<string> prerequisites = conditions.OfType<SawEventCondition>().Where(condition => !condition.Negated)
+            .SelectMany(condition => condition.EventIds).ToList();
 
         string[] rootCommands = parseCommands(entry.ResolvedScript);
         HashSet<string> actors = new(StringComparer.Ordinal);

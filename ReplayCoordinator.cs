@@ -4,11 +4,12 @@ using StardewValley;
 
 namespace StardewGallery;
 
-internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, PreviewPlanner planner,
+internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
     Func<bool> autoAdvanceDialogue, Func<bool> debugDiagnostics)
 {
     private const int StartTimeoutTicks = 900;
     private readonly EventLauncher eventLauncher = new();
+    private readonly ConditionParser conditionParser = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
     private ReplaySnapshot? snapshot;
     private Action? reopen;
     private string? backupPath;
@@ -23,11 +24,10 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
     private int speedMultiplier = 1;
     private int dialogueAutoTicks;
     private Event? activeReplayEvent;
-    private PreviewInjectionScope? previewScope;
     private ReplaySceneEnvironmentScope? environmentScope;
     private bool failSafeRunning;
 
-    internal bool IsActive => snapshot is not null || previewScope is not null;
+    internal bool IsActive => snapshot is not null;
     internal bool OwnsEvent(Event value) => IsActive && ReferenceEquals(value, activeReplayEvent);
     internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
     internal int SpeedMultiplier => speedMultiplier;
@@ -40,19 +40,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
         ? 1 : speedMultiplier;
 
     internal bool TryStart(GalleryEvent entry, Action reopenMenu, out string error)
-        => TryStartCore(entry, null, reopenMenu, out error);
-
-    internal bool TryStartPreview(GalleryEvent entry, PreviewState state, Action reopenMenu, out string error)
-    {
-        if (state is null)
-        {
-            error = helper.Translation.Get("preview.not-available");
-            return false;
-        }
-        return TryStartCore(entry, state, reopenMenu, out error);
-    }
-
-    private bool TryStartCore(GalleryEvent entry, PreviewState? preview, Action reopenMenu, out string error)
     {
         error = string.Empty;
         if (entry.Kind == StoryKind.Internal || Context.IsMultiplayer)
@@ -80,8 +67,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             Trace($"回放备份完成：{backupPath}");
             snapshot = ReplaySnapshot.Capture();
             reopen = reopenMenu;
-            if (preview is not null)
-                previewScope = PreviewInjectionScope.Apply(new RuntimePreviewStateAccessor(), preview);
             eventId = playback.EventId;
             targetLocationName = playback.LocationName;
             speedMultiplier = 1;
@@ -126,8 +111,8 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
     {
         try
         {
-            ReplaySceneEnvironment environment = planner.ResolveSceneEnvironment(
-                entry,
+            ReplaySceneEnvironment environment = ReplaySceneEnvironmentResolver.Resolve(
+                conditionParser.ParseRawKey(entry.EventKey).Conditions,
                 Game1.currentSeason,
                 Game1.timeOfDay,
                 location.GetWeather().Weather);
@@ -168,7 +153,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
             {
                 if (ReplayLifecycleRules.CanApplyRestore(transitionPending, fading))
                 {
-                    previewScope?.Dispose();
                     activeSnapshot.RestorePlayer();
                     restorePlayerApplied = true;
                     bool alreadyThere = ReferenceEquals(Game1.currentLocation, activeSnapshot.Location);
@@ -339,8 +323,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
     {
         ReplaySceneEnvironmentScope? environment = environmentScope;
         environmentScope = null;
-        PreviewInjectionScope? preview = previewScope;
-        previewScope = null;
         snapshot = null;
         reopen = null;
         backupPath = null;
@@ -363,15 +345,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper, Pre
         catch (Exception error)
         {
             SafeLog($"清理回放演出环境失败：{error}", LogLevel.Warn);
-        }
-        try
-        {
-            if (restoreScopes)
-                preview?.Dispose();
-        }
-        catch (Exception error)
-        {
-            SafeLog($"清理回放预览状态失败：{error}", LogLevel.Warn);
         }
     }
 

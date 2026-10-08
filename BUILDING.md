@@ -99,3 +99,49 @@ Windows 本机打包前，可用真实 SMAPI 4.5.2 加载器检查 DLL；重写�
 ```powershell
 dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --assembly "bin/Release/net6.0/StardewGallery.dll"
 ```
+## Replay state regressions / 回放状态回归检查
+
+After the full MOD build, run each command in a fresh process against the resulting DLL. These optional checks require the installed game and SMAPI DLLs and use in-memory state; they do not read saves or install the MOD.
+完整构建后，用生成的 DLL 分别运行以下命令。可选检查依赖本机游戏及 SMAPI DLL，只使用内存状态，不读取存档或安装 MOD。
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --replay "bin/Release/net6.0/StardewGallery.dll"
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --replay-effects "bin/Release/net6.0/StardewGallery.dll"
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --replay-weather "bin/Release/net6.0/StardewGallery.dll"
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --replay-speed "bin/Release/net6.0/StardewGallery.dll"
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --gallery-drafts "bin/Release/net6.0/StardewGallery.dll"
+```
+
+The snapshot checks call the built Capture/RestorePlayer and RuntimeStateReader with real case-sensitive game collections. The effects checks install ReplaySaveGuard and invoke the actual GrandpaCandles command, checking replay suppression, exactly-once advancement and unaffected normal/unowned events. Fixture substitutions and limits are documented in SourcesRuntimeChecks/README.md. In-game natural completion, skipping, startup failure and recovery failure still need a test save and SMAPI logs.
+快照检查使用真实游戏集合，调用产物中的 Capture/RestorePlayer 及 RuntimeStateReader；命令检查安装真实 ReplaySaveGuard 并执行原版 GrandpaCandles，验证回放保护、命令仅推进一次及正常/非所属事件不受影响。夹具替代范围见 SourcesRuntimeChecks/README.md。自然结束、跳过、启动失败和恢复异常的游戏内流程仍需测试存档及 SMAPI 日志验收。
+
+The weather mode checks six native weather types, default-world flags and restoration. The speed mode exercises native recursive commands through the installed Harmony patch. The drafts mode exercises menu drafts and selection rebuilding in a headless fixture. Run the regular Checks suite too: it covers weather resolution, GSQ relationship classification, canonical character heart filters and independent source-evidence status.
+天气入口检查六种原生天气、默认世界标记及恢复；倍速入口通过真实Harmony补丁执行原版递归命令；草稿入口在无图形夹具中验证菜单草稿与选项重建。同时运行常规Checks，覆盖天气解析、GSQ正向关系分类、角色别名心数筛选及独立来源证据状态。
+
+## GMCM exclusion checks / GMCM 名单开关检查
+
+完整构建后运行以下检查，验证默认关闭、实际注册/保存/重置回调，以及回放或确认期间延后刷新。夹具替代范围见 SourcesRuntimeChecks/README.md；不会启动游戏、安装 MOD 或访问玩家存档。
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --gmcm-exclusion "bin/Release/net6.0/StardewGallery.dll"
+```
+
+## Controller dispatch checks / 手柄分派检查
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --controller-input "bin/Release/net6.0/StardewGallery.dll"
+```
+
+The 36 assertions follow the native fresh-button dispatch order through actual menu handlers and temporary photo storage. They cover snappy on/off, one action per A press, B/X/shoulders and keyboard/mouse controls. The fixture substitutes graphics and navigation boundaries; it does not run the complete game update loop or physical controller input. See SourcesRuntimeChecks/README.md for scope.
+
+36 项检查按原版新按键分派顺序执行真实菜单方法及临时照片存储，覆盖 snappy 开关、A 单次操作、B/X/肩键及键鼠。夹具替代图形和导航外围，不运行完整游戏更新循环或物理手柄；边界见 SourcesRuntimeChecks/README.md。
+
+## Clean outputs after dependency removal / 依赖清理后的构建
+
+The retired history/preview code and Microsoft.Data.Sqlite/SQLitePCLRaw dependencies are no longer built. Use a clean output directory when switching from 2.8.0, so stale DLLs and native runtime folders are not bundled. Package-Release.ps1 rejects SQLite libraries and database files. Do not remove player config, photos, names or existing historical databases as part of build cleanup.
+
+旧历史／预览及 SQLite 依赖已移除。从 2.8.0 切换时使用干净的构建输出，避免旧 DLL 和原生运行时被带入新包。Package-Release.ps1 会拒绝 SQLite 程序库及数据库文件。构建清理不应删除玩家配置、照片、名称或以前的历史数据库。
+
+The standalone persistence suite now covers active photo/name storage, save identity and backup retention; the removed historical database and preview-injection tests are no longer compiled. Current replay environment types live under Replay/, and current read-only state under Conditions/.
+
+独立存储检查现覆盖照片／名称、存档身份与备份保留，已停止编译废弃历史数据库和预览注入测试。当前回放环境类型在 Replay/，只读状态在 Conditions/。

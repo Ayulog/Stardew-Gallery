@@ -12,7 +12,6 @@ internal sealed class ModEntry : Mod
 {
     private const int CollectionsGalleryComponentId = 7099;
     private GalleryCatalogCache catalog = null!;
-    private readonly PreviewPlanner planner = new(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware, null);
     private bool unlockAll;
     private bool pendingOpen;
     private Texture2D tabIcon = null!;
@@ -25,6 +24,7 @@ internal sealed class ModEntry : Mod
     private SmapiEventSourceObserver eventSources = null!;
     private EventDefinitionSources eventDefinitions = null!;
     private AiModExclusionService eventExclusions = null!;
+    private bool savedExclusionEnabled;
 
     internal ModConfig Config { get; private set; } = new();
 
@@ -39,11 +39,13 @@ internal sealed class ModEntry : Mod
             Monitor.Log(helper.Translation.Get("log.config-invalid", new { error = error.Message }), LogLevel.Error);
         }
 
+        savedExclusionEnabled = Config.EnableAiModExclusion;
+
         eventDefinitions = new EventDefinitionSources(helper, Monitor);
         eventExclusions = new AiModExclusionService(helper.DirectoryPath,
             message => Monitor.Log(message, LogLevel.Info), message => Monitor.Log(message, LogLevel.Warn));
-        helper.Events.GameLoop.GameLaunched += (_, _) => eventExclusions.StartSession();
-        helper.Events.GameLoop.SaveLoaded += (_, _) => eventExclusions.StartSession();
+        helper.Events.GameLoop.GameLaunched += (_, _) => StartEventExclusions();
+        helper.Events.GameLoop.SaveLoaded += (_, _) => StartEventExclusions();
         helper.Events.GameLoop.ReturnedToTitle += (_, _) => eventExclusions.EndSession();
         eventSources = new SmapiEventSourceObserver(ModManifest.UniqueID, Monitor);
         if (Config.EnableEventSourceDiagnostics)
@@ -75,7 +77,7 @@ internal sealed class ModEntry : Mod
         {
             Monitor.Log($"Search input isolation unavailable; search is disabled: {error}", LogLevel.Error);
         }
-        replay = new ReplayCoordinator(Monitor, helper, planner, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
+        replay = new ReplayCoordinator(Monitor, helper, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
         try
         {
             ReplaySaveGuard.Apply(helper, Monitor, replay);
@@ -132,8 +134,7 @@ internal sealed class ModEntry : Mod
         {
             eventSources.PruneIncomplete();
             // Apply on the game thread, after any replay/confirmation has finished safely.
-            if (!replayService.IsBusy && eventExclusions.TryApplyCompleted())
-                application.RefreshCatalog();
+            UpdateEventExclusions();
             replay.Update();
             photos.Update(replay.PlayingEvent);
             if (!pendingOpen)
@@ -304,6 +305,25 @@ internal sealed class ModEntry : Mod
         Helper.Data.WriteSaveData("gallery-state", new GallerySaveData { UnlockAll = unlockAll });
     }
 
+    private void StartEventExclusions() => eventExclusions.StartSession(savedExclusionEnabled);
+
+    private void SaveConfig()
+    {
+        Helper.WriteConfig(Config);
+        // Sessions and safe ticks use the saved choice, never later GMCM drafts.
+        savedExclusionEnabled = Config.EnableAiModExclusion;
+    }
+
+    private void UpdateEventExclusions()
+    {
+        if (replayService.IsBusy) return;
+        bool changed = eventExclusions.Enabled != savedExclusionEnabled;
+        if (changed)
+            eventExclusions.StartSession(savedExclusionEnabled);
+        if (eventExclusions.TryApplyCompleted() || changed)
+            application.RefreshCatalog();
+    }
+
     private void RegisterGmcm()
     {
         IGenericModConfigMenuApi? gmcm = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
@@ -313,11 +333,13 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        gmcm.Register(ModManifest, () => Config = new ModConfig(), () => Helper.WriteConfig(Config));
+        gmcm.Register(ModManifest, () => Config = new ModConfig(), SaveConfig);
         gmcm.AddBoolOption(ModManifest, () => Config.EnableOrdinaryEventReplay, value => Config.EnableOrdinaryEventReplay = value,
             () => Helper.Translation.Get("config.ordinary-replay.name"), () => Helper.Translation.Get("config.ordinary-replay.tooltip"));
         gmcm.AddBoolOption(ModManifest, () => Config.EnableEventSourceDiagnostics, value => Config.EnableEventSourceDiagnostics = value,
             () => Helper.Translation.Get("config.event-source.name"), () => Helper.Translation.Get("config.event-source.tooltip"));
+        gmcm.AddBoolOption(ModManifest, () => Config.EnableAiModExclusion, value => Config.EnableAiModExclusion = value,
+            () => Helper.Translation.Get("config.ai-exclusion.name"), () => Helper.Translation.Get("config.ai-exclusion.tooltip"), fieldId: "EnableAiModExclusion");
         gmcm.AddKeybindList(ModManifest, () => Config.GalleryKeys, value => Config.GalleryKeys = value,
             () => Helper.Translation.Get("config.key.name"), () => Helper.Translation.Get("config.key.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.ReplaySpeedKeys, value => Config.ReplaySpeedKeys = value,
