@@ -1,49 +1,84 @@
-# Stardew Gallery 2.9.0
+# Stardew Gallery 2.9.0 版本说明 / Release Notes
 
-2026-10-08
+发布日期 / Release Date: 2026-10-08
 
-署名更新 / Attribution update：发布附件中的作者和版权署名统一为 `Ayulog`，保留此前验证的 2.9.0 DLL。The package author and copyright attribution now use `Ayulog`; the verified 2.9.0 DLL is retained.
+> **署名更新 / Attribution Notice**：发布包中的作者与版权署名现已统一为 `Ayulog`，内部程序文件保持已验证的 2.9.0 构建版本。 / Package author and copyright attribution are now unified under `Ayulog`, retaining the verified 2.9.0 DLL build.
 
 ## 中文
 
-2.9.0 修复本轮审计确认的 B1–B11，将名单排除改为 GMCM 中默认关闭的可选功能，并移除停用的历史／预览代码和 SQLite 依赖。
+**2.9.0** 重点修复了回放状态恢复、倍速计时、天气适配、条件筛选与手柄操作中的多项细节问题，将 AI 模组排除名单整合为 GMCM 中默认关闭的可选开关，并彻底移除了早期遗留的 SQLite 依赖库，使模组体积减半。
 
-- **回放进度与安全（B1、B2）**：快照和条件读取保留大小写不同的合法事件、邮件、对话、配方和好感键；画廊回放不再通过爷爷蜡烛命令修改真实农场评分。
-- **回放演出（B3、B4）**：嵌套事件更新只应用一次 2x/4x 倍速，异常退出后恢复正常；支持绿雨条件，普通下雨要求不会把已有绿雨改成普通雨。
-- **剧情分类与查询（B5、B6）**：支持安全解析的 GSQ 好感关系、心数、日期、季节和天气条件，统一角色别名；正确处理否定和组合条件，无法判断的条件保持未知。
-- **页面与来源（B7–B9）**：名单刷新保留未保存的改名和筛选草稿；失效的已选角色／地点继续显示原值；合并静态来源时保留运行时证据不完整的提示。
-- **异常恢复与手柄（B10、B11）**：内置名单超限时安全回退并继续下载；手柄 A 在详情、工具和照片页仅触发一次，避免重复展开和一次归档两张照片。
-- **名单开关**：`EnableAiModExclusion` 进入 GMCM 和标准 `config.json`，默认关闭。保存后生效，回放或确认期间延后刷新；缺少 GMCM 时仍可修改配置。旧 `ai-mod-exclusion.json` 不再使用，运行时删除且不迁移旧值；需要排除功能的玩家请重新开启。
-- **依赖清理**：删除旧历史采集／冻结回放、预览注入及 SQLite 程序库和原生运行时；保留当前回放、存档保护、照片／封面和自定义名称。发布包约缩小 50%，12 种语言各保留 533 个有效翻译键。
+### 更新内容
 
-### 安装与升级
+- **回放进度与存档保护**
+  - 回放快照与条件读取严格保留事件、信件、对话、配方及好感键名的大小写差异，避免在恢复状态时丢失区分大小写的标记或因同名键冲突报错。
+  - 仅在画廊触发的回放中拦截 `GrandpaCandles` 状态修改，防止回放爷爷评估剧情时改写真实农场的评价蜡烛数，同时不影响正常游戏内的评估流程。
+- **回放倍速与天气表现**
+  - 修复嵌套事件更新导致 2x / 4x 倍速被重复叠加的问题，并在异常退出时自动重置倍速状态。
+  - 回放环境现已支持**绿雨（Green Rain）**；当事件仅要求普通下雨（`rainy`）而当前恰好处于绿雨天气时，会保留绿雨氛围而不再强行降级为普通雨天。
+- **剧情归类与条件筛选**
+  - 支持解析常见的 Game State Query (GSQ) 好感关系、心数、日期、季节与天气条件（包含否定与组合条件），并统一角色别名的心数筛选。无法静态判定的条件继续如实显示为“未知”。
+- **界面交互与手柄修复**
+  - 修复在事件详情、工具栏与剧照管理页按手柄 `A` 键时触发两次点击的问题，避免一次按键展开两次面板或同时移除两张剧照。
+  - 目录刷新时自动保留尚未保存的事件改名与筛选草稿；已选中的角色或地点筛选项即使当前无匹配结果也保持原名称显示，不再误显示为“任意”。
+  - 静态匹配到模组原始来源后，若同时开启了运行时修改追踪，仍会完整显示运行时的证据状态，且不再截断翻译后的长文本。
+  - 当内置排除名单文件大小异常超限时安全回退，不残留旧会话规则且不影响后续异步拉取。
+- **AI 模组排除开关整合至 GMCM**
+  - `EnableAiModExclusion` 现已并入 GMCM 与标准 `config.json`，**默认关闭（`false`）**。在 GMCM 中保存后即可生效（若正在回放或处于确认弹窗中，则待结束后刷新）；未安装 GMCM 时也可直接修改 `config.json`。
+  - 旧版独立的 `ai-mod-exclusion.json` 已废弃并在运行时自动清理，不会自动迁移旧开关值；如需使用排除功能，请在更新后前往 GMCM 重新开启。
+- **移除遗留依赖与精简体积**
+  - 彻底移除早期已停用的历史采集/冻结回放、预览注入代码及 SQLite 托管与原生运行时库，发布包体积缩减约 **50%**。
+  - 现有的当前状态回放、存档保护、剧照封面与自定义名称功能均完整保留，12 种语言翻译（各 533 键）全部对齐。
 
-需要 Stardew Valley 1.6.15、SMAPI 4.5.2 或更新兼容版本。退出游戏，完整备份旧 `Mods/StardewGallery`；将新 ZIP 解压为干净的 `Mods/StardewGallery` 文件夹，再恢复 `config.json`、`event-photos/`、`user-data/` 及已有备份／历史数据库。不要仅覆盖旧目录，以免遗留 SQLite DLL 和 `runtimes/`。本版不读取或删除玩家旧数据库。
+### 安装与升级指南
 
-### 验证与范围
+- **环境要求**：Stardew Valley 1.6.15+、SMAPI 4.5.2+。
+- **干净升级步骤**：
+  1. 退出游戏，完整备份旧的 `Mods/StardewGallery` 文件夹。
+  2. 删除旧文件夹并将新版压缩包解压为干净的 `Mods/StardewGallery`（**请勿直接覆盖旧目录**，以免遗留旧版的 SQLite DLL 与 `runtimes/` 文件夹）。
+  3. 将备份中的 `config.json`、`event-photos/`（剧照与封面）和 `user-data/`（自定义事件名称）拷回新目录即可。
 
-Release 构建 0 警告／0 错误；全量逻辑和存储检查通过。真实 SMAPI 加载器接受构建 DLL，8 组隔离运行时检查共 214 项通过，覆盖来源管线、回放快照／副作用／天气／倍速、菜单草稿、GMCM 回调及手柄分派。12 语言键及占位符检查通过；新包不含 SQLite、玩家数据或游戏／第三方 MOD DLL。
+### 验证范围与已知说明
 
-自动检查未启动完整游戏。真实回放生命周期、界面缩放／长文本、物理手柄和第三方外观组合仍需游戏内确认；检查工程保留 .NET 6 支持周期提示，目录符号链接夹具在本机因 IOException 跳过。回放仍仅支持单人，原版快照无法保证恢复第三方私有状态或外部副作用。
+- Release 构建（0 警告 / 0 错误）、全量逻辑与存储检查、真实 SMAPI 程序集加载器检查，以及涵盖来源扫描、回放快照/副作用/天气/倍速、菜单草稿、GMCM 回调与手柄分派的 8 组共 214 项隔离运行时断言全部通过；发布包已核验不含 SQLite 库与个人数据。
+- 回放功能仅支持单人模式；原版回放快照无法保证回滚第三方模组自定义命令对外部文件或私有状态的修改。
+
+---
 
 ## English
 
-2.9.0 fixes all eleven findings (B1–B11) from the current audit, makes list exclusion an optional GMCM setting disabled by default, and removes retired history/preview code and SQLite dependencies.
+**Version 2.9.0** fixes a range of issues across replay state restoration, playback speed timing, weather handling, condition filters, and controller input. It also moves the AI mod exclusion setting into GMCM (disabled by default) and removes retired SQLite dependencies, cutting the release archive size by roughly 50%.
 
-- **Replay progress and safety (B1, B2):** preserve case-distinct event, mail, dialogue, recipe and friendship keys during snapshots and condition reads. Gallery replays no longer change the real farm evaluation through GrandpaCandles.
-- **Replay timing and weather (B3, B4):** apply 2x/4x speed once per outer event update and clean up after exceptions. Recognize GreenRain and retain it when a condition only requires rainy weather.
-- **Classification and queries (B5, B6):** share safely parsed GSQ relationship, heart, date, season and weather constraints; normalize NPC aliases and handle negated/combined conditions. Unsupported context remains unknown.
-- **Menus and source evidence (B7–B9):** preserve unsaved rename/filter drafts during list refreshes, display unavailable selected NPC/location values, and keep incomplete runtime-evidence warnings alongside static source matches.
-- **Recovery and controller input (B10, B11):** recover from oversized bundled lists and continue downloading. One fresh A press performs one action in detail, tool and photo menus, avoiding double toggles and double photo archival.
-- **Exclusion setting:** `EnableAiModExclusion` is now in GMCM and standard `config.json`, disabled by default. Saved changes apply when replay/confirmation is idle; config remains usable without GMCM. The retired `ai-mod-exclusion.json` is deleted at runtime without importing its value. Re-enable exclusion explicitly if desired.
-- **Cleanup:** remove historical collection/frozen replay, preview injection and SQLite managed/native dependencies. Keep current replay, save protection, photos/covers and custom names. The release package is about 50% smaller; all 12 locales contain 533 active keys.
+### What's New
 
-### Installing and updating
+- **Replay State & Save Protection**
+  - Replay snapshots and condition checks now preserve case-distinct keys for events, mail, dialogue, recipes, and friendships, preventing lost markers or key collisions when restoring state.
+  - Gallery replays now suppress `GrandpaCandles` changes so replaying Grandpa's evaluation never alters your real farm score, while leaving normal gameplay events untouched.
+- **Playback Speed & Weather**
+  - Fixed 2x/4x replay speed compounding across nested event updates, with automatic cleanup on exceptions.
+  - Added **Green Rain** support for replay environments, and preserved active Green Rain when an event only requires standard rainy weather.
+- **Story Classification & Filters**
+  - Shared safely parsed Game State Query (GSQ) relationship, heart, date, season, and weather constraints across story classification and search filters (including negated and combined rules), and normalized character aliases for heart filters.
+- **Menus, Sources & Controller Input**
+  - Fixed controller `A` button presses firing twice in detail, tool, and photo menus, preventing double toggles and accidental double photo archiving.
+  - Unsaved rename and filter drafts are now preserved across catalog refreshes, and unavailable selected character/location filters remain visible instead of resetting to "Any".
+  - Runtime modification evidence status is still shown alongside matched static file sources without truncating localized text.
+  - Added safe fallback handling if a bundled exclusion file exceeds size limits, without retaining stale session rules or blocking updates.
+- **GMCM Exclusion Setting**
+  - `EnableAiModExclusion` is now managed through GMCM and `config.json`, **disabled by default (`false`)**. Changes apply once any active replay or confirmation finishes.
+  - The retired `ai-mod-exclusion.json` file is removed automatically at runtime without importing old values; please re-enable the option in GMCM if you wish to use it.
+- **Dependency Cleanup**
+  - Removed retired historical collection, preview injection code, and SQLite managed/native dependencies, reducing the release package size by about **50%** while keeping current replay, save protection, photos, covers, and custom names intact across all 12 supported languages (533 keys each).
 
-Requires Stardew Valley 1.6.15 and SMAPI 4.5.2 or compatible newer versions. Close the game and back up the entire old `Mods/StardewGallery` folder. Extract the ZIP into a clean `Mods/StardewGallery` folder, then restore `config.json`, `event-photos/`, `user-data/` and any existing backups/historical databases. Simply overwriting the old folder can leave SQLite DLLs and `runtimes/` behind. This version neither reads nor deletes existing player databases.
+### Installation & Updating
 
-### Validation and limits
+- **Requirements**: Stardew Valley 1.6.15+ and SMAPI 4.5.2+.
+- **Clean Update Steps**:
+  1. Close the game and back up your existing `Mods/StardewGallery` folder.
+  2. Extract the new ZIP into a **clean** `Mods/StardewGallery` folder (avoid overwriting the old folder directly so retired SQLite DLLs and `runtimes/` folders are not left behind).
+  3. Copy your `config.json`, `event-photos/`, and `user-data/` back into the new folder.
 
-The Release build has zero warnings/errors. Full logic/persistence suites and the actual SMAPI assembly loader pass. Eight isolated runtime modes pass 214 assertions covering source observation, replay snapshots/effects/weather/speed, menu drafts, GMCM callbacks and controller dispatch. All 12 locales pass key/placeholder checks. The ZIP excludes SQLite, player data and game/third-party mod DLLs.
+### Validation & Notes
 
-These checks do not launch the full game. Live replay lifecycles, UI scaling/long text, physical controllers and cosmetic combinations still require in-game confirmation. Check projects retain the .NET 6 lifecycle warning; the local directory-symlink fixture is skipped after an IOException. Replay remains single-player only, and vanilla snapshots cannot guarantee restoration of third-party private state or external side effects.
+- Verified with a clean Release build (0 warnings / 0 errors), full logic and persistence suites, the SMAPI assembly loader, and 214 isolated runtime assertions across 8 test modes (covering source scanning, replay snapshots/effects/weather/speed, menu drafts, GMCM callbacks, and controller dispatch).
+- Event replay remains single-player only, and native replay snapshots cannot roll back third-party private state or external file side effects.

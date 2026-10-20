@@ -1,211 +1,72 @@
 # Changelog / 更新日志
 
-## 2.9.0 - 2026-10-08 - Replay Fixes and Cleanup / 回放修复与清理
+## 2.9.0 - 2026-10-08 - Replay Fixes & Cleanup / 回放修复与依赖清理
 
-- Fix GSQ season/date and weather filters, including negated and combined conditions, while retaining unknown context. / 修复 GSQ 季节日期与天气筛选的否定及组合条件，缺少上下文时保留未知。
-- Let the game dispatch controller A as one mouse action in details, tools and photo menus, avoiding double toggles and double photo archival. / 详情、工具与照片菜单统一由游戏转发手柄 A 点击，避免重复展开及一次移除两张照片。
-- Recover from oversized bundled exclusion files without retaining prior-session rules or preventing a new download. / 内置名单文件超限时安全回退，不保留旧会话规则，并继续尝试下载新名单。
-- Remove retired historical collection/replay, preview injection, SQLite storage/dependencies/native libraries and obsolete translations. Retain current replay, condition reads, photos, event names and save protection; leave player data untouched. / 删除停用历史采集／回放、预览注入、SQLite 存储／依赖／原生库及旧翻译；保留当前回放、条件读取、照片、名称和存档保护，玩家数据不受清理影响。
+- **GMCM 名单开关 / GMCM Exclusion Toggle**：将 AI 模组排除开关移入 GMCM 与 `config.json`（`EnableAiModExclusion`，默认 `false`），保存后在非回放状态下直接生效，并自动清理旧版独立的 `ai-mod-exclusion.json`。 / Moved the AI mod exclusion setting into GMCM and `config.json` (`EnableAiModExclusion`, default `false`). Changes apply once any active replay or confirmation finishes, and the retired `ai-mod-exclusion.json` is removed automatically.
+- **移除遗留依赖 / Legacy Dependency Cleanup**：彻底移除早期已停用的历史快照、预览注入代码及 SQLite 依赖库，发布包体积缩减约 50%；现有回放、条件解析、剧照封面、自定义名称与存档保护不受影响。 / Removed retired historical collection, preview injection code, and SQLite dependencies, cutting package size by roughly 50% while keeping current replay, condition checks, photos, custom names, and save protection intact.
+- **快照大小写保留 / Case-Sensitive State Snapshots**：回放快照与条件读取严格区分事件、信件、对话、配方及好感键名的大小写，防止恢复存档状态时丢失标记或因同名异形键报错。 / Preserved case-sensitive keys for events, mail, dialogue, recipes, and friendship during replay snapshots and condition reads.
+- **爷爷评价保护 / Grandpa Evaluation Guard**：仅在画廊触发的回放中拦截 `GrandpaCandles` 状态变更，避免回放改写真实农场的爷爷评价蜡烛数，同时不影响正常游戏流程。 / Suppressed `GrandpaCandles` state changes only during gallery-owned replays so real farm evaluation scores are never overwritten.
+- **倍速与绿雨修复 / Playback Speed & Green Rain**：修复嵌套事件更新导致 2x / 4x 倍速被重复叠加放大的问题；回放环境现支持绿雨（Green Rain），且普通雨天条件不会强行覆盖当前的绿雨天气。 / Applied 2x/4x speed once per outer event update with exception-safe cleanup, and added Green Rain support without downgrading active Green Rain when an event only requires rain.
+- **条件筛选与好感归类 / Condition & Heart Filters**：支持解析常见的 Game State Query (GSQ) 季节、日期、天气与好感条件（含否定与组合逻辑），统一角色别名的心数筛选。 / Added support for common GSQ season, date, weather, and relationship filters (including negated and combined rules) and unified character alias handling in heart filters.
+- **手柄单次触发 / Controller Input Fix**：修复详情页、工具栏与剧照管理页中手柄 `A` 键被重复触发的问题，避免一次按键展开两次面板或连删两张剧照。 / Fixed controller `A` presses firing twice in detail, tool, and photo menus, preventing double toggles and accidental double photo archiving.
+- **界面状态与来源展示优化 / UI State & Source Display**：目录刷新时保留未保存的事件改名与筛选草稿；已选中的角色或地点即使当前无匹配结果也保持原筛选项显示；静态来源匹配成功后仍完整显示运行时证据状态，不再截断长文本。 / Preserved unsaved rename/filter drafts across catalog refreshes, kept unavailable character/location filter selections visible, and displayed runtime evidence status alongside static source matches without truncating translated text.
+- **内置名单兜底 / Bundled Exclusion Fallback**：内置排除名单文件异常超限时安全回退，不残留旧会话规则且不影响后续异步更新。 / Added safe fallback when the bundled exclusion list exceeds size limits without retaining stale session rules or blocking updates.
 
-- Move AI list exclusion into GMCM and standard config.json as EnableAiModExclusion, defaulting to false. Saved changes apply after replay/confirmation ends; remove the retired ai-mod-exclusion.json without importing its value. / AI 名单排除移入 GMCM 和标准 config.json，EnableAiModExclusion 默认 false；保存后在回放/确认结束时生效，清理旧 ai-mod-exclusion.json 且不迁移其值。
+详见 [2.9.0 版本说明](docs/RELEASE_2.9.0_NOTES.md)。 / See the [2.9.0 Release Notes](docs/RELEASE_2.9.0_NOTES.md) for update instructions and details.
 
-- Preserve case-sensitive event, mail, dialogue, recipe and friendship keys when capturing/restoring replay state and reading current conditions. / 回放快照及当前条件读取保留事件、邮件、对话、配方和好感键的大小写差异，避免恢复时丢失标记或捕获时因重名键失败。
-- Suppress the native GrandpaCandles state change only for events owned by a Gallery replay, preserving the real farm evaluation score while allowing normal events to execute. / 仅在画廊所属回放中拦截 GrandpaCandles，避免改写真实农场的爷爷评价分数，正常事件保持原有行为。
+## 2.8.0 - 2026-09-21 - Source Filters & Original Definitions / 来源筛选与原始定义识别
 
-- Apply replay speed once across nested event updates and clean up on exceptions, avoiding compounded 2x/4x timing. / 同一轮嵌套事件更新只应用一次倍速，异常时清理状态，避免2x/4x时间递增放大。
-- Share positive relationship evidence between story classification and heart filters, including supported GSQ conditions; normalize character aliases consistently for heart filtering. / 剧情分类和心数筛选共用正向关系证据，支持可安全识别的GSQ门槛，并统一角色别名的心数匹配。
-- Recognize GreenRain for replay scenery and retain it when the event only requires rainy weather. / 回放演出支持绿雨，rainy条件保留当前已满足要求的绿雨。
-- Preserve rename/filter drafts through catalog refreshes and keep unavailable selected character/location filters visible. / 目录刷新保留改名及筛选草稿；已失效的角色、地点筛选仍显示原选择，避免误显示为“任意”。
-- Show runtime evidence completeness alongside matched original sources without slicing translated text. / 原始来源已匹配时仍展示运行时证据完整性，不再按翻译后的文本截取详情。
+- **按来源搜索与筛选 / Source Search & Filter**：事件查询新增“来源”筛选，支持按原版、指定模组、未知或多候选来源过滤，搜索框也可直接检索模组名称与 Mod ID。 / Added source filters to Event Search (base game, specific mod, unknown, or multiple candidates) and support for searching by mod name or Mod ID.
+- **静态扫描原始定义 / Automatic Source Scanning**：无需开启运行时追踪，首次打开画廊时自动扫描已加载的 Content Patcher 内容包（支持 `Include` / `FromFile`）、AliveNpcs 场景及原版 XNB，按“资源路径 + 事件 ID”匹配原始提供者与定义文件。 / Automatically scanned loaded Content Patcher packs (following `Include`/`FromFile`), AliveNpcs scenes, and vanilla XNBs to identify original providers and files without requiring runtime tracing.
+- **AI 模组排除名单 / AI Mod Exclusion List**：支持按公开的 AI Mod Exclusion 名单隐藏已确认由名单内 Mod ID 原始提供的非原版事件；启动与读档时异步拉取最新名单，失败时使用内置名单兜底，并在回放结束后安全刷新目录。 / Added support for hiding events whose confirmed original provider matches the public AI Mod Exclusion list, with async updates on startup/save load and bundled fallback data.
+- **SMAPI 兼容性修复 / SMAPI Compatibility Fixes**：改用公开的模组注册表与清单配对定位模组目录，解决 SMAPI 拦截内部反射导致来源为空的问题；修正 JSON 格式化调用以通过 SMAPI 程序集兼容性检查；移除失效的 Nexus 更新键，保留 GitHub 更新。 / Replaced blocked internal reflection with public mod-registry matching, fixed a JSON formatting call rejected by SMAPI assembly validation, and removed the obsolete Nexus update key.
 
-See `docs/RELEASE_2.9.0_NOTES.md` for update instructions, validation and limits. / 升级说明、验证及边界见对应版本说明。
-
-## 2.8.0 - 2026-09-21 - Source Filters and Original Definitions / 来源筛选与原始定义
-
-- Add source filters and provider name/Mod ID text searches to the event query. / 事件查询新增来源筛选，支持搜索提供模组名称和 Mod ID。
-- Hide only confirmed non-vanilla original providers matching the public AI Mod Exclusion ModId rules; preserve unknown, ambiguous and unlisted origins. / 默认按公开 AI Mod Exclusion 的 ModId 规则隐藏明确命中的非原版原始来源；保留原版、未知、歧义及名单外来源。
-- Fetch the current list asynchronously on startup and save load, falling back to the bundled list on failure. Control this solely through ai-mod-exclusion.json, outside config.json and GMCM. / 启动和读档异步更新，失败使用发布内置名单；仅由独立 ai-mod-exclusion.json 控制，不加入 config.json 或 GMCM。
-- Refresh open gallery pages after list changes; prevent hidden stories reappearing as prerequisite markers, and defer changes until replay or its confirmation finishes. / 名单变化后刷新画廊，防止隐藏剧情重新生成为前置标记，回放及确认期间延后应用。
-
-- Discover installed event-pack folders from manifests matched to the public loaded-mod registry, fixing SMAPI blocking internal directory reflection and producing an empty index. / 改用模组清单与公开加载身份定位目录，修复 SMAPI 阻止内部反射、导致游戏内来源索引为空的问题。
-
-- Use a JSON formatting call supported by SMAPI assembly validation, fixing the "no longer compatible" load failure. / 修正 JSON 输出方法调用，解决 SMAPI 程序集检查拒绝加载、显示“不再兼容”的问题。
-- Remove the unavailable Nexus update key and download link; retain GitHub updates. / 移除失效的 Nexus 更新键与下载入口，保留 GitHub 更新。
-
-- Automatically scan loaded Content Patcher definitions, AliveNpcs scenes and raw game event XNBs; match asset plus event ID independently of optional tracing. / 自动扫描已加载 CP 模组、AliveNpcs 场景和原版 XNB 的事件定义，按资源＋事件 ID 匹配原始来源，无需开启追踪。
-- Follow Include/FromFile, retain matched file evidence and distinguish dependent overrides from ambiguous independent definitions. / 跟随 Include/FromFile 并显示匹配文件，结合依赖区分覆盖包，独立冲突保留多来源候选。
-- Keep runtime modifications as optional supplemental information; no additional Harmony hooks. / 运行时修改记录作为可选补充，不新增 Harmony。
-
-See `docs/RELEASE_2.8.0_NOTES.md` for usage, validation and limits. / 使用、验证与限制见对应版本说明。
+详见 [2.8.0 版本说明](docs/RELEASE_2.8.0_NOTES.md)。 / See the [2.8.0 Release Notes](docs/RELEASE_2.8.0_NOTES.md) for details.
 
 ## 2.7.0 - 2026-09-21 - Event Sources / 事件来源查询
 
-- Show event sources below the location in event details; click to view the main definition provider, executing framework, recorded edits and evidence status. / 在事件详情的地点下方显示来源，点击查看主事件提供者、执行框架、修改记录和证据状态。
-- Add an opt-in GMCM source tracing switch; save and restart to apply. Without GMCM, use EnableEventSourceDiagnostics in config.json. / GMCM 新增默认关闭的来源追踪开关，保存并重启生效；未安装 GMCM 时使用 config.json 的 EnableEventSourceDiagnostics。
-- Preserve observed source evidence when a save finishes loading, fixing cached events showing unknown sources. / 修复读档完成时清空已收集证据、导致缓存事件来源未知的问题。
-- Add all 12 translations, separate condition/source scroll positions, controller focus and wrapping for long identifiers. / 补齐 12 语言文案、条件与来源独立滚动位置、手柄焦点和长标识换行。
-- Use two non-generic Harmony observation points with public SMAPI events. Source tracing currently targets SMAPI 4.5.2.0 and only current main Data/Events definitions; missing evidence remains unknown. / 仅用两个非泛型 Harmony 观察点及 SMAPI 公开事件；来源追踪当前适配 SMAPI 4.5.2.0，仅覆盖当前 Data/Events 主定义，缺证据时保留未知。
+- **详情页来源展示 / Event Source Details**：在事件详情页“地点”下方新增来源栏，点击可切换查看事件提供者、执行框架、修改记录与证据状态。 / Added a source row below the location in event details; click to inspect the main provider, executing framework, edit chain, and evidence status.
+- **可选运行时追踪 / Opt-in Runtime Tracing**：GMCM 新增“追踪事件修改（重启生效）”（`EnableEventSourceDiagnostics`，默认关闭），基于 SMAPI 4.5.2.0 记录加载期的 `Data/Events` 修改链。 / Added an opt-in GMCM setting (`EnableEventSourceDiagnostics`, off by default) targeting SMAPI 4.5.2.0 to record runtime edits to `Data/Events`.
+- **读档缓存修复与多语言适配 / Cache Fix & Localization**：修复读档完成时清空已收集来源记录的问题；补齐 12 种语言文本，支持条件与来源面板独立滚动、长标识自动换行及手柄焦点导航。 / Fixed source records being cleared after save load, and added full 12-language text, independent scroll positions, long-ID wrapping, and controller navigation.
 
-See `docs/RELEASE_2.7.0_NOTES.md` for usage, validation and limits. / 使用、验证与限制见对应版本说明。
+详见 [2.7.0 版本说明](docs/RELEASE_2.7.0_NOTES.md)。 / See the [2.7.0 Release Notes](docs/RELEASE_2.7.0_NOTES.md) for details.
+
 ## 2.6.0 - 2026-09-10 - Character Appearance Compatibility / 角色外观兼容
 
-- Read current NPC outfits and portraits through an independent appearance module, with support for reviewed DDFC, Scale Up Unofficial and Portraiture formats. / 独立外观模块读取当前服装与肖像，接入已核查的DDFC、Scale Up Unofficial和Portraiture格式。
-- Fit HD and animated portraits within the gallery and correct detailed sprite positioning. / 高清及动态肖像完整放入画廊，修正高清小人位置。
-- Recover from temporary metadata/image failures; use native frame dimensions or visible placeholders when needed. / 修复临时元数据/图片读取失败后的恢复，按需使用标准帧或可见占位图。
-- Tested individual cosmetic mods accepted. Overlapping cosmetic combinations require user testing and are not automatically reconciled. / 单个美化模组支持已验收；多个美化互相覆盖的组合请用户实测，不自动协调冲突。
+- **主流美化框架适配 / Cosmetic Framework Support**：新增独立的角色外观读取模块，跟随当前季节服装与肖像变化，兼容 **DDFC**、**Scale Up Unofficial** 与 **Portraiture** 的高清/动态立绘及小人规格。 / Added a dedicated appearance module that follows active seasonal outfits and portraits, supporting DDFC, Scale Up Unofficial, and Portraiture HD/animated formats.
+- **布局自适应与失败兜底 / Adaptive Sizing & Fallbacks**：将高清立绘与缩放小人居中适配到画廊卡片内（不受对话框上方立绘偏移影响）；遇到临时读取失败或尺寸不匹配时自动重试并回退到普通肖像或默认图标。 / Fitted HD portraits and scaled sprites cleanly inside gallery cards, with automatic retry and fallback to standard portraits or the gallery icon on read failures.
 
-See `docs/RELEASE_2.6.0_NOTES.md` for usage, validation and limits. / 使用、验证与限制见对应版本说明。
+详见 [2.6.0 版本说明](docs/RELEASE_2.6.0_NOTES.md)。 / See the [2.6.0 Release Notes](docs/RELEASE_2.6.0_NOTES.md) for details.
 
-## 2.6.0-dev.4 - Portrait Recovery / 肖像缓存恢复
+## 2.5.0 - 2026-09-10 - Story Gallery & Event Search / 剧情相册与全局查询
 
-- Commit DDFC metadata only after a complete successful read; retry temporary metadata and portrait-override failures without requiring a new day or asset invalidation. / DDFC完整读取成功后才保存元数据，临时加载失败可自动重试，不再等待换日或额外清缓存。
-- Recognize standard 64px portrait sheets when another mod's large-frame metadata no longer matches the active image. Preserve explicit warnings and placeholders for unknown layouts. / 当前贴图为标准64像素肖像时采用其正确裁图，避免套用其他美化的大图尺寸；未知布局仍保留明确警告和占位。
+- **相册聚焦与独立查询 / Focused Album & Event Search**：角色主相册专注于收集好感剧情，同时新增独立的“事件查询”页面，支持按名称、ID、角色、地点检索普通剧情与只读前置事件。 / Focused character albums on heart stories and added a separate Event Search for ordinary stories and read-only prerequisite records.
+- **多维度筛选与手柄支持 / Rich Filters & Controller Support**：查询页提供事件类型、角色、地点、完成进度、条件满足状态、季节、时间、天气与心数筛选，支持手柄快捷操作；合并角色外观分身与同名地点，清理爷爷评估剧情在各地图的重复副本。 / Added filters for type, character, location, progress, requirement status, season, time, weather, and hearts with full controller support; merged cosmetic NPC aliases and removed duplicate Grandpa evaluation entries across locations.
+- **自定义事件名称与普通事件回放开关 / Custom Event Names & Ordinary Replay Toggle**：支持为事件设置跨存档共用的自定义名称并用于搜索；GMCM 新增“普通事件回放”开关（默认关闭）；优化回放确认弹窗的自适应换行与居中布局。 / Added cross-save custom event naming, an opt-in GMCM setting for replaying ordinary events, and improved text wrapping in the replay confirmation dialog.
 
-## 2.6.0-dev.3 - Portraiture Compatibility / Portraiture 肖像读取
+详见 [2.5.0 版本说明](docs/RELEASE_2.5.0_NOTES.md)。 / See the [2.5.0 Release Notes](docs/RELEASE_2.5.0_NOTES.md) for details.
 
-- Draw Portraiture's actual HD image in gallery bounds using its declared scale or forced frame, independent of Above Box dialogue placement. / 按Portraiture声明的缩放或指定区域绘制真实高清图，保持画廊槽位，不受对话框上方立绘位置影响。
-- Refresh animated frames, changed portrait selections and frame metadata while retaining the existing failure fallback. Avoid applying DDFC sizing a second time to Portraiture images. / 刷新动态帧、肖像切换和帧参数，保留已有失败回退；Portraiture图像不再叠加DDFC裁图。
-- Isolated tests use the author's framework DLL and synthetic images; actual DCBurger/Portraiture packs remain pending in-game acceptance. / 使用作者框架DLL和合成图案完成隔离检查，实际DCBurger/Portraiture美术包仍待游戏内验收。
+## 2.4.0 - 2026-09-08 - Condition Coverage / 条件解析扩展
 
-## 2.6.0-dev.2 - Appearance Fallback / 外观读取兜底
+- **扩展只读条件判定 / Expanded Read-Only Checks**：新增对星期、房主身份、金钱、背包物品、出货记录、技能等级、对话记录、秘密纸条、宠物、金核桃、矿井层数、社区中心/Joja 进度、NPC 可见性、房屋升级及节日日历的只读条件解析。 / Added read-only condition checks for weekday, host, money, inventory, shipments, skills, dialogue history, secret notes, pets, golden walnuts, mine depth, Community Center/Joja progress, NPC visibility, house upgrades, and festival dates.
+- **支持常见状态查询与原因说明 / GSQ & Unknown Explanations**：支持解析常见被动节日、季节日期与玩家统计量条件，并为随机结果、入场坐标等无法静态预判的条件提供 12 种语言的原因说明。 / Added readable explanations in all 12 languages for supported passive festivals, dates, player stats, and dynamic conditions like random rolls or entry coordinates.
 
-- Use a game portrait when current appearance reading fails, a portrait when a sprite is unavailable, and the gallery icon when neither can be drawn. Retry failed reads after a short delay without repeated warnings. / 当前外观读取失败时尝试游戏肖像，小人不可用时回退肖像，两者都失败时使用画廊占位图；延迟重试并限制重复日志。
-- Cosmetic conflict coordination and gallery theme development are deferred. / 美化冲突协调与画廊主题开发暂缓，当前专注读取和显示兜底。
+## 2.3.0 – 2.3.2 - Event Navigation & UI Polish / 事件跳转与界面优化
 
-## 2.6.0-dev.1 - Character Appearance / 角色外观兼容开发版
+- **前置事件直接跳转 / Prerequisite Links**：点击详情页前置条件中的事件 ID 可直接跳转到目标事件详情，支持多级跳转并返回原页面、原滚动位置与原焦点。 / Made prerequisite event IDs clickable to jump directly to target event details while preserving back-navigation history, scroll position, and focus.
+- **非好感事件查找与首页对齐 / Non-Heart Lookup & Home Layout**：支持按 ID 查找并查看已加载的非好感事件详情；优化画廊首页搜索框与“一键解锁全部”按钮的对称布局与多语言尺寸适配。 / Enabled ID lookup for loaded non-heart events and aligned the home search bar and Unlock All button across all 12 languages.
 
-- Centralize gallery portraits and sprite previews in an independent appearance module; use current NPC textures and refresh local visual caches. / 独立管理肖像与小人预览，跟随当前角色外观并刷新本地缓存。
-- Read DDFC public portrait metadata, including inherited frame sizes, and fit large portraits inside existing cards. / 读取 DDFC 公开肖像数据与继承的帧尺寸，让高清立绘完整放入既有卡片。
-- Account for Scale Up Unofficial's final sprite size and origin without applying its texture scale twice. / 按 Scale Up Unofficial 的最终尺寸与锚点安排小人，避免重复放大和位置偏移。
-- Development build: isolated rendering verified; real-save seasonal outfit and mod-combination acceptance pending. / 开发版：隔离渲染已验证，换装及模组组合仍待真实存档实测。
+## 2.2.0 - Event Photos / 回放剧照与封面
 
-## 2.5.0 - 2026-09-10 - Story Gallery / 剧情画廊
+- **无 UI 剧照抓拍 / Clean Replay Screenshots**：回放期间支持通过相机按钮、`F8` 或手柄左肩键（LB）抓拍不含对话框与 HUD 的场景画面（支持改键）。 / Added HUD-free and dialogue-free scene capture during replay via the camera button, `F8`, or controller Left Shoulder.
+- **事件封面管理 / Cover Management**：点击事件详情页缩略图即可浏览抓拍剧照、设为相册与详情封面、恢复默认或移除归档；照片按存档独立保存在 `event-photos/`。 / Added a photo manager accessible from the detail thumbnail to browse shots, set custom covers, restore defaults, or archive removed photos per save.
 
-- Fit the replay confirmation dialog to the current window, wrap long translations and keep both controls visible when resizing. / 回放确认框适配当前窗口，长翻译自动换行，改变窗口尺寸时正文与按钮重新定位。
+## 2.1.0 – 2.1.2 - Album Redesign & Input Polish / 相册重制与输入优化
 
-- Add missing vanilla location names including Ginger Island; merge replacement NPC IDs and distinguish the Highlands dwarf. Ignore exact native copies of Grandpa's two global scenes outside their original farmhouse asset. / 补齐姜岛等原版地名，合并替代NPC身份并区分高地矮人；移除游戏注入各地图的爷爷两段剧情副本，保留原始农舍定义和实际覆盖变体。
+- **书页式相册与详情页重制 / Book-Style Album & Detail Redesign**：将角色事件页重制为两列三行缩略图相册，搭配羊皮纸风格的对勾/叉号/问号条件状态图标与统一滚动条。 / Redesigned character albums into a two-column, three-row thumbnail spread with parchment-style requirement status icons and unified scrollbars.
+- **搜索性能与输入隔离 / Search Caching & Input Isolation**：缓存角色搜索结果以避免空闲帧重复计算；在搜索框输入文字时自动隔离 SMAPI 快捷键，并优化星期/季节否定条件的自然语言描述。 / Cached character search results, isolated keyboard shortcuts while typing in search fields, and simplified negated weekday/season descriptions.
 
-- Merge registered cosmetic NPC copies and identical location labels in query filters; expand readable location fallbacks and simplify progress labels. / 合并查询中的注册外观分身与同名地点，遍历当前地点清单补充可读译名，简化进度状态文案。
+## 2.0.0 – 2.0.6 - Current-State Gallery / 2.0 架构重制
 
-- Provide four event types and precise character, location, progress, condition, time, season, weather and heart filters. / 提供四种事件类型，以及精确角色、地点、进度、条件、时间、季节、天气和好感筛选。
-
-- Add read-only prerequisite records, controller-friendly query filters, character-only home search and personal event names. Improve location names and retain shared friendship owners. / 新增只读前置事件、手柄筛选和自定义事件名，首页仅搜索角色；完善地点译名与共同好感主体。
-
-- Polish negative requirement wording, use consistent album title sizing with full-ID tooltips, and align query/unlock actions at the bottom right. Explain unresolved IDs without assuming content-loading failure. / 明确否定要求文案，相册标题统一字号并提供完整ID提示；查询/解锁按钮并排放在右下，缺项ID不再直接断言未加载。
-
-- Keep the album focused on heart stories and add separate ID/NPC/location story search. Internal workflows remain hidden. / 主相册聚焦好感剧情，新增独立ID/NPC/地点自助查询，内部流程不展示。
-- Gate ordinary story replays behind an optional GMCM setting; unseen stories still require Unlock All. / 普通剧情回放增加默认关闭的GMCM开关；未经历剧情仍需一键解锁。
-- Separate story data, condition explanation, views, navigation, replay and photos. Reuse page state and one replay permission policy. / 事件资料、条件解释、视图、导航、回放与照片各自维护，统一页面状态和回放权限。
-- Read conditions consistently from every detail entry point and repair native replay restoration and effect protection. / 统一详情条件状态读取，修复原版回放状态恢复和结果保护。
-
-See `docs/RELEASE_2.5.0_NOTES.md` for upgrade instructions, validation and limits. / 更新方法、验证与限制见对应发布说明。
-
-## 2.4.0 - 2026-09-08 - Condition Coverage / 补齐条件判定
-
-- Read weekday, host, money, inventory, shipments, skills, dialogue records, notes, pets, walnuts, mine progress, community/Joja progress, NPC visibility, homes and festival dates without running event predicates. / 补齐星期、主机、金钱、背包、出货、技能、对话记录、纸条、宠物、核桃、矿底、社区/Joja进度、NPC可见性、住宅和节日日历的只读判定。
-- Interpret a restricted set of passive-festival, season/day and player-stat queries with readable text in all 12 languages. Unsupported third-party or nested queries remain unknown. / 为被动节日、季节日期和玩家统计量提供受限查询判定及12语言可读说明；未知第三方及嵌套查询保留问号。
-- Explain random results, entry-position context and legacy mail actions instead of prematurely executing them. Avoid the dedicated-server host predicate's write during catalog probing. / 对随机结果、入场位置和旧发信动作解释原因，不提前执行；目录安全探测避开专用服务器主机条件的写操作。
-- Replay, unlock and storage rules are unchanged by the condition coverage update. / 本次条件覆盖更新保留既有回放、解锁与存储规则。
-
-## 2.3.2 - Home Alignment / 首页对齐
-
-- Center the search field and Unlock All over their respective character columns, use equal widths and a shared horizontal centerline, and increase clearance above the first row. / 搜索框与一键解锁分别居中于左右角色区域，统一宽度和水平中线，增加与首排头像的间距。
-
-## 2.3.1 - Search and UI Corrections / 搜索与界面修正
-
-- Find loaded non-heart events by ID and follow them from prerequisite links, with view-only details and existing replay restrictions. Content-pack definitions which have not loaded remain unavailable. / 支持按 ID 查找并跳转已加载的非好感事件，提供只读详情；未满足内容包加载条件的事件仍不可用，保留回放限制。
-- Remove the extra home search button and event picker popup. Show ambiguous prerequisite sources and missing-target messages inline, retaining return position and focus. / 移除首页额外搜索按钮及事件选择弹窗，多来源与缺失提示留在原书页，保留返回位置与焦点。
-- Match Unlock All to album/detail footer button dimensions and styling, with labels fitted for all 12 maintained languages. / 一键解锁按钮统一使用相册、详情页底按钮的尺寸与样式，适配现有 12 种语言。
-
-## 2.3.0 - Event Navigation / 事件导航
-
-- Follow event IDs under prerequisite conditions, with a source picker for ambiguous IDs and a message for unavailable targets. Original condition meanings and replay permissions stay unchanged. / 点击前置条件下的事件 ID 跳转详情；同 ID 多来源时选择目标，缺失时提示。保留原条件含义与回放权限。
-- Search by NPC, event ID or location and open exact event results. Back navigation preserves the source view, scroll and focus, including multi-hop references and replay return. / 按角色、事件 ID 或地点搜索并直达具体事件；多级跳转与回放返回保留来源页面、滚动与焦点。
-- Fit navigation controls for all 12 maintained languages and support mouse, keyboard and controller input. / 导航控件适配现有 12 种语言，支持鼠标、键盘与手柄操作。
-
-## 2.2.0 - Event Photos / 事件截图
-
-- Capture the current world view during Gallery replay with the camera button, F8 or the controller's left shoulder button; bindings are configurable. Dialogue and HUD are excluded. / 回放时使用相机按钮、F8 或手柄左肩拍摄当前场景，支持改键，截图不含对话框和 HUD。
-- Manage photos from the event detail thumbnail: browse, select a cover, restore the default, or archive a photo. Covers update in both album and detail. / 从事件详情缩略图进入截图管理，浏览、选择封面、恢复默认或移除归档；相册和详情同步更新。
-- Store photos per save and event outside the game save; preserve previous indexes and removed images, and fall back when files are unavailable. / 按存档和事件独立保存，保留旧索引与移除图片，文件不可用时回退默认封面。
-
-## 2.1.2 - Input and UI Corrections / 输入与界面修正
-
-- Isolate keyboard shortcuts before SMAPI input events while editing search; keep native text input and paste, and filter control characters. / 搜索编辑期间在 SMAPI 分发前隔离键盘快捷键，保留原生文字输入和粘贴，过滤控制字符。
-- Enlarge album/detail footer buttons with padded, font-measured labels across all 12 locales. / 放大相册与详情底部按钮，按字体测量和内边距适配 12 种语言。
-- Show readable fallback location names, including Jenkins' House, and simplify long negated weekday/season lists to shorter equivalent positive descriptions. / 补齐詹金斯家等地点的可读名称，将较长的星期/季节否定列表改为更短的等价正向描述。
-- Preserve character search, scroll and focus through detail/replay return paths; return to the selected event's Details action. / 详情与回放往返保留原人物搜索、滚动及焦点；详情返回选中事件的详情入口。
-
-## 2.1.1 - Search Performance / 搜索性能
-
-- Reuse character search results until the query, catalog, or language comparison changes, avoiding repeated filtering, sorting, and result-list allocation on idle frames. / 搜索文本、目录或语言比较规则变化时才重算人物搜索结果，消除空闲帧的重复筛选、排序及结果列表分配。
-- Preserve NPC name and event ID matching, character order, locked-character access, and return positions. Enter uses the latest search text immediately. / 保持 NPC 名称与事件 ID 匹配、人物排序、锁定访问及返回位置；按回车时立即使用最新搜索文本。
-
-## 2.1.0 — Event Album + Event Detail / 事件相册与详情
-
-- Reworked each character's event page into a two-column, three-row thumbnail album with continuous scrolling and a project-owned placeholder image. / 将角色事件页改为两列三行、可连续滚动的缩略图相册，并加入项目自有占位图。
-- Kept the character panel identical between album and detail; event cards now show only heart threshold, event ID, thumbnail, replay, and a compact details action. / 相册与详情共用完全一致的角色左页；事件卡只显示心数门槛、事件 ID、缩略图、回放与精简详情入口。
-- Detail conditions use variable-height rows and original parchment-style check/cross/unknown pixel icons, retaining the affected NPC for multi-friendship gaps. / 详情采用可变高度条件行与原创羊皮纸风格勾/叉/未知像素图标，保留多角色好感缺口的对应角色。
-- Unknown rows keep a lightweight reason without exposing raw/source diagnostics in the main UI; unlocked replay and locked-event protection remain unchanged. / 未知条件仅显示轻量原因，不在主界面堆叠原始/来源诊断；已解锁回放与锁定保护保持不变。
-- Added complete album/detail localization for all 12 supported languages. / 为全部 12 种支持语言补齐相册与详情文本。
-- Fixed controller navigation from each unlocked card's Details action to its Replay thumbnail, including mixed locked cards and scrolling across rows. / 修复手柄从已解锁卡片详情到同卡回放缩略图的导航，并覆盖锁定混排与跨行滚动。
-- Redesigned both event spreads with dedicated background-owned layouts, light Details links, original replay glyphs, and shared brown scrollbars; condition rows no longer stack framed panels. / 两层事件书页改用背景主导的独立布局、轻量详情链接、原创播放标记与统一棕色滚动条，条件行不再叠加厚框。
-- Unified card navigation around persistent event/action focus, including lower-row Details, locked fallback, scrolling, and footer return. / 以稳定事件索引与动作焦点统一卡片导航，覆盖下排详情、锁定回退、滚动与页底返回。
-- Polished album/detail compositing with true thumbnail openings, restored the shared button and scrollbar styles, and separated natural-language requirements from status icons across all locales. / 以真实透明孔位完善相册与详情融合，恢复统一按钮和滚动条样式，并在全部语言中将自然条件文案与状态图标彻底分离。
-- Finalized UI polish with larger footer buttons, one pale scrollbar track across all layers, blank parchment for unused event slots, and friendship values consistently shown in hearts. / 完成最终 UI 打磨：放大页底按钮、三层统一淡色滚动轨道、空事件槽保持羊皮纸，并统一用心数显示好感值。
-
-## 2.0.6 — Stop Historical Collection / 停止历史采集
-
-- Disabled historical replay and natural-event collection at runtime; no new historical occurrences, contexts, legacy snapshots, or SQLite sessions are created. / 已在运行时停用历史回放与自然事件采集，不再创建新的历史 occurrence、context、legacy snapshot 或 SQLite 会话。
-- Existing historical SQLite and legacy data are preserved untouched. / 已有历史 SQLite 与 legacy 数据保持原样，不读取、不迁移、不重写或删除。
-- Current Gallery replay, save protection, speed controls, and Unlock All persistence remain unchanged. / 当前画廊回放、存档保护、速度控制和“一键解锁全部”持久化保持不变。
-
-## 2.0.5 — Current-State Accuracy / 当前状态准确性
-
-- Empty dating and spouse states are now known negatives instead of unknown data. / 没有约会对象或配偶时现会按已知否定判断，不再显示无法判断。
-- Each event's weather conditions are evaluated against its own target location. / 每条事件的天气条件现按其目标地点判断。
-- Current variants, characters, and spouse ownership refresh whenever the gallery catalog is requested, while parsed event candidate definitions remain cached. / 每次请求画廊目录都会刷新 current variant、角色和配偶归属，同时继续缓存已解析的事件候选定义。
-
-## 2.0.4 — Safety Boundary & Replay Lifecycle / 安全边界与回放生命周期
-
-- Unified catalog and historical variant checks behind a conservative read-only probe that never executes Random, SendMail, Game State Query, malformed, or custom preconditions. / 目录与历史 variant 判定统一经过保守的只读探测，不执行随机、发信、游戏状态查询、错误语法或自定义条件。
-- Current variant selection stops at the first unsafe or failed candidate instead of incorrectly skipping to a later match. / 当前 variant 选择遇到首个无法安全判定或出错的候选即停止，不再错误跳到后续匹配项。
-- Replay update, cleanup, fail-safe recovery, and return-to-title teardown now guarantee internal state reset and release the save guard. / 回放更新、清理、故障恢复及返回标题流程现会确保内部状态重置并解除存档保护。
-- Fixed Preview scope regressions to exercise partial-apply failure and repeated disposal. / 修正 Preview scope 回归检查，使其真正覆盖部分应用失败与重复释放。
-
-## 2.0.3 — Complete Event Preconditions / 完整事件条件
-
-- Audit corrections: fixed seen-event tokens, full weekday names, exact friendship points, rain descriptions, native time display, gender validation, malformed classification, and item-ID fallback. / 审计修正：已看事件占位符、完整星期名、好感点数精度、降雨文案、原版时间显示、性别校验、无效条件分类及物品 ID 回退。
-- Recognize legacy SendMail/x for display only; block its native callback during gallery catalog selection. / 旧版 SendMail/x 仅识别展示；画廊目录选择时阻止调用其原版副作用。
-
-- Added typed parsing and descriptions for all 41 vanilla event preconditions and their legacy aliases. / 为原版全部 41 种事件条件及旧别名加入类型化解析与说明。
-- Multi-value conditions now preserve their original all/any semantics, including friendship, seen events, dates, shipping, tiles, and dialogue answers. / 多值条件会保留原本的全满足或任一满足语义，包括好感、已看事件、日期、出货、坐标和对话答案。
-- Rainy and sunny conditions now use the game's rain predicate, while custom weather IDs remain exact. / 雨天和晴天条件改用游戏的降雨判定，自定义天气 ID 仍精确匹配。
-- Condition vocabulary is complete across all 12 supported languages, with game names resolved only at display time. / 12 种支持语言均补齐条件词汇，游戏名称只在显示阶段解析。
-
-## 2.0.2 — Conditions & Localization / 条件与本地化
-
-- Event cards now use the existing ConditionIR parser instead of the legacy condition whitelist. / 事件卡片改用现有 ConditionIR 解析器，不再使用旧条件白名单。
-- Conditions now show met, missing, or unknown state, plus current/required values where available. / 条件会显示满足、缺失或无法判断状态，并在可用时显示当前值与要求值。
-- Unsupported mod conditions preserve their original text instead of displaying a generic “other condition” label. / 不支持的 Mod 条件会保留原文，不再笼统显示“其他条件”。
-- Added German, Spanish, French, Hungarian, Italian, Japanese, Korean, Brazilian Portuguese, Russian, and Turkish translations. / 新增德语、西班牙语、法语、匈牙利语、意大利语、日语、韩语、巴西葡萄牙语、俄语和土耳其语翻译。
-
-## 2.0.1 — Replay Environment / 回放演出环境
-
-- Events are unlocked for replay only after being seen, or while Unlock All is enabled. / 事件仅在已观看或开启“一键解锁全部”后可回放。
-- Removed the player-facing Preview action; unlocked events now use one Replay path. / 移除玩家界面的“预览”操作；已解锁事件统一使用单一回放路径。
-- Replay now applies explicit season, time, and supported vanilla weather requirements at the target location, then restores the original environment. / 回放会在目标地点应用事件明确要求的季节、时间及受支持的原版天气，并在结束后恢复原环境。
-- Environment setup failures no longer block an otherwise playable event and are logged as warnings; launch and restore failures remain errors. / 演出环境设置失败不再阻止可播放事件，并记录为警告；启动或恢复失败仍记录为错误。
-
-## 2.0.0 — Current-State Gallery / 当前状态画廊
-
-- Added the bilingual current-state event gallery and planning tool. / 加入中英双语“当前事件”图鉴与规划工具。
-- Current-state replay is canonical: replays always launch from currently resolved content; historical replay is no longer a product feature. / 当前状态回放成为主路径：回放一律从当前解析内容启动；历史回放不再作为产品功能。
-- Added readable condition explanation and progress gaps with truth/unknown separation. / 加入可读条件说明与进度缺口，并区分“满足/未满足/无法安全解析”。
-- Added safe preview for supportable conditions (friendship, seen events, mail, season, time) with exact restore. / 加入对可模拟条件的安全预览（好感、看过事件、邮件、季节、时间），并精确恢复。
-- Added scoped state injection and hardened restore/failure handling. / 加入受作用域约束的状态注入与更强的恢复/失败处理。
-- Preserved save backup, state restoration, and save blocking during replay/preview. / 保留回放/预览期间的存档备份、状态恢复与保存保护。
-- Added 1x / 2x / 4x replay speed and optional normal-dialogue auto-advance. / 加入 1x / 2x / 4x 快进和普通对话自动继续。
-- Added keyboard, mouse, controller, multi-binding, and chord input support. / 加入键鼠、手柄、多快捷键及组合键支持。
-- Added adaptive UI fitting and optional GMCM configuration. / 加入自适应界面缩放和可选 GMCM 配置。
-- Added opt-in diagnostics with quiet logs by default. / 加入按需诊断，默认保持简洁日志。
+- **基于当前状态的剧情画廊 / Current-State Event Gallery**：确立以当前生效游戏内容为核心的剧情画廊、条件解析与安全回放机制，全面停用早期历史采集功能。 / Established the current-state event gallery, readable condition parser (`ConditionIR` covering all 41 vanilla preconditions), and safe replay pipeline while retiring historical event collection.
+- **演出环境与存档保护 / Replay Environment & Save Guard**：回放自动设置目标季节、时间与原版天气并在结束后恢复；提供回放期间禁止保存、状态快照恢复、1x/2x/4x 倍速、普通对话自动推进、键鼠/手柄支持、GMCM 配置与 12 种语言翻译。 / Added automatic season/time/weather setup and restoration, save blocking with fail-safe backups, 1x/2x/4x speed controls, optional dialogue auto-advance, controller navigation, GMCM integration, and 12-language localization.
