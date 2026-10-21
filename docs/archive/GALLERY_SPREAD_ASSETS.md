@@ -1,6 +1,9 @@
 # Gallery Spread Assets v3
 
 This is an asset/layout handoff, not menu integration or in-game acceptance.
+
+> Archived in 2.10.0. Since 2.7.0 the menus place `FooterBounds` below `RightPageBounds`, so the generator stopped at its own layout validation, and with that check relaxed it no longer reproduced the shipped spread PNGs pixel for pixel. The generator (`tools/Generate-GallerySpreadAssets.ps1`) and its source art (`assets/GalleryDetail-alpha-v2.png`) were removed and remain in git history; the shipped PNGs are now the source. `GallerySpreadLayout.cs` is still the menus' layout and is checked by `Checks/GallerySpreadChecks.cs`.
+
 `GallerySpreadLayout.cs` defines the internal pure BCL `GallerySpreadLayout` and
 `GalleryUiAssets` classes. All rectangles are named value tuples
 `(int X, int Y, int Width, int Height)` in logical texture coordinates, with

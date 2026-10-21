@@ -29,6 +29,16 @@ internal static class GalleryNavigationChecks
         Check(GalleryEventNavigation.References(any).SequenceEqual(["123", "456"]), "structured ANY IDs, distinct and ordered");
         Check(GalleryEventNavigation.References(new ConditionSet([any, negated])).SequenceEqual(["123", "456"]), "nested and negated links");
         Check(any.EventIds.Count == 3 && negated.Negated, "navigation does not mutate conditions");
+        Check(ConditionEventReferences.Required(new ConditionSet([any, negated])).SequenceEqual(["123", "456"])
+            && ConditionEventReferences.Required(negated).Count == 0, "a \"not seen\" reference is a link but not a dependency");
+        NativeQueryCondition Query(string text, bool negatedQuery) => new(text, ConditionSource.GameStateQuery, text, negatedQuery);
+        Check(ConditionEventReferences.Required(Query("PLAYER_HAS_SEEN_EVENT Current 1, !PLAYER_HAS_SEEN_EVENT Current 2", false)).SequenceEqual(["1"])
+            && ConditionEventReferences.Read(Query("PLAYER_HAS_SEEN_EVENT Current 1, !PLAYER_HAS_SEEN_EVENT Current 2", false)).SequenceEqual(["1", "2"]),
+            "negated GSQ clauses are links only");
+        Check(ConditionEventReferences.Required(Query("!PLAYER_HAS_SEEN_EVENT Current 3", true)).SequenceEqual(["3"])
+            && ConditionEventReferences.Required(Query("PLAYER_HAS_SEEN_EVENT Current 4", true)).Count == 0
+            && ConditionEventReferences.Required(Query("PLAYER_HAS_SEEN_EVENT Current 5, PLAYER_HAS_SEEN_EVENT Current 6", true)).Count == 0,
+            "a negated query requires only a single negated clause");
 
         GalleryPageHistory trail = new(); trail.Reset();
         GalleryPageState home = trail.Current!; home.Scroll = 4; home.Focus = 7;

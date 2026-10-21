@@ -7,9 +7,16 @@ using StardewValley.GameData.Characters;
 namespace StardewGallery;
 
 internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiagnostics,
-    Func<EventIdentity, EventOriginMatch> originFor, Func<EventOriginMatch, bool> shouldExclude)
+    Func<EventIdentity, EventOriginMatch> originFor)
 {
     private sealed record IdentityConflict(string Location, string EventId, string SelectedKey, IReadOnlyList<string> CandidateKeys);
+
+    /// <summary>Everything the final catalog is built from that can change without an asset invalidation.</summary>
+    private sealed record CatalogInputs(IReadOnlyList<ResolvedEvent> Events, IReadOnlyList<GalleryCharacter> Characters, string? Spouse)
+    {
+        internal bool Matches(CatalogInputs other) => Spouse == other.Spouse
+            && Events.SequenceEqual(other.Events, ReferenceEqualityComparer.Instance) && Characters.SequenceEqual(other.Characters);
+    }
 
     private readonly IEventAssetSourceCatalog eventAssets = new EventAssetCatalog();
     private readonly ResolvedEventReader eventReader = new(
@@ -26,18 +33,39 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
         () => Game1.player.spouse
     );
     private ResolvedEventCandidateCache? eventCandidates;
+    private bool? candidatesForUpgradedTrailer;
+    private (CatalogInputs Inputs, GalleryCatalog Catalog)? latest;
 
-    internal void Invalidate() => eventCandidates?.Invalidate();
+    internal void Invalidate()
+    {
+        eventCandidates?.Invalidate();
+        latest = null;
+    }
 
     internal GalleryCatalog Get()
     {
+        // Merged trailer events move from Trailer to Trailer_Big when Pam's house is upgraded.
+        if (candidatesForUpgradedTrailer != EventAssetCatalog.PamHouseUpgraded)
+        {
+            eventCandidates?.Invalidate();
+            candidatesForUpgradedTrailer = EventAssetCatalog.PamHouseUpgraded;
+        }
         ResolvedEventIndex index = (eventCandidates ??= new(
             () => ResolvedEventIndex.ReadCurrentCandidates(eventAssets, eventReader))).GetCurrent();
         IReadOnlyList<GalleryCharacter> characters = ScanCharacters();
+        CatalogInputs inputs = new(index.CurrentEvents, characters, Game1.player.spouse);
+        // Variant selection and characters follow the live game, so compare them; asset changes call Invalidate.
+        if (latest is { } cached && cached.Inputs.Matches(inputs))
+            return cached.Catalog;
         GalleryCatalogBuildResult build = galleryBuilder.Build(characters, index.CurrentEvents);
-        GalleryCatalogVisibilityResult visibility = GalleryCatalogVisibility.Apply(build.Catalog, originFor, shouldExclude);
-        IReadOnlyList<GalleryEvent> events = visibility.Catalog.AllEntries.ToArray();
-        GalleryCatalog catalog = visibility.Catalog with { Prerequisites = PrerequisiteAssetReader.Read(visibility.Catalog, monitor, visibility.ReservedStoryIds) };
+        // Origins are display/query metadata only; they never change classification, unlocks or replay.
+        GalleryCatalog built = build.Catalog with
+        {
+            Origins = build.Catalog.AllEntries.Select(entry => entry.Resolved.Identity).Distinct()
+                .ToDictionary(identity => identity, originFor)
+        };
+        IReadOnlyList<GalleryEvent> events = built.AllEntries.ToArray();
+        GalleryCatalog catalog = built with { Prerequisites = PrerequisiteAssetReader.Read(built, monitor) };
         List<IdentityConflict> conflicts = index.Groups
             .Where(group => group.Candidates.Count > 1)
             .Select(group => new IdentityConflict(
@@ -49,7 +77,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             .ToList();
 
         monitor.Log(
-            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}，前置事件资料 {catalog.Prerequisites.Count}，来源名单隐藏 {visibility.HiddenEvents}。",
+            $"画廊扫描完成：角色候选 {characters.Count}，相册角色 {catalog.Characters.Count}，当前事件 {events.Count}，好感剧情 {catalog.Events.Count}，普通剧情 {events.Count(entry => entry.Kind == StoryKind.Ordinary)}，内部流程 {events.Count(entry => entry.Kind == StoryKind.Internal)}，前置事件资料 {catalog.Prerequisites.Count}。",
             LogLevel.Info
         );
         if (debugDiagnostics())
@@ -62,7 +90,6 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                     CharacterCandidates = characters.Count,
                     GalleryCharacters = catalog.Characters.Count,
                     CurrentEvents = events.Count,
-                    SourceExcludedEvents = visibility.HiddenEvents,
                     IncludedEvents = catalog.Events.Count,
                     ExcludedEvents = catalog.ExcludedEvents.Count,
                     HeartEvents = catalog.Events.Count,
@@ -84,6 +111,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             }, monitor);
             monitor.Log($"详细扫描诊断已写入 {Path.Combine(GalleryDiagnostics.DirectoryPath, "catalog-latest.json")}。", LogLevel.Info);
         }
+        latest = (inputs, catalog);
         return catalog;
     }
 

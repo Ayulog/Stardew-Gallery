@@ -10,14 +10,23 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
 {
     private EventDefinitionIndex? index;
     private readonly HashSet<string> gameAssets = new(StringComparer.OrdinalIgnoreCase);
+    // The scanners keep each pack's results until a file it read changes, so asset invalidations don't rescan every pack.
+    // SMAPI matches mod file paths case-insensitively by default on Linux and Android (UseCaseInsensitivePaths).
+    private ContentPackEventScanner contentPacks = new(ReadCompiledDefinitions, NormalizeJson, IgnoreCase);
+    private AliveNpcEventScanner aliveNpcs = new(NormalizeJson, IgnoreCase);
+    private static bool IgnoreCase => !OperatingSystem.IsWindows();
 
     internal string Status => index is null ? "Event definition files have not been scanned yet."
         : $"Event definition index: {index.Count} declarations; {gameAssets.Count} vanilla assets checked.";
 
-    internal void Reset()
+    /// <param name="full">Also forget every pack's cached scan, as for an explicit rescan.</param>
+    internal void Reset(bool full = false)
     {
         index = null;
         gameAssets.Clear();
+        if (!full) return;
+        contentPacks = new(ReadCompiledDefinitions, NormalizeJson, IgnoreCase);
+        aliveNpcs = new(NormalizeJson, IgnoreCase);
     }
 
     internal EventOriginMatch Read(string assetName, string eventId)
@@ -25,7 +34,7 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
         EnsureScanned();
         ReadGameDefinitions(assetName);
         // Stardew 1.6.15 merges Trailer definitions into Trailer_Big when no direct key exists.
-        if (EventSourceScope.NormalizeAssetName(assetName).Equals("Data/Events/Trailer_Big", StringComparison.OrdinalIgnoreCase))
+        if (EventAssetName.Normalize(assetName).Equals("Data/Events/Trailer_Big", StringComparison.OrdinalIgnoreCase))
             ReadGameDefinitions("Data/Events/Trailer");
         return index!.Match(assetName, eventId);
     }
@@ -57,30 +66,42 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
             issues += discovered.Issues.Count;
             foreach (EventDefinitionScanIssue issue in discovered.Issues.Take(5))
                 monitor.Log($"Event mod directory scan {issue.RelativePath}: {issue.Reason}", LogLevel.Debug);
-            var scanner = new ContentPackEventScanner(ReadCompiledDefinitions, NormalizeJson);
-            var aliveScanner = new AliveNpcEventScanner(NormalizeJson);
             foreach (IModInfo mod in loaded)
             {
-                if (!discovered.Directories.TryGetValue(mod.Manifest.UniqueID, out string? directory)) continue;
+                var actor = new EventSourceActor(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString());
+                if (!discovered.Directories.TryGetValue(mod.Manifest.UniqueID, out string? directory))
+                {
+                    index.MarkIncomplete(actor);
+                    continue;
+                }
                 try
                 {
                     string? contentPackFor = mod.Manifest.ContentPackFor?.UniqueID;
-                    var actor = new EventSourceActor(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString());
                     var dependencies = mod.Manifest.Dependencies.Select(dependency => dependency.UniqueID).ToList();
                     if (contentPackFor is not null) dependencies.Add(contentPackFor);
                     var pack = new EventDefinitionPack(actor, directory, dependencies);
                     EventDefinitionScanResult result = string.Equals(contentPackFor, "Pathoschild.ContentPatcher", StringComparison.OrdinalIgnoreCase)
-                        ? scanner.Scan(pack, index) : aliveScanner.Scan(pack, index, contentPackFor);
+                        ? contentPacks.Scan(pack, index) : aliveNpcs.Scan(pack, index, contentPackFor);
                     packs++;
                     files += result.FilesRead;
                     issues += result.Issues.Count;
-                    foreach (EventDefinitionScanIssue issue in result.Issues.Take(3))
-                        monitor.Log($"Event definition scan [{actor.UniqueId}] {issue.RelativePath}: {issue.Reason}", LogLevel.Debug);
+                    // A path Content Patcher can't load either hides nothing; anything else may.
+                    if (result.Issues.Any(issue => issue.Kind != ScanIssueKind.Missing)) index.MarkIncomplete(actor);
+                    // Unreadable files really hide this pack's events; the rest are expected limits of a static scan.
+                    foreach (var group in result.Issues.GroupBy(issue => issue.Kind))
+                        foreach (EventDefinitionScanIssue issue in group.Take(3))
+                            monitor.Log($"Event definition scan [{actor.UniqueId}] {issue.RelativePath}: {issue.Reason}", group.Key switch
+                            {
+                                ScanIssueKind.Unreadable => LogLevel.Warn,
+                                ScanIssueKind.Limitation => LogLevel.Debug,
+                                _ => LogLevel.Trace
+                            });
                 }
                 catch (Exception error)
                 {
                     issues++;
-                    monitor.Log($"Event definition scan skipped {mod.Manifest.UniqueID}: {error.Message}", LogLevel.Debug);
+                    index.MarkIncomplete(actor);
+                    monitor.Log($"Event definition scan skipped {mod.Manifest.UniqueID}: {error}", LogLevel.Warn);
                 }
             }
             monitor.Log($"Event definition scan: {packs}/{loaded.Length} loaded event-capable mods/packs, {files} files, {index.Count} definitions, {issues} unresolved paths/files ({clock.ElapsedMilliseconds} ms).",
@@ -101,10 +122,17 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
             DateParseHandling = Newtonsoft.Json.DateParseHandling.None
         };
         // Keep the parameterless call compatible with SMAPI's assembly method resolver.
-        return Newtonsoft.Json.Linq.JToken.ReadFrom(reader, new Newtonsoft.Json.Linq.JsonLoadSettings
+        Newtonsoft.Json.Linq.JToken token = Newtonsoft.Json.Linq.JToken.ReadFrom(reader, new Newtonsoft.Json.Linq.JsonLoadSettings
         {
             CommentHandling = Newtonsoft.Json.Linq.CommentHandling.Ignore
-        }).ToString();
+        });
+        // Newtonsoft reads an empty array slot ("[a,,b]") as undefined, which strict JSON can't express; Content Patcher
+        // sees no value there, so write null instead of losing the whole file.
+        if (token is Newtonsoft.Json.Linq.JContainer container)
+            foreach (Newtonsoft.Json.Linq.JValue value in container.Descendants().OfType<Newtonsoft.Json.Linq.JValue>()
+                .Where(value => value.Type == Newtonsoft.Json.Linq.JTokenType.Undefined).ToArray())
+                value.Replace(Newtonsoft.Json.Linq.JValue.CreateNull());
+        return token.ToString();
     }
 
     private static IReadOnlyDictionary<string, string>? ReadCompiledDefinitions(string directory, string relativePath)
@@ -115,7 +143,7 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
 
     private void ReadGameDefinitions(string assetName)
     {
-        string normalized = EventSourceScope.NormalizeAssetName(assetName);
+        string normalized = EventAssetName.Normalize(assetName);
         if (!normalized.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase)
             || normalized.Split('/').Any(part => part is ".." or ".") || !gameAssets.Add(normalized)) return;
         // Use MonoGame's plain reader, not Game1.content/SMAPI, so an edited cache is never

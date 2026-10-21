@@ -1,5 +1,8 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
+using StardewValley.Buffs;
+using StardewValley.Locations;
+using StardewValley.Objects;
 using StardewValley.Quests;
 
 namespace StardewGallery;
@@ -30,7 +33,7 @@ internal sealed class ReplaySnapshot
     private HashSet<string> EventsSeen { get; init; } = [];
     private HashSet<string> EventsSeenThisLocation { get; init; } = [];
     private Dictionary<string, FriendshipState> Friendships { get; init; } = [];
-    private Item?[] Items { get; init; } = [];
+    private (Item? Item, int Stack)[] Items { get; init; } = [];
     private HashSet<string> MailReceived { get; init; } = [];
     private HashSet<string> MailForTomorrow { get; init; } = [];
     private string[] Mailbox { get; init; } = [];
@@ -60,8 +63,15 @@ internal sealed class ReplaySnapshot
     private int NoMovementPause { get; init; }
     private int MovementPause { get; init; }
     private float MouseCursorTransparency { get; init; }
+    private HashSet<string> TriggerActionsRun { get; init; } = [];
+    private HashSet<string> SongsHeard { get; init; } = [];
+    private HashSet<string> LocationsVisited { get; init; } = [];
+    private Dictionary<string, uint> Stats { get; init; } = [];
+    private Dictionary<string, Buff> Buffs { get; init; } = [];
+    private (Furniture Furniture, bool IsOn)[] Fireplaces { get; init; } = [];
 
-    internal static ReplaySnapshot Capture() => new()
+    /// <param name="scene">The replay location; native event setup can light its real fireplace.</param>
+    internal static ReplaySnapshot Capture(GameLocation? scene = null) => new()
     {
         LocationName = Game1.currentLocation.NameOrUniqueName,
         Location = Game1.currentLocation,
@@ -87,7 +97,7 @@ internal sealed class ReplaySnapshot
         EventsSeen = Game1.player.eventsSeen.ToHashSet(StringComparer.Ordinal),
         EventsSeenThisLocation = Game1.eventsSeenSinceLastLocationChange.ToHashSet(StringComparer.Ordinal),
         Friendships = Game1.player.friendshipData.Keys.ToDictionary(name => name, name => FriendshipState.Capture(Game1.player.friendshipData[name]), StringComparer.Ordinal),
-        Items = Game1.player.Items.Select(Clone).ToArray(),
+        Items = Game1.player.Items.Select(item => ((Item?)item, item?.Stack ?? 0)).ToArray(),
         MailReceived = Game1.player.mailReceived.ToHashSet(StringComparer.Ordinal),
         MailForTomorrow = Game1.player.mailForTomorrow.ToHashSet(StringComparer.Ordinal),
         Mailbox = Game1.player.mailbox.ToArray(),
@@ -116,7 +126,17 @@ internal sealed class ReplaySnapshot
         PauseTime = Game1.pauseTime,
         NoMovementPause = Game1.player.noMovementPause,
         MovementPause = Game1.player.movementPause,
-        MouseCursorTransparency = Game1.mouseCursorTransparency
+        MouseCursorTransparency = Game1.mouseCursorTransparency,
+        // Event music unlocks jukebox songs, entering a location records a visit, and dialogue
+        // actions or food (farmerEat) change trigger, stat and buff state outside the event cast.
+        TriggerActionsRun = Game1.player.triggerActionsRun.ToHashSet(StringComparer.Ordinal),
+        SongsHeard = Game1.player.songsHeard.ToHashSet(StringComparer.Ordinal),
+        LocationsVisited = Game1.player.locationsVisited.ToHashSet(StringComparer.Ordinal),
+        Stats = Game1.player.stats.Values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+        Buffs = Game1.player.buffs.AppliedBuffs.ToDictionary(pair => pair.Key, pair => pair.Value),
+        Fireplaces = scene is DecoratableLocation decoratable
+            ? decoratable.furniture.Where(item => item.furniture_type.Value == Furniture.fireplace).Select(item => (item, item.IsOn)).ToArray()
+            : []
     };
 
     internal void RestorePlayer()
@@ -163,8 +183,36 @@ internal sealed class ReplaySnapshot
             state.Restore(friendship);
         }
 
+        // Put back the original instances. Item.getOne() copies drop state such as fishing rod bait/tackle
+        // and slingshot ammo, so cloning would lose real inventory on every replay.
         for (int i = 0; i < Game1.player.Items.Count; i++)
-            Game1.player.Items[i] = i < Items.Length ? Clone(Items[i]) : null;
+        {
+            (Item? item, int stack) = i < Items.Length ? Items[i] : (null, 0);
+            if (!ReferenceEquals(Game1.player.Items[i], item))
+                Game1.player.Items[i] = item;
+            if (item is not null && item.Stack != stack)
+                item.Stack = stack;
+        }
+
+        Replace(Game1.player.triggerActionsRun, TriggerActionsRun);
+        Replace(Game1.player.songsHeard, SongsHeard);
+        Replace(Game1.player.locationsVisited, LocationsVisited);
+        Game1.player.stats.Values.Clear();
+        foreach ((string key, uint value) in Stats)
+            Game1.player.stats.Values[key] = value;
+        foreach (string id in Game1.player.buffs.AppliedBuffs.Keys.ToArray())
+            if (!Buffs.TryGetValue(id, out Buff? original) || !ReferenceEquals(original, Game1.player.buffs.AppliedBuffs[id]))
+                Game1.player.buffs.Remove(id);
+        foreach ((string id, Buff buff) in Buffs)
+            if (!Game1.player.buffs.AppliedBuffs.ContainsKey(id))
+                Game1.player.buffs.Apply(buff);
+        foreach ((Furniture fireplace, bool isOn) in Fireplaces)
+        {
+            if (fireplace.IsOn == isOn)
+                continue;
+            fireplace.IsOn = isOn;
+            fireplace.setFireplace(playSound: false);
+        }
     }
 
     internal void RestorePositionAndPresentation()
@@ -197,15 +245,6 @@ internal sealed class ReplaySnapshot
         Game1.ambientLight = AmbientLight;
         Game1.bgColor = BackgroundColor;
         Game1.flashAlpha = FlashAlpha;
-    }
-
-    private static Item? Clone(Item? item)
-    {
-        if (item is null)
-            return null;
-        Item copy = item.getOne();
-        copy.Stack = item.Stack;
-        return copy;
     }
 
     private static void Replace<T>(ICollection<T> target, IEnumerable<T> values)

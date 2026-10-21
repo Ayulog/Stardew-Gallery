@@ -3,13 +3,15 @@
     <TargetFramework>net6.0</TargetFramework>
     <RootNamespace>StardewGallery</RootNamespace>
     <AssemblyName>StardewGallery</AssemblyName>
-    <Version>2.9.0</Version>
+    <Version>2.10.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableModDeploy>false</EnableModDeploy>
     <EnableModZip>true</EnableModZip>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Source art for tools/Optimize-Assets.ps1; the game loads only the derived icons. -->
+    <IgnoreModFilePaths>assets/GalleryTabIcon-horizontal-v5.png</IgnoreModFilePaths>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +22,11 @@
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(GamePath)\smapi-internal\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Steam's on-screen keyboard (UI/SteamTextInput.cs). Ships with the game; used only when Steam is running. -->
+    <Reference Include="Steamworks.NET">
+      <HintPath>$(GamePath)\Steamworks.NET.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

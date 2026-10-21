@@ -18,7 +18,6 @@ internal sealed class GalleryPageState(GalleryPage page)
     internal string? PrerequisiteId { get; init; }
     // Filter is applied on Query pages and is an isolated draft on Filters pages.
     internal QueryFilter Filter { get; set; } = new();
-    internal bool FilterExpanded { get; set; }
     internal string? FilterPicker { get; set; }
     internal int FilterReturnFocus { get; set; }
     // Null means the editor has not loaded its initial value; empty is an intentional draft.

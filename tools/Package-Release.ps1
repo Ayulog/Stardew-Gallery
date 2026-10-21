@@ -34,15 +34,6 @@ try {
     if (@($source.Entries | Where-Object { $_.FullName -match '^StardewGallery/i18n/[^/]+\.json$' }).Count -ne 12) {
         throw 'The archive must contain all 12 maintained locales.'
     }
-    $seedEntry = $source.GetEntry('StardewGallery/assets/ai-mod-exclusion.seed.json')
-    if ($null -eq $seedEntry) { throw 'Missing bundled event-source exclusion list.' }
-    $seedReader = [IO.StreamReader]::new($seedEntry.Open())
-    try {
-        $seed = $seedReader.ReadToEnd() | ConvertFrom-Json
-        if (@($seed.PSObject.Properties | Where-Object { $_.Value.ModId -is [string] }).Count -eq 0) {
-            throw 'Bundled event-source exclusion list has no ModId records.'
-        }
-    } finally { $seedReader.Dispose() }
     $manifestEntry = $source.GetEntry('StardewGallery/manifest.json')
     if ($null -eq $manifestEntry) { throw 'Missing packaged manifest.' }
     $reader = [IO.StreamReader]::new($manifestEntry.Open())

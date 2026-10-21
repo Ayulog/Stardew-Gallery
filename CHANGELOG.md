@@ -1,5 +1,19 @@
 # Changelog / 更新日志
 
+## 2.10.0 - Unreleased - Scope Reset & Fixes / 范围收窄与集中修复
+
+- **范围调整 / Scope**：删除 AI 模组排除名单（画廊不再联网）和运行时修改追踪；查询筛选去掉条件状态、季节、天气、时间和心数。 / Removed the AI mod exclusion list (the gallery no longer goes online) and runtime modification tracking; query filters no longer cover condition status, season, weather, time or hearts.
+- **回放存档安全 / Replay Safety**：背包不再克隆，鱼饵、钓具和弹药不会丢失；季节只改事件画面，不再清空果实和肥料；失焦与暂停不计入超时；节日会场当天不可回放；回放期间不触发真实事件与 TriggerAction；快照补全 Buff、统计、已听歌曲、已访问地点和壁炉。 / Inventory is no longer cloned, so bait, tackle and ammo survive; season changes are visual only, so fruit and fertilizer stay; unfocused or paused time doesn't count toward timeouts; festival venues can't be replayed on festival days; real events and trigger actions don't run during replay; the snapshot also covers buffs, stats, songs, visited locations and fireplaces.
+- **剧照与手柄 / Photos & Controller**：100% 缩放下的抓拍不再透明，照片不含跳过按钮；切换到手柄后页面正常，关闭吸附菜单时 A 作用于光标处，输入框弹出屏幕键盘。 / Photos at 100% zoom are no longer transparent and exclude the skip button; pages keep working after switching to a controller, `A` follows the cursor with snappy menus off, and text fields open the on-screen keyboard.
+- **搜索与输入 / Search & Input**：在搜索框按回车只列出候选，再按回车或 `A` 才进入；Steam Deck 和 Steam 大屏幕模式下改用 Steam 键盘，可以输入中文；中文界面的角色搜索和事件查询支持拼音（全拼、首字母或混合）。 / Enter in a search box lists the matches, and a second Enter or `A` opens one. On Steam Deck and in Steam Big Picture mode, text fields use Steam's keyboard, which can type Chinese. In Chinese, character search and Event Search also match pinyin (full, initials or mixed).
+- **打字隔离 / Typing Isolation**：在输入框打字时，按键仍不会触发游戏和其他 Mod 的快捷键，但改用游戏自带的方式实现，不再补丁 SMAPI 的内部方法，SMAPI 更新后搜索框也不会因此停用；实体键盘按回车结束搜索后，不会再顺带打开第一个结果。 / Keys typed into a text field still don't trigger game or mod shortcuts, now through the game's own mechanism instead of a patch on SMAPI internals, so a SMAPI update can no longer disable search; pressing Enter on a physical keyboard to finish a search no longer also opens the first match.
+- **手柄流畅度 / Controller Responsiveness**：页面不再每帧遍历所有地点查找角色、读取存档目录与节日数据、重新排版条件文字，摇杆和按键更跟手；开启调试诊断时，日志会记录画廊的帧耗时。 / Pages no longer search every location for characters, read the save folder and festival data, or re-wrap condition text every frame, so the stick and buttons respond faster. With debug diagnostics on, the log records the gallery's frame times.
+- **条件判定 / Conditions**：`D`、`R`、多季节、`!!`、加引号的 GSQ、`WEATHER Here` 与事件 ID 的读取都与游戏 1.6.15 一致；“未看过”的引用不再算前置。 / `D`, `R`, multi-season lists, `!!`, quoted GSQ, `WEATHER Here` and event IDs now match Stardew Valley 1.6.15; "not seen" references are no longer prerequisites.
+- **目录与来源 / Catalog & Sources**：Penny 拖车剧情不再重复，旧条目的照片和名称自动合并；Linux / Steam Deck 大小写、链接目录部署可识别；原包读取不全时显示“证据不完整”；列出其他声明者；只重扫变化的包。 / Penny's trailer events are listed once and photos and names on old duplicates are merged; case-mismatched paths on Linux/Steam Deck and linked mod folders are supported; incomplete scans show "evidence incomplete"; other declaring packs are listed; only changed packs are rescanned.
+- **其他 / Other**：联机农场工一键解锁只在本次会话生效；分屏玩家状态独立；名称文件损坏时回退到备份；Portraiture 失败时先用普通肖像；发布包约减小三分之一。 / Farmhand Unlock All is session-only; split-screen players are independent; damaged name files fall back to a backup; Portraiture failures show the regular portrait first; the package is about a third smaller.
+
+详见 [2.10.0 版本说明](docs/RELEASE_2.10.0_NOTES.md)。 / See the [2.10.0 Release Notes](docs/RELEASE_2.10.0_NOTES.md) for details.
+
 ## 2.9.0 - 2026-10-08 - Replay Fixes & Cleanup / 回放修复与依赖清理
 
 - **GMCM 名单开关 / GMCM Exclusion Toggle**：将 AI 模组排除开关移入 GMCM 与 `config.json`（`EnableAiModExclusion`，默认 `false`），保存后在非回放状态下直接生效，并自动清理旧版独立的 `ai-mod-exclusion.json`。 / Moved the AI mod exclusion setting into GMCM and `config.json` (`EnableAiModExclusion`, default `false`). Changes apply once any active replay or confirmation finishes, and the retired `ai-mod-exclusion.json` is removed automatically.

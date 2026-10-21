@@ -11,13 +11,7 @@ internal sealed class ModConfig
 
     public bool DebugDiagnostics { get; set; }
 
-    /// <summary>Optional runtime modification tracing; file-origin matching is always available. Requires restart and SMAPI 4.5.2.</summary>
-    public bool EnableEventSourceDiagnostics { get; set; }
-
     public bool EnableOrdinaryEventReplay { get; set; }
-
-    /// <summary>Opt-in original-provider filtering using the public AI Mod Exclusion list.</summary>
-    public bool EnableAiModExclusion { get; set; }
 
     public KeybindList GalleryKeys { get; set; } = new(SButton.G);
 

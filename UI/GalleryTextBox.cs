@@ -12,6 +12,18 @@ internal sealed class GalleryTextBox : TextBox
     internal GalleryTextBox() : base(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor)
         => texture = Game1.content.Load<Texture2D>("LooseSprites\\textBox");
 
+    /// <summary>
+    /// Select a field for typing. The game opens its on-screen keyboard only from TextBox.Update(), which
+    /// gallery menus don't call because it reselects by mouse position; open one directly for controllers.
+    /// Steam's keyboard comes first because it can type Chinese; the game's keyboard types Latin letters only.
+    /// </summary>
+    internal static void SelectForInput(TextBox box)
+    {
+        box.SelectMe();
+        if (Game1.options.gamepadControls && !Game1.lastCursorMotionWasMouse && Game1.textEntry is null && !SteamTextInput.TryShow(box))
+            Game1.showTextEntry(box);
+    }
+
     public override void Draw(SpriteBatch b, bool drawShadow = true)
     {
         int[] sx = [0, 16, texture.Width - 16, texture.Width], sy = [0, 8, texture.Height - 8, texture.Height];

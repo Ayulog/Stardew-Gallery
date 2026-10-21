@@ -16,6 +16,12 @@ internal static class StoryReplayChecks
         Check(ReplayAccessPolicy.Evaluate(StoryKind.Ordinary, true, false, true).Allowed, "seen ordinary replay");
         Check(ReplayAccessPolicy.Evaluate(StoryKind.Ordinary, false, true, true).Allowed, "unlocked ordinary replay");
         Check(!ReplayAccessPolicy.Evaluate(StoryKind.Internal, true, true, true).Allowed, "internal is never playable");
+        Check(ReplayAccessPolicy.Evaluate(StoryKind.Heart, true, false, false, saveFileReady: false).ReasonKey == "replay.no-save-file",
+            "a save without a backup folder explains the first-night requirement");
+        Check(ReplayAccessPolicy.Evaluate(StoryKind.Heart, false, false, false, saveFileReady: false).ReasonKey == "event.locked",
+            "locked events keep the locked reason before save-file checks");
+        Check(ReplayAccessPolicy.Evaluate(StoryKind.Heart, true, false, false, festivalLocation: true).ReasonKey == "replay.festival-location",
+            "today's festival venue cannot be used for replay");
         Console.WriteLine("Story replay access checks passed.");
     }
 

@@ -6,8 +6,8 @@
   安装正式版 .NET 8 SDK。`global.json` 在已安装的 .NET 8 中选择较新的功能版本，项目目标框架仍为 `net6.0`。
 - Install the .NET 6 runtime to execute the two check programs. The .NET 8 SDK alone does not supply that runtime.
   运行两个检查程序还需要 .NET 6 运行时，仅安装 .NET 8 SDK 不包含该运行时。
-- A full MOD build needs Stardew Valley 1.6.15 and SMAPI 4.5.2, or later compatible versions. `smapi-internal/0Harmony.dll` must exist under the selected game directory.
-  完整 MOD 构建需要《星露谷物语》1.6.15、SMAPI 4.5.2 或更高兼容版本，所选游戏目录中应有 `smapi-internal/0Harmony.dll`。
+- A full MOD build needs Stardew Valley 1.6.15 and SMAPI 4.5.2, or later compatible versions. `smapi-internal/0Harmony.dll` and the game's `Steamworks.NET.dll` must exist under the selected game directory.
+  完整 MOD 构建需要《星露谷物语》1.6.15、SMAPI 4.5.2 或更高兼容版本，所选游戏目录中应有 `smapi-internal/0Harmony.dll` 和游戏自带的 `Steamworks.NET.dll`。
 
 Run all commands from this repository root. / 以下命令均从本仓库根目录执行。
 
@@ -19,6 +19,20 @@ dotnet --list-runtimes
 The selected SDK should be `8.0.x`; the runtime list should include `Microsoft.NETCore.App 6.0.x`.
 
 所选 SDK 应为 `8.0.x`，运行时列表应包含 `Microsoft.NETCore.App 6.0.x`。检查程序可能显示 `NETSDK1138`，提示 .NET 6 已结束支持；该提示不代表检查失败，也不应因此自行更改游戏兼容目标。
+
+## One-command verification / 一键验证
+
+On Windows, `tools/Verify-Local.ps1` runs the full local sequence: the MOD build, both check programs, every SMAPI runtime check mode, then packaging with `Package-Release.ps1` and its SHA256. It stops at the first failure. Without `-Destination` the package is written to a new temporary folder, so `release/` is untouched. It reads the game directory only; it does not install the MOD, launch the game or read saves.
+
+Windows 上可用 `tools/Verify-Local.ps1` 一次完成：完整构建、两个检查程序、全部 SMAPI 运行时检查，再用 `Package-Release.ps1` 打包并输出 SHA256；任何一步失败即停止。不传 `-Destination` 时，包写到新的临时文件夹，不动 `release/`。脚本只读取游戏目录，不安装 MOD、不启动游戏、不读存档。
+
+```powershell
+pwsh tools/Verify-Local.ps1 -GamePath "C:/Games/Stardew Valley"
+```
+
+It does not replace in-game acceptance; see the latest `docs/RELEASE_*_ACCEPTANCE.md`.
+
+它不代替实机验收，见最新的 `docs/RELEASE_*_ACCEPTANCE.md`。
 
 ## Checks / 自动检查
 
@@ -73,22 +87,15 @@ The destination must not already exist. The packaging script checks the version,
 
 ## Event source checks / 事件来源检查
 
-Pure source-chain, static file-origin and presentation checks are included in the regular Checks command. A focused run is also available:
-来源链、静态文件匹配及显示逻辑检查已接入原有全量 Checks，也可定向执行：
+Static file-origin scanning, matching and presentation checks are included in the regular Checks command. A focused run is also available:
+静态文件来源扫描、匹配及显示逻辑检查已接入原有全量 Checks，也可定向执行：
 
 ```powershell
 dotnet run --project Checks/StardewGallery.Checks.csproj -c Release -- --event-sources
 ```
 
-The optional runtime harness requires the local game/SMAPI 4.5.2 DLLs. It uses in-memory fixtures and reads a vanilla Chinese event XNB without launching the game, installing files, or reading player saves. Replace GamePath with the confirmed installation path:
-可选运行时检查需要本机游戏及 SMAPI 4.5.2 DLL，使用内存夹具并只读加载原版中文事件 XNB，不启动游戏、不安装文件、不读取玩家存档；请替换实际路径：
-
-```powershell
-dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:\Games\Stardew Valley" -- "C:\Games\Stardew Valley"
-```
-
-This harness is excluded from the MOD build/package and ordinary CI, which has no game binaries. Runtime check success is not in-game acceptance. See `docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md` for scope and remaining scenarios.
-此检查程序不进入 MOD 构建/发布包，也不加入没有游戏 DLL 的普通 CI。检查通过不等于游戏内验收，范围和待验场景见 `docs/EVENT_MOD_SOURCE_IMPLEMENTATION.md`。
+Runtime modification tracking was removed in 2.10.0, so there is no separate source runtime harness. Event sources come only from read-only static file matching.
+2.10.0 已移除运行时修改追踪，不再有单独的来源运行时检查；事件来源只来自只读的静态文件匹配。
 
 ## Built DLL compatibility / 构建产物加载检查
 
@@ -115,16 +122,28 @@ dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.cs
 The snapshot checks call the built Capture/RestorePlayer and RuntimeStateReader with real case-sensitive game collections. The effects checks install ReplaySaveGuard and invoke the actual GrandpaCandles command, checking replay suppression, exactly-once advancement and unaffected normal/unowned events. Fixture substitutions and limits are documented in SourcesRuntimeChecks/README.md. In-game natural completion, skipping, startup failure and recovery failure still need a test save and SMAPI logs.
 快照检查使用真实游戏集合，调用产物中的 Capture/RestorePlayer 及 RuntimeStateReader；命令检查安装真实 ReplaySaveGuard 并执行原版 GrandpaCandles，验证回放保护、命令仅推进一次及正常/非所属事件不受影响。夹具替代范围见 SourcesRuntimeChecks/README.md。自然结束、跳过、启动失败和恢复异常的游戏内流程仍需测试存档及 SMAPI 日志验收。
 
-The weather mode checks six native weather types, default-world flags and restoration. The speed mode exercises native recursive commands through the installed Harmony patch. The drafts mode exercises menu drafts and selection rebuilding in a headless fixture. Run the regular Checks suite too: it covers weather resolution, GSQ relationship classification, canonical character heart filters and independent source-evidence status.
-天气入口检查六种原生天气、默认世界标记及恢复；倍速入口通过真实Harmony补丁执行原版递归命令；草稿入口在无图形夹具中验证菜单草稿与选项重建。同时运行常规Checks，覆盖天气解析、GSQ正向关系分类、角色别名心数筛选及独立来源证据状态。
+The weather mode checks six native weather types, default-world flags and restoration. The speed mode exercises native recursive commands through the installed Harmony patch. The drafts mode exercises menu drafts and selection rebuilding in a headless fixture. Run the regular Checks suite too: it covers weather resolution, GSQ relationship classification, canonical character filters and static source presentation.
+天气入口检查六种原生天气、默认世界标记及恢复；倍速入口通过真实Harmony补丁执行原版递归命令；草稿入口在无图形夹具中验证菜单草稿与选项重建。同时运行常规Checks，覆盖天气解析、GSQ正向关系分类、角色别名筛选及静态来源显示。
 
-## GMCM exclusion checks / GMCM 名单开关检查
-
-完整构建后运行以下检查，验证默认关闭、实际注册/保存/重置回调，以及回放或确认期间延后刷新。夹具替代范围见 SourcesRuntimeChecks/README.md；不会启动游戏、安装 MOD 或访问玩家存档。
+## Condition parity checks / 条件判定对拍
 
 ```powershell
-dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --gmcm-exclusion "bin/Release/net6.0/StardewGallery.dll"
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --conditions "bin/Release/net6.0/StardewGallery.dll"
 ```
+
+The 75 assertions run the game's own precondition code (`Event.CheckPrecondition`, `Event.SplitPreconditions`, `ArgUtility.UnsplitQuoteAware`, `GameStateQuery`) and the gallery's production parser, state reader and evaluator on the same headless player: event IDs, the single `!` prefix, quoted GSQ text, multi-season lists, `D`/`R`/`O`, `w` and `WEATHER Here`. Graphics-dependent player setup is skipped; no save, map or content is loaded.
+
+75 项检查在同一个无图形玩家上同时调用游戏自己的前置条件代码和画廊的生产解析、状态读取与求值，逐项比对：事件 ID、单个 `!` 前缀、加引号的 GSQ、多季节写法、`D`/`R`/`O`、`w` 和 `WEATHER Here`。只跳过依赖图形的玩家初始化，不读存档、地图或游戏内容。
+
+## Save data checks / 存档数据检查
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --save-data "bin/Release/net6.0/StardewGallery.dll"
+```
+
+Drives the built ModEntry's unlock read and toggle as a host and as a remote farmhand, with a fake SMAPI data helper: a farmhand never touches save data (SMAPI would throw) and keeps the unlock for the session; the host reads and writes its save; a SMAPI error is logged, not thrown.
+
+用假的 SMAPI 数据接口驱动构建产物中的解锁读取与切换：远程农场工不读写存档数据（SMAPI 会抛异常），解锁只在本次会话生效；房主正常读写；SMAPI 报错时只记日志不抛出。
 
 ## Controller dispatch checks / 手柄分派检查
 
@@ -132,9 +151,39 @@ dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.cs
 dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --controller-input "bin/Release/net6.0/StardewGallery.dll"
 ```
 
-The 36 assertions follow the native fresh-button dispatch order through actual menu handlers and temporary photo storage. They cover snappy on/off, one action per A press, B/X/shoulders and keyboard/mouse controls. The fixture substitutes graphics and navigation boundaries; it does not run the complete game update loop or physical controller input. See SourcesRuntimeChecks/README.md for scope.
+The 62 assertions follow the native fresh-button dispatch order through actual menu handlers and temporary photo storage. They cover snappy on/off, one action per A press, B/X/shoulders and keyboard/mouse controls, Enter in the search box showing results without opening one, and the Steam keyboard: falling back to the game's keyboard when Steam can't show it, and pressing Enter only after the controller's buttons are released. The fixture substitutes graphics and navigation boundaries; it does not run the complete game update loop, physical controller input or Steam itself. See SourcesRuntimeChecks/README.md for scope.
 
-36 项检查按原版新按键分派顺序执行真实菜单方法及临时照片存储，覆盖 snappy 开关、A 单次操作、B/X/肩键及键鼠。夹具替代图形和导航外围，不运行完整游戏更新循环或物理手柄；边界见 SourcesRuntimeChecks/README.md。
+62 项检查按原版新按键分派顺序执行真实菜单方法及临时照片存储，覆盖 snappy 开关、A 单次操作、B/X/肩键及键鼠、搜索框回车只列出结果不进入，以及 Steam 键盘：Steam 显示不了时回退到游戏键盘、手柄按键松开后才按回车。夹具替代图形和导航外围，不运行完整游戏更新循环、物理手柄或 Steam 本身；边界见 SourcesRuntimeChecks/README.md。
+
+## Keyboard typing checks / 键盘输入检查
+
+```powershell
+dotnet run --project SourcesRuntimeChecks/StardewGallery.SourcesRuntimeChecks.csproj -c Release -p:GamePath="C:/Games/Stardew Valley" -- "C:/Games/Stardew Valley" --keyboard-input "bin/Release/net6.0/StardewGallery.dll"
+```
+
+The 7 assertions type on a simulated physical keyboard, frame by frame, through SMAPI's real input state and the real query page: typed letters never reach SMAPI's input state (other mods' keybinds) or the game; the Enter that ends typing doesn't also open the first result, and a control run without the gallery's key hiding shows that it otherwise would; Escape ends typing without leaving the page; Ctrl+V pastes once. See SourcesRuntimeChecks/README.md for scope.
+
+7 项检查逐帧模拟实体键盘，经过 SMAPI 真实的输入状态和真实的查询页：打出的字母不进 SMAPI 输入状态（其他 Mod 的快捷键）也不进游戏；结束输入的回车不会再打开第一个结果，并用不隐藏按键的对照证明否则会打开；Esc 结束输入而不离开页面；Ctrl+V 只粘贴一次。边界见 SourcesRuntimeChecks/README.md。
+
+## Assets / 素材
+
+`tools/Optimize-Assets.ps1` (PowerShell 7 on Windows) derives the Collections-page button icon (104x80) and the portrait placeholder (640x490) from `assets/GalleryTabIcon-horizontal-v5.png`, and losslessly re-encodes the shipped PNGs: decoded pixels are compared before writing, and all other PNG chunks are kept. Files with C2PA content credentials (`caBX`) are left byte-for-byte unchanged, because the credential is bound to the file bytes. Use `-Check` to report without writing. The source icon `GalleryTabIcon-horizontal-v5.png` is used only by this tool and is excluded from the package by `IgnoreModFilePaths` in `StardewGallery.csproj`. The album and detail backgrounds have no generator: since 2.10.0 the shipped PNGs are the source (the 2.1.0 generator could no longer reproduce them and was removed; see `docs/archive/GALLERY_SPREAD_ASSETS.md`).
+
+`tools/Optimize-Assets.ps1`（Windows 上的 PowerShell 7）从 `assets/GalleryTabIcon-horizontal-v5.png` 生成收藏页按钮图标（104x80）和肖像占位图（640x490），并对发布的 PNG 做无损重编码：写入前比对解码后的像素，保留其他所有 PNG 数据块。带 C2PA 内容凭证（`caBX`）的文件保持原样，因为凭证绑定了文件字节。加 `-Check` 只报告不写入。源图标 `GalleryTabIcon-horizontal-v5.png` 只供该工具使用，通过 `StardewGallery.csproj` 的 `IgnoreModFilePaths` 排除在发布包外。相册和详情页背景图没有生成器：2.10.0 起以发布的 PNG 为准（2.1.0 的生成脚本已无法重现这些图片，已删除，说明见 `docs/archive/GALLERY_SPREAD_ASSETS.md`）。
+
+```powershell
+pwsh tools/Optimize-Assets.ps1
+```
+
+### Pinyin table / 拼音表
+
+`assets/pinyin.txt` holds toneless pinyin for CJK Unified Ideographs (U+4E00-U+9FFF) and is generated, not edited by hand. To regenerate it, download `Unihan.zip` from https://www.unicode.org/Public/UCD/latest/ucd/, extract `Unihan_Readings.txt` into its own folder, and pass that path. Readings come from `kMandarin`, `kTGHZ2013` and `kXHC1983`; output is sorted, so the same input gives the same file. Use `-Check` to compare without writing. When the Unicode version changes, update the version in `THIRD-PARTY-NOTICES.md` too. `Checks` reads the committed table and checks matching against it.
+
+`assets/pinyin.txt` 是 CJK 统一汉字（U+4E00–U+9FFF）的无调拼音表，由脚本生成，不手工编辑。重新生成时，从 https://www.unicode.org/Public/UCD/latest/ucd/ 下载 `Unihan.zip`，把 `Unihan_Readings.txt` 解压到单独的文件夹并传入路径。读音取自 `kMandarin`、`kTGHZ2013` 和 `kXHC1983`，输出有序，同样的输入得到同样的文件。加 `-Check` 只比对不写入。Unicode 版本变化时同步更新 `THIRD-PARTY-NOTICES.md` 中的版本。`Checks` 会读取仓库里的拼音表并据此检查匹配。
+
+```powershell
+pwsh tools/Generate-PinyinTable.ps1 -Readings "<folder>/Unihan_Readings.txt"
+```
 
 ## Clean outputs after dependency removal / 依赖清理后的构建
 

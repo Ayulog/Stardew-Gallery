@@ -11,6 +11,8 @@ namespace StardewGallery;
 
 internal sealed class GalleryEventDetailMenu : IClickableMenu
 {
+    private bool keyboardFocus;
+    private Point lastMouse;
     private const int BackComponentId = 1000;
     private const int ReplayComponentId = 1001;
     private const int PhotosComponentId = 1002;
@@ -157,7 +159,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (Bounds(GallerySpreadLayout.DetailSourceBounds).Contains(x, y)) { ToggleSource(); return; }
         if (CanReplay() && replayBounds.Contains(x, y))
         {
-            currentlySnappedComponent = allClickableComponents.First(component => component.myID == ReplayComponentId);
+            currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == ReplayComponentId) ?? currentlySnappedComponent;
             Replay();
             return;
         }
@@ -195,8 +197,20 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     public override void receiveRightClick(int x, int y, bool playSound = true) => Return();
 
+    // Keyboard navigation shows its focus until the mouse moves again.
+    public override void performHoverAction(int x, int y)
+    {
+        if (lastMouse != new Point(x, y))
+        {
+            if (lastMouse != default) keyboardFocus = false;
+            lastMouse = new Point(x, y);
+        }
+        base.performHoverAction(x, y);
+    }
+
     public override void receiveKeyPress(Keys key)
     {
+        if (key is Keys.Up or Keys.Right or Keys.Down or Keys.Left or Keys.Enter) keyboardFocus = true;
         if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key))
         {
             Return();
@@ -295,6 +309,9 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         if (direction == 0 && scroll == 0) FocusComponent(SourceComponentId);
         else ScrollBy(direction == 0 ? -ScrollStep : ScrollStep);
     }
+
+    // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
+    public override void populateClickableComponentList() => BuildClickableComponents();
 
     public override void snapToDefaultClickableComponent()
     {
@@ -450,8 +467,25 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         return string.Join("\n", lines);
     }
 
+    // Wrapping measures CJK text character by character, and every row is measured each frame to find the visible
+    // ones. Texts and widths can't change while the page is open, so wrap and measure each once.
+    private readonly Dictionary<(string Text, int Width), string> wraps = [];
+    private readonly Dictionary<ConditionDisplayItem, int> rowHeights = [];
+    private readonly Dictionary<ConditionDisplayItem, string> rowTexts = [];
+
+    private string Wrap(string text, int width)
+    {
+        if (!wraps.TryGetValue((text, width), out string? wrapped))
+            wraps[(text, width)] = wrapped = Game1.parseText(text, Game1.smallFont, width);
+        return wrapped;
+    }
+
     private int MeasureRow(ConditionDisplayItem item)
-        => MeasureRowBody(item) + conditionReferences[item].Sum(MeasureReference);
+    {
+        if (!rowHeights.TryGetValue(item, out int height))
+            rowHeights[item] = height = MeasureRowBody(item) + conditionReferences[item].Sum(MeasureReference);
+        return height;
+    }
 
     private int MeasureReference(ReferenceItem item)
         => ReferenceHeight + (item.Message is null ? 0 : LineHeight(item.Message, RowTextWidth - 16) + 8);
@@ -516,7 +550,11 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     }
 
     private string RowText(ConditionDisplayItem item)
-        => ConditionRowPresentation.Text(item, (key, arguments) => i18n.Get(key, arguments));
+    {
+        if (!rowTexts.TryGetValue(item, out string? text))
+            rowTexts[item] = text = ConditionRowPresentation.Text(item, (key, arguments) => i18n.Get(key, arguments));
+        return text;
+    }
 
     private void DrawStatus(SpriteBatch b, ConditionStatusIcon status, Rectangle bounds)
     {
@@ -529,15 +567,15 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         b.Draw(statusIcons, bounds, source, Color.White);
     }
 
-    private static int DrawWrapped(SpriteBatch b, string text, int x, int y, int width, Color color)
+    private int DrawWrapped(SpriteBatch b, string text, int x, int y, int width, Color color)
     {
-        string wrapped = Game1.parseText(text, Game1.smallFont, width);
+        string wrapped = Wrap(text, width);
         b.DrawString(Game1.smallFont, wrapped, new Vector2(x, y), color);
         return wrapped.Split('\n').Length * Game1.smallFont.LineSpacing;
     }
 
-    private static int LineHeight(string text, int width)
-        => Game1.parseText(text, Game1.smallFont, width).Split('\n').Length * Game1.smallFont.LineSpacing;
+    private int LineHeight(string text, int width)
+        => Wrap(text, width).Split('\n').Length * Game1.smallFont.LineSpacing;
 
     private void BeginContentClip(SpriteBatch b)
     {
@@ -617,7 +655,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         Rectangle bounds = ReferenceBounds(index);
         ScrollBy(bounds.Top < contentBounds.Top ? bounds.Top - contentBounds.Top
             : bounds.Bottom > contentBounds.Bottom ? bounds.Bottom - contentBounds.Bottom : 0);
-        currentlySnappedComponent = allClickableComponents.First(component => component.myID == ReferenceComponentId + index);
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == ReferenceComponentId + index) ?? currentlySnappedComponent;
         if (Game1.options.snappyMenus && Game1.options.gamepadControls)
             SnapCurrent();
     }
@@ -664,7 +702,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private void FocusComponent(int id)
     {
-        currentlySnappedComponent = allClickableComponents.First(component => component.myID == id);
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == id)
+            ?? allClickableComponents.FirstOrDefault(component => component.myID == BackComponentId) ?? currentlySnappedComponent;
         SaveState();
         if (Game1.options.snappyMenus && Game1.options.gamepadControls) SnapCurrent();
     }
@@ -720,6 +759,6 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
 
     private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds) => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
     private Rectangle ToScreen(Rectangle bounds) => GalleryDrawing.ScaleRectangle(bounds, menuScale, drawOffsetX, drawOffsetY);
-    private bool Focused(int id) => Game1.options.snappyMenus && Game1.options.gamepadControls && currentlySnappedComponent?.myID == id;
+    private bool Focused(int id) => (Game1.options.snappyMenus && Game1.options.gamepadControls || keyboardFocus) && currentlySnappedComponent?.myID == id;
     private (int X, int Y) ToLogical(int x, int y) => ((int)Math.Round((x - drawOffsetX) / menuScale), (int)Math.Round((y - drawOffsetY) / menuScale));
 }

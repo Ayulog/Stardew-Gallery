@@ -117,10 +117,14 @@ internal static class ConditionDescriber
 
     private static ConditionTextSpec DescribeSeason(SeasonCondition condition)
     {
-        string[] remaining = new[] { "spring", "summer", "fall", "winter" }.Except(condition.Seasons, StringComparer.OrdinalIgnoreCase).ToArray();
-        if (condition.Negated && remaining.Length > 0 && remaining.Length < condition.Seasons.Distinct(StringComparer.OrdinalIgnoreCase).Count())
-            return Named(condition with { Negated = false }, "condition.season", ("seasons", List(remaining.Select(season => Term("season", season)))));
-        return NamedNegative(condition, "condition.season", "condition.season-not", ("seasons", List(condition.Seasons.Select(season => Term("season", season)))));
+        // The game checks only the first listed season, so later seasons are named as ignored rather than allowed.
+        string first = condition.Seasons[0];
+        string[] ignored = condition.Seasons.Skip(1).Where(season => !season.Equals(first, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return ignored.Length == 0
+            ? NamedNegative(condition, "condition.season", "condition.season-not", ("seasons", List([Term("season", first)])))
+            : NamedNegative(condition, "condition.season-first-only", "condition.season-first-only-not",
+                ("seasons", List([Term("season", first)])), ("ignored", List(ignored.Select(season => Term("season", season)))));
     }
 
     private static ConditionTextSpec Named(ConditionExpression c, string key, params (string Key, ConditionTextValue Value)[] args) => Named(c, key, args, null);

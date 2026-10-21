@@ -20,6 +20,7 @@ internal interface IGallerySearchMenu
 {
     bool IsSearchSelected { get; }
     void DeselectSearch();
-    void OpenFirstMatch();
+    /// <summary>Enter while typing (keyboard or on-screen keyboard): keep the text and move focus to the results, without opening one.</summary>
+    void FinishSearch();
     void HandleControllerBack();
 }

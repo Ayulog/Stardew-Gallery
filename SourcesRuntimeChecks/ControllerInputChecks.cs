@@ -9,16 +9,35 @@ using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Menus;
 
-/// <summary>Built menu behavior under Game1's controller-to-mouse dispatch contract, without a graphics device.</summary>
+/// <summary>
+/// Built menu behavior under Game1's controller-to-mouse dispatch contract (mode --controller-input), and typing on a
+/// physical keyboard through SMAPI's real input state (mode --keyboard-input), without a graphics device.
+/// </summary>
 internal static class ControllerInputChecks
 {
     private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
     private static Assembly mod = null!;
     private static Point cursor;
     private static IClickableMenu? active;
-    private static int backs, assertions, failures;
+    private static int backs, opened, assertions, failures;
 
-    internal static void Run(Assembly assembly)
+    internal static void Run(Assembly assembly) => WithFixture(assembly, "Controller", () =>
+    {
+        foreach (bool snappy in new[] { true, false })
+        {
+            Game1.options.snappyMenus = snappy;
+            SourceDetails(snappy);
+            Filters(snappy);
+            Photos(snappy);
+            ReplayConfirmation(snappy);
+            SearchEnter(snappy);
+            SteamKeyboard(snappy);
+        }
+    });
+
+    internal static void RunKeyboard(Assembly assembly) => WithFixture(assembly, "Keyboard typing", KeyboardTyping);
+
+    private static void WithFixture(Assembly assembly, string name, Action checks)
     {
         mod = assembly;
         var harmony = new Harmony("Gallery.ControllerInputChecks");
@@ -40,17 +59,17 @@ internal static class ControllerInputChecks
             harmony.Patch(Type("GalleryEventDetailMenu").GetMethod("CanReplay", Flags)!, prefix: Hook(nameof(False)));
             harmony.Patch(Type("GalleryApplication").GetMethod("Back", Flags)!, prefix: Hook(nameof(Back)));
             harmony.Patch(Type("GalleryPhotos").GetMethod("Image", Flags)!, prefix: Hook(nameof(Image)));
-            foreach (bool snappy in new[] { true, false })
-            {
-                Game1.options.snappyMenus = snappy;
-                SourceDetails(snappy);
-                Filters(snappy);
-                Photos(snappy);
-            }
+            harmony.Patch(Type("GalleryApplication").GetMethod("OpenPrerequisite", Flags)!, prefix: Hook(nameof(Open)));
+            PropertyInfo dispatcher = typeof(Game1).GetProperty("keyboardDispatcher", Flags)!;
+            dispatcher.SetValue(null, FormatterServices.GetUninitializedObject(dispatcher.PropertyType));
+            // One screen, as SMAPI's Context.IsSplitScreen reads it.
+            GameRunner.instance = (GameRunner)FormatterServices.GetUninitializedObject(typeof(GameRunner));
+            GameRunner.instance.gameInstances = [Game1.game1];
+            checks();
         }
         finally { harmony.UnpatchAll(harmony.Id); active = null; }
-        Console.WriteLine($"Controller runtime checks: {assertions - failures}/{assertions} passed; {failures} failed.");
-        if (failures != 0) throw new InvalidOperationException("Controller input regressions failed.");
+        Console.WriteLine($"{name} runtime checks: {assertions - failures}/{assertions} passed; {failures} failed.");
+        if (failures != 0) throw new InvalidOperationException(name + " input regressions failed.");
     }
 
     private static void SourceDetails(bool snappy)
@@ -80,16 +99,20 @@ internal static class ControllerInputChecks
     {
         object state = Page("Filters");
         var menu = (IClickableMenu)New("GalleryFilterMenu", View(), state);
-        Call(menu, "Focus", snappy ? 106 : 100);
-        cursor = menu.allClickableComponents.Single(component => component.myID == 106).bounds.Center;
+        Call(menu, "Focus", snappy ? 104 : 100);
+        cursor = menu.allClickableComponents.Single(component => component.myID == 104).bounds.Center;
         Press(menu, Buttons.A);
-        Check(Equals(Get(state, "FilterExpanded"), true), snappy, "one A expands More filters and leaves them expanded");
-        Press(menu, Buttons.A);
-        Check(Equals(Get(state, "FilterExpanded"), false), snappy, "next A collapses More filters once");
+        Check(Equals(Get(state, "FilterPicker"), "state"), snappy, "one A opens the progress picker without selecting a row");
+        Press(menu, Buttons.X);
+        Check(Get(state, "FilterPicker") is null, snappy, "native X returns from the progress picker once");
+        Call(menu, "Focus", 104); cursor = menu.currentlySnappedComponent.bounds.Center;
         menu.receiveKeyPress(Keys.Enter);
-        Check(Equals(Get(state, "FilterExpanded"), true), snappy, "Enter still expands the focused filter row");
+        Check(Equals(Get(state, "FilterPicker"), "state"), snappy, "Enter still opens the focused filter row");
+        menu.receiveGamePadButton(Buttons.B);
+        Call(menu, "Focus", 104); cursor = menu.currentlySnappedComponent.bounds.Center;
         menu.receiveLeftClick(cursor.X, cursor.Y);
-        Check(Equals(Get(state, "FilterExpanded"), false), snappy, "mouse click still collapses More once");
+        Check(Equals(Get(state, "FilterPicker"), "state"), snappy, "mouse click still opens the progress picker once");
+        menu.receiveGamePadButton(Buttons.B);
         Call(menu, "Focus", 101);
         cursor = menu.currentlySnappedComponent.bounds.Center;
         Press(menu, Buttons.A);
@@ -100,7 +123,190 @@ internal static class ControllerInputChecks
         Press(menu, Buttons.A); menu.receiveGamePadButton(Buttons.B);
         Check(Get(state, "FilterPicker") is null, snappy, "B still returns from picker to filters");
         menu.receiveGamePadButton(Buttons.RightShoulder);
-        Check(menu.currentlySnappedComponent.myID == 106, snappy, "shoulder navigation still reaches the final collapsed row");
+        Check(menu.currentlySnappedComponent.myID == 104, snappy, "shoulder navigation still reaches the final filter row");
+        // Game1.CheckGamepadMode repopulates components by reflection when input switches to a controller.
+        int components = menu.allClickableComponents.Count;
+        menu.populateClickableComponentList();
+        Check(menu.allClickableComponents.Count == components && menu.allClickableComponents.Any(component => component.myID == 104),
+            snappy, "switching to a controller keeps the filter page's own rows");
+        Game1.options.menuButton = [new InputButton(Keys.E)];
+        int before = backs; Press(menu, Buttons.Y);
+        Check(backs == before + 1, snappy, "Y (the menu key) returns one page instead of closing the gallery");
+        Game1.options.menuButton = [];
+    }
+
+    private static void ReplayConfirmation(bool snappy)
+    {
+        var dialog = (ConfirmationDialog)FormatterServices.GetUninitializedObject(Type("GalleryReplayConfirmationDialog"));
+        int confirmed = 0, cancelled = 0;
+        dialog.okButton = new ClickableTextureComponent(new Rectangle(500, 600, 64, 64), null, Rectangle.Empty, 1f) { myID = 101 };
+        dialog.cancelButton = new ClickableTextureComponent(new Rectangle(600, 600, 64, 64), null, Rectangle.Empty, 1f) { myID = 102 };
+        // Like ReplayService's callbacks, both choices close the dialog.
+        Set(dialog, "onConfirm", (ConfirmationDialog.behavior)(_ => { confirmed++; active = null; }));
+        Set(dialog, "onCancel", (ConfirmationDialog.behavior)(_ => { cancelled++; active = null; }));
+        dialog.allClickableComponents = [dialog.okButton, dialog.cancelButton];
+        dialog.currentlySnappedComponent = dialog.cancelButton;
+        Set(dialog, "active", true);
+        Set(dialog, "viewportWidth", Game1.uiViewport.Width); Set(dialog, "viewportHeight", Game1.uiViewport.Height);
+        // The default focus is Cancel; a free cursor may point elsewhere.
+        cursor = (snappy ? dialog.cancelButton : dialog.okButton).bounds.Center;
+        Press(dialog, Buttons.A);
+        Check(snappy ? cancelled == 1 && confirmed == 0 : confirmed == 1 && cancelled == 0, snappy,
+            snappy ? "A activates the focused Cancel once" : "free-cursor A confirms the button under the cursor, not the default focus");
+    }
+
+    /// <summary>The query page with three results; its search box holds "1" and is focused, not selected.</summary>
+    private static (IClickableMenu Menu, TextBox Search) QueryWithResults()
+    {
+        var menu = (IClickableMenu)FormatterServices.GetUninitializedObject(Type("GalleryQueryMenu"));
+        var search = (TextBox)FormatterServices.GetUninitializedObject(Type("GalleryTextBox"));
+        search.Text = "1";
+        Set(menu, "context", View()); Set(menu, "state", Page("Query")); Set(menu, "search", search);
+        Set(menu, "lastSearch", "1"); Set(menu, "scale", 1f);
+        var rows = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(Type("StorySearchRow")))!;
+        for (int index = 0; index < 3; index++)
+        {
+            object row = New("StorySearchRow", null, "Town", "Abigail");
+            Set(row, "Prerequisite", New("PrerequisiteEvent", "fixture-" + index, Array.CreateInstance(Type("MarkerAction"), 0),
+                Array.CreateInstance(Type("GalleryEvent"), 0), Array.CreateInstance(Type("GalleryEvent"), 0)));
+            rows.Add(row);
+        }
+        Set(menu, "rows", rows);
+        Call(menu, "BuildComponents"); Call(menu, "Focus", 1000);
+        return (menu, search);
+    }
+
+    /// <summary>Enter in the search box (or OK on the on-screen keyboard) shows the results; it doesn't open one.</summary>
+    private static void SearchEnter(bool snappy)
+    {
+        (IClickableMenu menu, TextBox search) = QueryWithResults();
+        search.Selected = true;
+        int before = opened;
+        Call(menu, "FinishSearch");
+        Check(opened == before && !search.Selected && menu.currentlySnappedComponent?.myID == 2000, snappy,
+            "Enter in the search box shows the results with the first focused, without opening it");
+        active = menu;
+        menu.receiveKeyPress(Keys.Enter);
+        Check(opened == before + 1, snappy, "a second Enter opens the focused result");
+    }
+
+    /// <summary>
+    /// Steam's keyboard can't open here (Steam isn't running for this process), so the game's keyboard is used. The
+    /// closing is simulated: its text replaces the field, and Enter waits until the controller's buttons are up.
+    /// </summary>
+    private static void SteamKeyboard(bool snappy)
+    {
+        Type steam = Type("SteamTextInput");
+        Set(steam, "unavailable", false); Set(steam, "target", null); Set(steam, "enterPending", false);
+        string? reason = null;
+        Set(steam, "Log", (Action<string, LogLevel>)((message, _) => reason = message));
+        var box = (TextBox)FormatterServices.GetUninitializedObject(Type("GalleryTextBox"));
+        int enters = 0;
+        box.OnEnterPressed += _ => enters++;
+        box.Text = "ab";
+        box.Selected = true;
+        Check(Equals(Call(steam, "TryShow", box), false) && Equals(Get(steam, "unavailable"), true) && Get(steam, "target") is null, snappy,
+            "without Steam the field falls back to the game's keyboard (" + reason + ")");
+        Check(Equals(Call(steam, "TryShow", box), false), snappy, "later fields skip Steam without trying again");
+
+        void Close(string? text) { Set(steam, "target", box); Call(steam, "Closed", text); }
+        Func<SButton, bool> holding = button => button == SButton.ControllerA, released = _ => false;
+        Close("阿比盖尔");
+        Call(steam, "Update", holding);
+        Check(box.Text == "阿比盖尔" && enters == 0 && box.Selected, snappy, "submitted text replaces the field; Enter waits while A is held");
+        Call(steam, "Update", released);
+        Check(enters == 1 && Get(steam, "target") is null, snappy, "Enter follows once the buttons are up, once");
+        Call(steam, "Update", released);
+        Check(enters == 1, snappy, "no further Enter");
+        Close(null);
+        Call(steam, "Update", released);
+        Check(box.Text == "阿比盖尔" && box.Selected && enters == 1 && Get(steam, "target") is null, snappy,
+            "cancelling keeps the field selected with its text, like the game's keyboard");
+        box.Selected = false;
+        Close("other");
+        Call(steam, "Update", released);
+        Check(box.Text == "阿比盖尔" && enters == 1, snappy, "text for a field that is no longer selected is dropped");
+        Set(steam, "unavailable", false); Set(steam, "target", box);
+        Check(Equals(Call(steam, "TryShow", box), false) && Get(steam, "target") is null && Equals(Get(steam, "unavailable"), true), snappy,
+            "a keyboard that never closed isn't relied on again");
+    }
+
+    /// <summary>
+    /// Typing on a physical keyboard, frame by frame in the order SMAPI 4.5.2 and the game run it (both decompiled):
+    /// SMAPI's real SInputState.TrueUpdate reads the keys the game captured the frame before and raises input events;
+    /// UpdateTicking runs GalleryTyping; the game captures this frame's keys, its keyboard dispatcher delivers the text
+    /// typed this frame (Poll), and then it hands new key presses, as SMAPI shows them to the game, to the menu.
+    /// </summary>
+    private static void KeyboardTyping()
+    {
+        Type inputType = typeof(IModHelper).Assembly.GetType("StardewModdingAPI.Framework.Input.SInputState", true)!;
+        var input = (InputState)Activator.CreateInstance(inputType, nonPublic: true)!;
+        Game1.input = input;
+        FieldInfo captured = typeof(InputState).GetField("_currentKeyboardState", Flags)!;
+        MethodInfo read = inputType.GetMethod("TrueUpdate", Flags)!;
+        MethodInfo state = inputType.GetMethod("GetState", Flags, null, [typeof(SButton)], null)!;
+        MethodInfo typing = Type("GalleryTyping").GetMethod("Update", Flags)!;
+        object keys = New("GalleryTypingKeys");
+        string? clipboard = null;
+        bool hide = true;
+        Keys[] gameSaw = [];
+        (IClickableMenu menu, TextBox search) = QueryWithResults();
+        search.textLimit = -1;
+        search.OnEnterPressed += _ => Call(menu, "FinishSearch");
+
+        void Frame(Keys[] down, Action? typed = null)
+        {
+            Game1.ticks++;
+            try { read.Invoke(input, null); }
+            // TrueUpdate sets the key states first; only the cursor tile after them needs a player.
+            catch (TargetInvocationException error) when (error.InnerException?.StackTrace?.Contains("GetCursorPosition") == true) { }
+            Keys[] gameSees = input.GetKeyboardState().GetPressedKeys();
+            if (hide)
+                typing.Invoke(null, [keys, menu, (Func<Keys[]>)(() => down), (Func<string?>)(() => clipboard)]);
+            captured.SetValue(input, new KeyboardState(down));
+            typed?.Invoke();
+            foreach (Keys key in gameSees.Except(gameSaw))
+                if (ReferenceEquals(active, menu)) menu.receiveKeyPress(key);
+            gameSaw = gameSees;
+        }
+        string Smapi(Keys key) => state.Invoke(input, [key.ToSButton()])!.ToString()!;
+        // Select the field, then let one frame pass: keys already held on the first typing frame are only hidden.
+        void Start() { Frame([]); Frame([]); Call(menu, "Focus", 1000); search.Selected = true; active = menu; Frame([]); }
+
+        Start();
+        Frame([Keys.K]); Frame([Keys.K]);
+        Check(Smapi(Keys.K) == "None" && !input.GetKeyboardState().IsKeyDown(Keys.K),
+            "a letter typed into the field reaches neither SMAPI's input state (other mods' keybinds) nor the game");
+        Frame([]); Call(menu, "DeselectSearch"); Frame([Keys.K]); Frame([Keys.K]);
+        Check(Smapi(Keys.K) == "Pressed", "once typing ended and it was released, the key reaches SMAPI as a shortcut again");
+
+        Start();
+        int before = opened;
+        Frame([Keys.Enter], () => search.RecieveCommandInput('\r'));
+        Frame([Keys.Enter]);
+        Check(opened == before && !search.Selected && menu.currentlySnappedComponent?.myID == 2000 && Smapi(Keys.Enter) == "None",
+            "Enter on a physical keyboard lists the results and doesn't also open the first one a frame later");
+        Frame([]); Frame([Keys.Enter]); Frame([Keys.Enter]);
+        Check(opened == before + 1, "a second Enter opens the focused result");
+
+        hide = false;
+        Start();
+        before = opened;
+        Frame([Keys.Enter], () => search.RecieveCommandInput('\r'));
+        Frame([Keys.Enter]);
+        Check(opened == before + 1, "control: without hiding, the Enter that ended typing also opens the first result");
+        hide = true;
+
+        Start();
+        int backsBefore = backs;
+        Frame([Keys.Escape]); Frame([Keys.Escape]);
+        Check(!search.Selected && backs == backsBefore && Smapi(Keys.Escape) == "None", "Escape ends typing and doesn't also leave the page");
+
+        Start();
+        clipboard = "\u963f\u6bd4";
+        Frame([Keys.LeftControl]); Frame([Keys.LeftControl, Keys.V]); Frame([Keys.LeftControl, Keys.V]);
+        Check(search.Text == "1\u963f\u6bd4" && Smapi(Keys.LeftControl) == "None" && Smapi(Keys.V) == "None",
+            "Ctrl+V pastes once, and other mods see neither key");
     }
 
     private static void Photos(bool snappy)
@@ -188,6 +394,7 @@ internal static class ControllerInputChecks
     }
     private static bool Snap(IClickableMenu __instance) { cursor = __instance.currentlySnappedComponent?.bounds.Center ?? cursor; return false; }
     private static bool Back() { backs++; active = null; return false; }
+    private static bool Open() { opened++; active = null; return false; }
     private static bool Image(ref Texture2D __result) { __result = (Texture2D)FormatterServices.GetUninitializedObject(typeof(Texture2D)); return false; }
     private static bool TimeLabel(int __0, ref string __result) { __result = __0.ToString(); return false; }
     private static bool False(ref bool __result) { __result = false; return false; }
@@ -196,28 +403,33 @@ internal static class ControllerInputChecks
     private static object Page(string page) => New("GalleryPageState", Enum.Parse(Type("GalleryPage"), page));
     private static Type Type(string name) => mod.GetType("StardewGallery." + name, true)!;
     private static object New(string name, params object?[] args) => Activator.CreateInstance(Type(name), Flags, null, args, null)!;
-    private static object? Call(object target, string name, params object?[] args) => target.GetType().GetMethods(Flags).Single(method => method.Name == name && method.GetParameters().Length == args.Length).Invoke(target, args);
+    private static object? Call(object target, string name, params object?[] args) => (target as Type ?? target.GetType()).GetMethods(Flags)
+        .Single(method => method.Name == name && method.GetParameters().Length == args.Length).Invoke(target is Type ? null : target, args);
+    // A Type target means the type's static members.
     private static object? Get(object target, string name)
     {
-        for (Type? type = target.GetType(); type is not null; type = type.BaseType)
+        object? instance = target is Type ? null : target;
+        for (Type? type = target as Type ?? target.GetType(); type is not null; type = type.BaseType)
         {
-            if (type.GetProperty(name, Flags) is { } property) return property.GetValue(target);
-            if (type.GetField(name, Flags) is { } field) return field.GetValue(target);
+            if (type.GetProperty(name, Flags) is { } property) return property.GetValue(instance);
+            if (type.GetField(name, Flags) is { } field) return field.GetValue(instance);
         }
         throw new MissingMemberException(target.GetType().Name, name);
     }
     private static void Set(object target, string name, object? value)
     {
-        for (Type? type = target.GetType(); type is not null; type = type.BaseType)
+        object? instance = target is Type ? null : target;
+        for (Type? type = target as Type ?? target.GetType(); type is not null; type = type.BaseType)
         {
-            if (type.GetProperty(name, Flags) is { CanWrite: true } property) { property.SetValue(target, value); return; }
-            if ((type.GetField(name, Flags) ?? type.GetField("<" + name + ">k__BackingField", Flags)) is { } field) { field.SetValue(target, value); return; }
+            if (type.GetProperty(name, Flags) is { CanWrite: true } property) { property.SetValue(instance, value); return; }
+            if ((type.GetField(name, Flags) ?? type.GetField("<" + name + ">k__BackingField", Flags)) is { } field) { field.SetValue(instance, value); return; }
         }
         throw new MissingMemberException(target.GetType().Name, name);
     }
-    private static void Check(bool passed, bool snappy, string message)
+    private static void Check(bool passed, bool snappy, string message) => Check(passed, (snappy ? "snapped: " : "free cursor: ") + message);
+    private static void Check(bool passed, string message)
     {
         assertions++; if (!passed) failures++;
-        Console.WriteLine((passed ? "PASS: " : "FAIL: ") + (snappy ? "snapped: " : "free cursor: ") + message);
+        Console.WriteLine((passed ? "PASS: " : "FAIL: ") + message);
     }
 }

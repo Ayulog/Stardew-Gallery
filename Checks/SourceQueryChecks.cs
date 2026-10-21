@@ -34,8 +34,7 @@ internal static class SourceQueryChecks
         };
         string Translate(string key) => key switch { "source.game" => "原版", "source.unknown" => "未知", "source.origin-ambiguous" => "多个候选来源", _ => key };
         var index = new StorySearchIndex(catalog, story => story.AssetName.EndsWith("Beach") ? "海滩" : "小镇", _ => "阿比盖尔",
-            completed: new HashSet<string> { "2" },
-            parser: new ConditionParser(key => key.Split('/'), text => text.Split(' ', StringSplitOptions.RemoveEmptyEntries)), sourceText: Translate);
+            completed: new HashSet<string> { "2" }, sourceText: Translate);
         IReadOnlyList<StorySearchRow> BySource(string key) => index.Search("", new QueryFilter { Source = key });
         Check(BySource(StoryQuerySource.GameKey).Single().Event == vanilla, "base game is an explicit independent source");
         Check(BySource(StoryQuerySource.ModKey("Author.First")).Single().Event == first
@@ -48,11 +47,13 @@ internal static class SourceQueryChecks
         Check(index.Search("原版").Single().Event == vanilla && index.Search("未知").Count == 4, "localized source categories are searchable");
         Check(BySource(StoryQuerySource.AmbiguousKey).Single().Event == ambiguous
             && BySource(StoryQuerySource.UnknownKey).Count == 4, "ambiguous and unknown remain separate; inconsistent evidence stays unresolved");
+        Check(StoryQuerySource.From(new EventOriginMatch(providerA, [], EventOriginMatchStatus.Incomplete)) == StoryQuerySource.Unknown,
+            "a provider found with incomplete evidence is not offered as a confirmed source");
         Check(index.Rows.Single(row => row.Prerequisite is not null).Source.Key == StoryQuerySource.UnknownKey,
             "synthetic prerequisite source is not guessed from related stories");
         Check(index.Search("Same name", new QueryFilter { Source = StoryQuerySource.ModKey("Author.Second"), Kind = QueryKind.Ordinary,
-            Npc = "Abigail", Location = "Data/Events/Beach", Completion = QueryCompletion.Complete, MinimumHearts = 2 }).Single().Event == second,
-            "source composes with text, kind, character, location, progress and requirements");
+            Npc = "Abigail", Location = "Data/Events/Beach", Completion = QueryCompletion.Complete }).Single().Event == second,
+            "source composes with text, kind, character, location and progress");
         Check(index.Search("", new QueryFilter { Source = StoryQuerySource.ModKey("Author.Second"), Kind = QueryKind.Heart }).Count == 0,
             "source does not weaken a conflicting kind filter");
         Check(index.Search("").Count == 8, "unfiltered query retains all eligible sources");

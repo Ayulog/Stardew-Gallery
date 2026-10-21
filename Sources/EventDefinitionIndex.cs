@@ -7,12 +7,16 @@ internal sealed record EventDefinitionPack(EventSourceActor Actor, string Direct
 internal sealed record EventDefinitionCandidate(EventSourceActor Actor, string AssetName, string RawEventKey,
     string RelativePath, string ScriptHash, string? ScriptReference = null);
 
-internal enum EventOriginMatchStatus { Unknown, Identified, Ambiguous }
+/// <summary>Incomplete: one provider was found, but a pack it builds on couldn't be read fully and may hold the original.</summary>
+internal enum EventOriginMatchStatus { Unknown, Identified, Ambiguous, Incomplete }
 
 internal sealed record EventOriginMatch(EventSourceActor? Provider, IReadOnlyList<EventDefinitionCandidate> Candidates,
     EventOriginMatchStatus Status)
 {
+    internal static EventOriginMatch Unknown { get; } = new(null, Array.Empty<EventDefinitionCandidate>(), EventOriginMatchStatus.Unknown);
     internal bool Ambiguous => Status == EventOriginMatchStatus.Ambiguous;
+    /// <summary>For <see cref="EventOriginMatchStatus.Incomplete"/>: the depended-on packs whose files weren't all read.</summary>
+    internal IReadOnlyList<EventSourceActor> UnreadDependencies { get; init; } = Array.Empty<EventSourceActor>();
 }
 
 /// <summary>
@@ -24,6 +28,7 @@ internal sealed class EventDefinitionIndex
     private readonly Dictionary<EventIdentity, List<EventDefinitionCandidate>> definitions = new();
     private readonly Dictionary<string, HashSet<string>> dependencies = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<EventDefinitionCandidate> seen = new();
+    private readonly Dictionary<string, EventSourceActor> incomplete = new(StringComparer.OrdinalIgnoreCase);
 
     internal int Count => seen.Count;
     internal IReadOnlyCollection<string> AssetNames => definitions.Keys.Select(key => key.AssetName)
@@ -32,9 +37,12 @@ internal sealed class EventDefinitionIndex
     internal void RegisterPack(EventDefinitionPack pack)
         => dependencies[pack.Actor.UniqueId] = new HashSet<string>(pack.Dependencies, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Record a loaded pack whose declarations may be missing: not found on disk, or some files not read.</summary>
+    internal void MarkIncomplete(EventSourceActor actor) => incomplete.TryAdd(actor.UniqueId, actor);
+
     internal void Add(EventDefinitionCandidate candidate)
     {
-        string asset = EventSourceScope.NormalizeAssetName(candidate.AssetName);
+        string asset = EventAssetName.Normalize(candidate.AssetName);
         string id = GetEventId(candidate.RawEventKey);
         if (!IsEventAsset(asset) || id.Length == 0 || id.Contains("{{", StringComparison.Ordinal)) return;
         candidate = candidate with { AssetName = asset };
@@ -54,7 +62,7 @@ internal sealed class EventDefinitionIndex
             // Preserve the actual source asset in the evidence; no other location uses this fallback.
             bool copiedTrailerEvent = identity.AssetName.Equals("Data/Events/Trailer_Big", StringComparison.OrdinalIgnoreCase);
             if (!copiedTrailerEvent || !definitions.TryGetValue(new EventIdentity("Data/Events/Trailer", identity.EventId), out values))
-                return new(null, Array.Empty<EventDefinitionCandidate>(), EventOriginMatchStatus.Unknown);
+                return EventOriginMatch.Unknown;
         }
         EventDefinitionCandidate[] evidence = values.OrderBy(value => value.Actor.UniqueId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(value => value.RelativePath, StringComparer.OrdinalIgnoreCase)
@@ -68,12 +76,15 @@ internal sealed class EventDefinitionIndex
         EventSourceActor[] roots = actors.Where(actor => !actors.Any(other =>
             !StringComparer.OrdinalIgnoreCase.Equals(actor.UniqueId, other.UniqueId)
             && DependsOn(actor.UniqueId, other.UniqueId) && !DependsOn(other.UniqueId, actor.UniqueId))).ToArray();
-        if (roots.Length == 1) return new(roots[0], evidence, EventOriginMatchStatus.Identified);
-        return new(null, evidence, EventOriginMatchStatus.Ambiguous);
+        if (roots.Length != 1) return new(null, evidence, EventOriginMatchStatus.Ambiguous);
+        // An override found alone may stand in for an original whose declaration couldn't be read.
+        EventSourceActor[] unread = incomplete.Values.Where(pack => DependsOn(roots[0].UniqueId, pack.UniqueId)).ToArray();
+        return unread.Length == 0 ? new(roots[0], evidence, EventOriginMatchStatus.Identified)
+            : new(roots[0], evidence, EventOriginMatchStatus.Incomplete) { UnreadDependencies = unread };
     }
 
     internal static string GetEventId(string rawEventKey)
-        => (rawEventKey ?? string.Empty).Split('/')[0].Trim();
+        => EventKey.TryGetId(rawEventKey, out string id) ? id : string.Empty;
 
     internal static bool IsEventAsset(string assetName)
         => assetName.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase)

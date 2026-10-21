@@ -58,6 +58,14 @@ internal static class AssemblyLoadChecks
                 throw new InvalidOperationException("Array-root Changes definitions changed.");
         }
         Console.WriteLine("PASS: rewritten NormalizeJson accepts array-root Changes definitions and produces strict JSON.");
+        using (JsonDocument parsed = JsonDocument.Parse(Normalize("{ Changes: [ { Action: 'EditData', Target: 'Data/Events/Town', Entries: { 7: 'end' } }, , ], Days: [1,,2] }")))
+        {
+            JsonElement changes = parsed.RootElement.GetProperty("Changes");
+            if (changes.GetArrayLength() != 2 || changes[1].ValueKind != JsonValueKind.Null || changes[0].GetProperty("Entries").GetProperty("7").GetString() != "end"
+                || parsed.RootElement.GetProperty("Days")[1].ValueKind != JsonValueKind.Null)
+                throw new InvalidOperationException("Empty array slots should become null without losing the file.");
+        }
+        Console.WriteLine("PASS: rewritten NormalizeJson turns empty array slots into null instead of rejecting the file.");
 
     }
 }

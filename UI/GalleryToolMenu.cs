@@ -73,9 +73,13 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
             Rectangle visible = Rectangle.Intersect(RowBounds(i), ContentBounds);
             if (visible.Height > 0) allClickableComponents.Add(new(Screen(visible), "row") { myID = RowId + i });
         }
-        currentlySnappedComponent = allClickableComponents.FirstOrDefault(c => c.myID == old) ?? allClickableComponents[0];
+        // A row scrolled out of view hands focus to the first visible row, never silently to Back.
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(c => c.myID == old)
+            ?? (old >= RowId ? allClickableComponents.FirstOrDefault(c => c.myID >= RowId) : null) ?? allClickableComponents[0];
         int h = Math.Max(42, ContentBounds.Height * ContentBounds.Height / Math.Max(ContentBounds.Height, contentHeight));
         thumb = new(Track.X, Track.Y + (MaxScroll == 0 ? 0 : (Track.Height - h) * scroll / MaxScroll), Track.Width, h);
+        // A presses click at the cursor, so keep it on the focused row after scrolling or a window resize.
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls) snapCursorToCurrentSnappedComponent();
     }
     protected void Focus(int id)
     {
@@ -101,7 +105,7 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
     }
     public virtual void HandleControllerBack() { DeselectSearch(); Context.Navigation.Back(); }
     public virtual void DeselectSearch() { }
-    public virtual void OpenFirstMatch() => Apply();
+    public virtual void FinishSearch() => Apply();
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
         (x, y) = Logical(x, y);
@@ -137,7 +141,8 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
     public override void receiveKeyPress(Keys key)
     {
         if (IsSearchSelected) { if (key == Keys.Escape) DeselectSearch(); return; }
-        if (key == Keys.Escape) HandleControllerBack();
+        // Controller Y/Start arrive as the menu key; like Escape they go back one page instead of closing the gallery.
+        if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key)) HandleControllerBack();
         else if (key == Keys.Enter) Activate(FocusId);
         else if (key is Keys.Up or Keys.Down or Keys.Left or Keys.Right)
             applyMovementKey(key switch { Keys.Up => 0, Keys.Right => 1, Keys.Down => 2, _ => 3 });
@@ -161,6 +166,8 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
             Focus(ids[Math.Clamp(index + (direction == 1 ? 1 : -1), 0, ids.Length - 1)]);
         }
     }
+    // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
+    public override void populateClickableComponentList() => BuildComponents();
     public override void snapToDefaultClickableComponent() => Focus(Rows.Count > 0 ? RowId : 0);
     protected virtual void DrawTop(SpriteBatch b) { }
     public override void draw(SpriteBatch b)

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Reflection;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -43,6 +44,11 @@ internal static class ReplaySaveGuard
             Patch(typeof(Event), nameof(Event.exitEvent), nameof(BeforeExit));
             Patch(typeof(Event), nameof(Event.tryEventCommand), nameof(BeforeCommand));
             Patch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.ChangePortrait), nameof(BeforePortrait));
+            Patch(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.DoAction), nameof(BeforeDoAction));
+            // Warps into and out of a replay must not start real festivals or location events.
+            Patch(typeof(GameLocation), nameof(GameLocation.checkForEvents), nameof(BeforeCheckForEvents));
+            // Location-change and other automatic triggers are world reactions, never part of a replayed scene.
+            Patch(typeof(StardewValley.Triggers.TriggerActionManager), nameof(StardewValley.Triggers.TriggerActionManager.Raise), nameof(BeforeMutation));
             harmony.Patch(AccessTools.Method(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.AddConversationTopic)),
                 prefix: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(BeforeTopic)),
                 finalizer: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(AfterTopic)));
@@ -140,6 +146,24 @@ internal static class ReplaySaveGuard
         __0.CurrentCommand++;
         return false;
     }
+
+    private static bool BeforeDoAction(Event __0, string[] __1, EventContext __2)
+    {
+        if (!replay.OwnsEvent(__0)) return true;
+        // Native checkAction can also harvest objects, collect machine output or open shops.
+        // Replays keep only the interior door animations these commands are used for.
+        if (ArgUtility.TryGetPoint(__1, 1, out Point tile, out _))
+        {
+            var target = new xTile.Dimensions.Location(__0.OffsetTileX(tile.X), __0.OffsetTileY(tile.Y));
+            if (__2.Location.interiorDoors.ContainsKey(new Point(target.X, target.Y)))
+                __2.Location.openDoor(target, playSound: true);
+        }
+        __0.CurrentCommand++;
+        return false;
+    }
+
+    private static bool BeforeCheckForEvents(GameLocation __instance)
+        => !replay.IsActive || replay.OwnsEvent(__instance.currentEvent);
 
     private static void BeforeCommand(Event __instance, string[] __2)
     {

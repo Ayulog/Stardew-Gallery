@@ -10,19 +10,19 @@ internal static class GalleryDraftStateChecks
         history.Open(query);
         GalleryPageState edit = new(GalleryPage.Filters) { Filter = query.Filter };
         history.Open(edit);
-        edit.Filter = edit.Filter with { Npc = "Leah", Season = "winter" };
-        Check(query.Filter.Npc == "Abigail" && query.Filter.Season is null, "editing leaves the applied query unchanged");
+        edit.Filter = edit.Filter with { Npc = "Leah", Completion = QueryCompletion.Complete };
+        Check(query.Filter.Npc == "Abigail" && query.Filter.Completion == QueryCompletion.Any, "editing leaves the applied query unchanged");
         Check(history.Back() && ReferenceEquals(history.Current, query) && query.Filter.Npc == "Abigail"
             && query.Scroll == 5 && query.Focus == 2002, "cancel preserves the original query, scroll and focus");
         GalleryPageState reopened = new(GalleryPage.Filters) { Filter = query.Filter };
         history.Open(reopened);
-        Check(reopened.Filter.Npc == "Abigail" && reopened.Filter.Season is null, "cancelled draft does not reappear on reopening");
-        reopened.Filter = reopened.Filter with { Location = "Data/Events/Unavailable", Season = "winter" };
+        Check(reopened.Filter.Npc == "Abigail" && reopened.Filter.Completion == QueryCompletion.Any, "cancelled draft does not reappear on reopening");
+        reopened.Filter = reopened.Filter with { Location = "Data/Events/Unavailable", Completion = QueryCompletion.Complete };
         Check(history.ApplyFilters(reopened.Filter) && ReferenceEquals(history.Current, query)
-            && query.Filter.Location == "Data/Events/Unavailable" && query.Filter.Season == "winter", "apply commits the exact draft, including a visibly retained unavailable value");
+            && query.Filter.Location == "Data/Events/Unavailable" && query.Filter.Completion == QueryCompletion.Complete, "apply commits the exact draft, including a visibly retained unavailable value");
         Check(query.Scroll == 0 && query.Focus == -1 && query.SearchText == "123", "apply resets result navigation while preserving search text");
-        Check(!history.ApplyFilters(new()) && query.Filter.Season == "winter", "an apply outside the editor cannot overwrite the query");
-        history.Open(new(GalleryPage.Filters) { Filter = query.Filter with { Season = "summer" } });
+        Check(!history.ApplyFilters(new()) && query.Filter.Completion == QueryCompletion.Complete, "an apply outside the editor cannot overwrite the query");
+        history.Open(new(GalleryPage.Filters) { Filter = query.Filter with { Completion = QueryCompletion.Incomplete } });
         history.Reset();
         Check(history.Current?.Page == GalleryPage.Home && history.Count == 1, "closing and reopening the gallery discards editor history");
         Console.WriteLine("Gallery draft navigation checks passed (7 assertions).");

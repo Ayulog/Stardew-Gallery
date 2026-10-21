@@ -6,7 +6,6 @@ internal static class ReplaySceneEnvironmentResolver
 {
     internal static ReplaySceneEnvironment Resolve(
         IReadOnlyList<ConditionExpression> conditions,
-        string currentSeason,
         int currentTime,
         string currentWeather)
     {
@@ -20,8 +19,8 @@ internal static class ReplaySceneEnvironmentResolver
             switch (condition)
             {
                 case SeasonCondition { Negated: false } value when value.Seasons.Count > 0:
-                    season = value.Seasons.FirstOrDefault(candidate => candidate.Equals(currentSeason, StringComparison.OrdinalIgnoreCase))
-                        ?? value.Seasons[0];
+                    // The game only ever starts the event in the first listed season.
+                    season = value.Seasons[0];
                     break;
                 case TimeCondition { Negated: false } value:
                     bool inside = currentTime >= value.Min && currentTime <= value.Max;

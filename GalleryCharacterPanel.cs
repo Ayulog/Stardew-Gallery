@@ -24,7 +24,20 @@ internal sealed class GalleryCharacterPanel(
         appearance.Draw(b, character.Name, CharacterVisual.Sprite, photo, Color.White);
     }
 
+    // Nothing shown here can change while the page is open, so format it once instead of every frame.
+    private (string[] Lines, int Points, bool CanBeRomanced)? information;
+
     internal void DrawInformation(SpriteBatch b)
+    {
+        information ??= ReadInformation();
+        (string[] lines, int points, bool canBeRomanced) = information.Value;
+        GalleryDrawing.DrawCentered(b, character.DisplayName, GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(0)), 40));
+        DrawHearts(b, Bounds(GallerySpreadLayout.LeftRowBounds(1)), points, canBeRomanced);
+        for (int i = 0; i < lines.Length; i++)
+            GalleryDrawing.DrawCentered(b, lines[i], GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(i + 2)), 40));
+    }
+
+    private (string[] Lines, int Points, bool CanBeRomanced) ReadInformation()
     {
         Friendship? friendship = Game1.player.friendshipData.GetValueOrDefault(character.Name);
         NPC.TryGetData(character.Name, out CharacterData? data);
@@ -34,8 +47,6 @@ internal sealed class GalleryCharacterPanel(
             day = data.BirthDay
         });
         string relationship = friendship is null ? i18n.Get("status.none") : i18n.Get($"status.{friendship.Status.ToString().ToLowerInvariant()}");
-        GalleryDrawing.DrawCentered(b, character.DisplayName, GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(0)), 40));
-        DrawHearts(b, Bounds(GallerySpreadLayout.LeftRowBounds(1)), friendship?.Points ?? 0, data?.CanBeRomanced == true);
         string[] lines =
         [
             i18n.Get("detail.birthday", new { birthday }),
@@ -43,8 +54,7 @@ internal sealed class GalleryCharacterPanel(
             i18n.Get(friendship?.TalkedToToday == true ? "detail.talked" : "detail.not-talked"),
             i18n.Get("detail.seen", new { seen = events.Count(entry => Game1.player.eventsSeen.Contains(entry.EventId)), total = events.Count, relationship })
         ];
-        for (int i = 0; i < lines.Length; i++)
-            GalleryDrawing.DrawCentered(b, lines[i], GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(i + 2)), 40));
+        return (lines, friendship?.Points ?? 0, data?.CanBeRomanced == true);
     }
 
     private static void DrawHearts(SpriteBatch b, Rectangle bounds, int points, bool canBeRomanced)

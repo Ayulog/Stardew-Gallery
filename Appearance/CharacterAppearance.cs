@@ -22,6 +22,8 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     private readonly Dictionary<(string Name, CharacterVisual Kind), double> failed = [];
     private readonly HashSet<string> warnings = [];
     private long clock;
+    private Dictionary<string, NPC>? npcs;
+    private long npcsReadAt;
 
     internal CharacterAppearance(IGameContentHelper content, IModRegistry registry, IMonitor monitor, Texture2D placeholder)
     {
@@ -32,7 +34,34 @@ internal sealed class CharacterAppearance : ICharacterAppearance
 
     internal void Invalidate()
     {
-        visuals.Clear(); failed.Clear(); dialogue.Invalidate();
+        visuals.Clear(); failed.Clear(); dialogue.Invalidate(); npcs = null;
+    }
+
+    /// <summary>
+    /// Game1.getCharacterFromName walks every location (all of them for a name with no NPC). Menus prepare each
+    /// visible portrait every frame, so read all villagers in one pass and reuse it for a second.
+    /// </summary>
+    private NPC? FindNpc(string name)
+    {
+        long now = Environment.TickCount64;
+        if (npcs is null || now - npcsReadAt > 1000)
+        {
+            // Same choice as getCharacterFromName: the first match in an active location, else the last match.
+            Dictionary<string, NPC> found = new(StringComparer.Ordinal);
+            HashSet<string> active = new(StringComparer.Ordinal);
+            Utility.ForEachCharacter(npc =>
+            {
+                if (npc.IsVillager && !active.Contains(npc.Name))
+                {
+                    found[npc.Name] = npc;
+                    if (npc.currentLocation?.IsActiveLocation() == true) active.Add(npc.Name);
+                }
+                return true;
+            });
+            npcs = found;
+            npcsReadAt = now;
+        }
+        return npcs.GetValueOrDefault(name);
     }
 
     internal bool UsesAsset(IAssetName name) => name.IsEquivalentTo("Data/Characters")
@@ -59,7 +88,7 @@ internal sealed class CharacterAppearance : ICharacterAppearance
         }
         try
         {
-            NPC? npc = Game1.getCharacterFromName(name);
+            NPC? npc = FindNpc(name);
             Texture2D? original = null;
             try { original = kind == CharacterVisual.Portrait ? npc?.Portrait : npc?.Sprite?.Texture; }
             catch (Exception error) { Warn("source:" + name + kind, $"Current appearance could not be read for {name}: {error.Message}"); }
@@ -69,11 +98,23 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 original = content.Load<Texture2D>(asset);
             }
             if (original is null || original.IsDisposed) { Failed(name, kind); return; }
+            PortraitureImage? selected = null;
+            if (kind == CharacterVisual.Portrait)
+            {
+                try { selected = portraiture.Read(original); }
+                catch (Exception error)
+                {
+                    // Fall back to the regular portrait sheet before the placeholder; Portraiture is retried later.
+                    Warn("portraiture:" + name, $"Portraiture portrait unavailable for {name}; showing the regular portrait: {error.Message}");
+                    original = content.Load<Texture2D>("Portraits/" + NPC.getTextureNameForCharacter(name));
+                    if (portraiture.IsPortraiture(original)) throw;
+                    failed[key] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+                }
+            }
             string context = (npc?.LastAppearanceId ?? "") + "|" + npc?.currentLocation?.NameOrUniqueName
                 + "|" + original.Name;
             if (kind == CharacterVisual.Sprite) context += "|" + npc?.Sprite?.SpriteWidth + "|" + npc?.Sprite?.SpriteHeight;
             DetailedSprite? detailed = kind == CharacterVisual.Sprite ? scaleUp.Get(original.Name) : null;
-            PortraitureImage? selected = kind == CharacterVisual.Portrait ? portraiture.Read(original) : null;
             if (visuals.TryGetValue(key, out var cached) && ReferenceEquals(cached.Original, original)
                 && cached.Context == context && cached.Detailed == detailed && !cached.Texture.IsDisposed
                 && (selected is null || ReferenceEquals(cached.Texture, selected.Texture) && cached.Portrait == selected.Frame))

@@ -26,6 +26,17 @@ internal static class EventDefinitionChecks
         index.RegisterPack(new(bridge, "unused", new[] { original.UniqueId }));
         index.RegisterPack(new(translation, "unused", new[] { bridge.UniqueId }));
         Check(index.Match("Data/Events/Town", "42").Provider == original, "Transitive declared dependency identifies the original candidate");
+        var partial = new EventDefinitionIndex();
+        partial.RegisterPack(new(translation, "unused", new[] { original.UniqueId }));
+        partial.Add(Candidate(translation));
+        partial.Add(Candidate(unrelated, key: "43/f Abigail 500"));
+        partial.MarkIncomplete(original);
+        EventOriginMatch partialMatch = partial.Match("Data/Events/Town", "42");
+        Check(partialMatch.Provider == translation && partialMatch.Status == EventOriginMatchStatus.Incomplete && partialMatch.UnreadDependencies.Single() == original,
+            "An override found alone is incomplete evidence while the pack it builds on wasn't fully read");
+        Check(partial.Match("Data/Events/Town", "43").Status == EventOriginMatchStatus.Identified, "An unrelated incomplete pack doesn't weaken other matches");
+        partial.Add(Candidate(EventSourceActor.GameBase));
+        Check(partial.Match("Data/Events/Town", "42").Status == EventOriginMatchStatus.Identified, "Vanilla definitions never depend on a mod scan");
         index.Add(Candidate(unrelated));
         Check(index.Match("Data/Events/Town", "42").Ambiguous && index.Match("Data/Events/Town", "42").Provider is null,
             "Unrelated full definitions remain ambiguous instead of taking scan order");
@@ -138,8 +149,9 @@ internal static class EventDefinitionChecks
             Check(scanned.Match("Data/Events/Town", "unused").Status == EventOriginMatchStatus.Unknown, "Unreferenced JSON files are never indexed");
             Check(scanned.Match("Data/Events/Town", "escape").Status == EventOriginMatchStatus.Unknown, "An Include cannot escape the content-pack directory");
             Check(!scanned.AssetNames.Any(asset => asset.Contains("{{", StringComparison.Ordinal)), "Unknown target tokens never become wildcard assets");
-            Check(result.Issues.Any(issue => issue.Reason == "JsonReaderException" || issue.Reason == "JsonException")
-                && result.Issues.Any(issue => issue.Reason == "Path leaves the content pack"), "Malformed and unsafe files have explicit nonfatal scan issues");
+            Check(result.Issues.Any(issue => issue.Reason.StartsWith("JsonReaderException: ") && issue.Kind == ScanIssueKind.Unreadable && issue.Reason.Length > "JsonReaderException: ".Length)
+                && result.Issues.Any(issue => issue.Reason == "Path leaves the content pack" && issue.Kind == ScanIssueKind.Missing),
+                "Malformed files report their parser message; escaping paths are only missing references");
             Check(result.DefinitionsAdded == scanned.Count && result.FilesRead == 10, "Statistics count distinct successfully opened files and declarations");
             EventDefinitionCandidate found = scanned.Match("Data/Events/Town", "104").Candidates.Single();
             Check(found.RelativePath == "data/deeper/child.json" && found.ScriptHash == EventHashes.RootScript("child"), "Evidence stores a relative path and hash, not retained script text");
@@ -191,7 +203,7 @@ internal static class EventDefinitionChecks
                 .Scan(new(original, binaryFailurePath, Array.Empty<string>()), binaryFailureIndex);
             Check(binaryFailureIndex.Match("Data/Events/Town", "401").Provider == original
                 && binaryFailureIndex.Match("Data/Events/Town", "402").Provider == original, "An injected binary-reader exception cannot discard preceding or following definitions");
-            Check(binaryFailure.Issues.Count == 1 && binaryFailure.Issues[0].Reason == nameof(FormatException),
+            Check(binaryFailure.Issues.Count == 1 && binaryFailure.Issues[0].Reason == nameof(FormatException) + ": reader-specific exception",
                 "Binary-reader failures are isolated while obviously unrelated dynamic targets create no scan warning");
             string normalizationPath = Path.Combine(fixture, "normalization");
             Directory.CreateDirectory(normalizationPath);
@@ -218,7 +230,7 @@ internal static class EventDefinitionChecks
             Check(normalizedIndex.Match("Data/Events/Town", "501").Provider == original && normalizedIndex.Match("Data/Events/Town", "502").Provider == original,
                 "An injected JSON dialect normalizer supplies definitions and isolates a failing include");
             Check(normalizationResult.Issues.Count == 1 && normalizationResult.Issues[0].RelativePath == "failing.json"
-                && normalizationResult.Issues[0].Reason == nameof(FormatException), "Dialect parser errors identify only the failing file");
+                && normalizationResult.Issues[0].Reason == nameof(FormatException) + ": injected dialect parse failure", "Dialect parser errors identify only the failing file");
             normalizingScanner.Scan(normalizedPack, normalizedIndex);
             Check(normalizationCalls == 3, "Each file is normalized once and subsequent scans reuse hashed declarations");
             string alivePath = Path.Combine(fixture, "alive");
@@ -273,20 +285,74 @@ internal static class EventDefinitionChecks
                 "AliveNpcs content packs follow only declared scene directories and reject directory escapes");
             Check(aliveScanner.Scan(ownedPack, new(), "Unrelated.Framework").DefinitionsAdded == 0,
                 "Owned scene discovery requires the exact ContentPackFor framework ID");
-            File.WriteAllText(Path.Combine(aliveScenes, "first.json"), "changed after scan");
             Check(ReferenceEquals(aliveScanner.Scan(alivePack, aliveIndex), aliveResult), "AliveNpcs scans are cached without retaining scene scripts");
-            Write("content.json", "not JSON any longer");
+            File.WriteAllText(Path.Combine(aliveScenes, "added.json"), Scene("609", "Town"));
+            Check(aliveScanner.Scan(alivePack, new()).DefinitionsAdded == 4, "A scene added to a scanned folder triggers a rescan");
             var second = new EventDefinitionIndex();
             Check(ReferenceEquals(scanner.Scan(pack, second), result) && second.Count == scanned.Count && binaryReads == 1,
-                "Subsequent lookups reuse a one-time file scan and can populate a fresh index");
+                "Subsequent lookups reuse an unchanged file scan and can populate a fresh index");
+            Write("config.json", "{ \"Folder\": \"branches\", \"Map\": \"Forest\" }");
+            var reconfigured = new EventDefinitionIndex();
+            scanner.Scan(pack, reconfigured);
+            Check(reconfigured.Match("Data/Events/Forest", original.UniqueId + ".Event").Provider == original
+                && reconfigured.Match("Data/Events/Beach", original.UniqueId + ".Event").Status == EventOriginMatchStatus.Unknown,
+                "A changed config.json rescans the pack with its new token values");
+            Write("content.json", "not JSON any longer");
+            Check(scanner.Scan(pack, new()).DefinitionsAdded == 0, "A changed content.json is read again rather than served from cache");
             string brokenPath = Path.Combine(fixture, "broken");
             Directory.CreateDirectory(brokenPath);
             File.WriteAllText(Path.Combine(brokenPath, "content.json"), "invalid");
             EventDefinitionScanResult broken = scanner.Scan(new(unrelated, brokenPath, Array.Empty<string>()), scanned);
             Check(broken.DefinitionsAdded == 0 && broken.Issues.Count > 0 && scanned.Match("Data/Events/Town", "104").Provider == original,
                 "A broken pack cannot discard definitions from another pack");
+            CheckPackPaths(Check, original, fixture);
         }
         finally { Directory.Delete(fixture, recursive: true); }
         Console.WriteLine($"Event definition checks passed: {checks}");
+    }
+
+    /// <summary>SMAPI reads packs through directory links and, on Linux and Android, with case-insensitive paths.</summary>
+    private static void CheckPackPaths(Action<bool, string> check, EventSourceActor actor, string fixture)
+    {
+        string pack = Path.Combine(fixture, "case-pack");
+        Directory.CreateDirectory(Path.Combine(pack, "Code", "NPCs"));
+        File.WriteAllText(Path.Combine(pack, "content.json"), """{ "Changes": [{ "Action": "Include", "FromFile": "code/npcs/emily.json" }] }""");
+        File.WriteAllText(Path.Combine(pack, "Code", "NPCs", "Emily.json"),
+            """{ "Changes": [{ "Action": "EditData", "Target": "Data/Events/Town", "Entries": { "701": "case script" } }] }""");
+        var files = new PackFiles(pack, ignoreCase: true);
+        string? resolved = files.Resolve("code/npcs/emily.json", out string? problem);
+        check(problem is null && resolved == Path.Combine(files.Root, "Code", "NPCs", "Emily.json"), "Case-insensitive lookup returns the file's real casing");
+        var index = new EventDefinitionIndex();
+        EventDefinitionScanResult result = new ContentPackEventScanner(ignoreCase: true).Scan(new(actor, pack, Array.Empty<string>()), index);
+        check(result.Issues.Count == 0 && index.Match("Data/Events/Town", "701").Provider == actor, "A reference written in another case still finds its declarations");
+        check(new PackFiles(pack, ignoreCase: true).Resolve("../case-pack/content.json", out problem) is not null && problem is null
+            && new PackFiles(pack, ignoreCase: true).Resolve("../outside.json", out problem) is null && problem == "Path leaves the content pack",
+            "Case-insensitive lookup keeps the pack boundary");
+
+        string links = Path.Combine(fixture, "links");
+        Directory.CreateDirectory(links);
+        string linkedPack = Path.Combine(links, "Linked pack");
+        if (!TestLinks.TryCreate(linkedPack, pack))
+        {
+            Console.WriteLine("Linked content-pack check unavailable: could not create a directory link.");
+            return;
+        }
+        try
+        {
+            var linkedIndex = new EventDefinitionIndex();
+            EventDefinitionScanResult linked = new ContentPackEventScanner(ignoreCase: true).Scan(new(actor, linkedPack, Array.Empty<string>()), linkedIndex);
+            check(linked.Issues.Count == 0 && linkedIndex.Match("Data/Events/Town", "701").Provider == actor, "A pack deployed as a directory link is scanned like SMAPI loads it");
+            string inner = Path.Combine(pack, "Inner link");
+            if (TestLinks.TryCreate(inner, Path.Combine(pack, "Code")))
+            {
+                try
+                {
+                    check(new PackFiles(pack, ignoreCase: false).Resolve("Inner link/NPCs/Emily.json", out problem) is null && problem == "Links inside a content pack are not followed",
+                        "Links inside a pack are still refused");
+                }
+                finally { Directory.Delete(inner); }
+            }
+        }
+        finally { Directory.Delete(linkedPack); }
     }
 }

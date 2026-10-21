@@ -7,12 +7,14 @@ using StardewGallery.Appearance;
 namespace StardewGallery;
 
 internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, GalleryCatalogCache catalog,
-    GalleryPhotos photos, ReplayService replay, Func<bool> isUnlocked, Action toggleUnlock, ICharacterAppearance appearance, Func<ResolvedEvent, EventSourceDisplay> sourceDetails) : IGalleryNavigation
+    GalleryPhotos photos, ReplayService replay, Func<bool> isUnlocked, Action toggleUnlock, ICharacterAppearance appearance,
+    Func<ResolvedEvent, EventSourceDisplay> sourceDetails, EventNameStore names) : IGalleryNavigation
 {
     private readonly GalleryPageHistory history = new();
     private GalleryViewContext? view;
     private GalleryTextures? textures;
-    private EventNameStore? names;
+    private static PinyinTable? pinyin;
+    private static bool pinyinFailed;
 
     internal static bool OwnsMenu(IClickableMenu? menu) => menu is GalleryMenu or GalleryCharacterMenu or GalleryQueryMenu or GalleryEventDetailMenu or GalleryPhotoMenu or GalleryToolMenu;
 
@@ -24,33 +26,50 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
             textures ??= new(Load("assets/GalleryHome.png"), Load(GalleryUiAssets.EventAlbum), Load(GalleryUiAssets.EventDetail),
                 Load("assets/CharacterScene-day-v2.png"), Load(EventThumbnailAsset.For()), Load(GalleryUiAssets.ReplayGlyph),
                 Load(GalleryUiAssets.EventSlotFrame), Load(GalleryUiAssets.ScrollbarTrack), Load(GalleryUiAssets.ConditionStatusIcons));
-            names ??= new EventNameStore(Path.Combine(helper.DirectoryPath, "user-data"), warning => monitor.Log(warning, LogLevel.Warn));
-            view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access) { Names = names, Appearance = appearance, EventSource = sourceDetails };
+            AdoptFormerEntries(snapshot);
+            view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access)
+                { Names = names, Appearance = appearance, EventSource = sourceDetails, Pinyin = LoadPinyin() };
             history.Reset(); ShowCurrent(); Game1.playSound("bigSelect");
         }
         catch (Exception error) { monitor.Log($"Gallery open failed: {error}", LogLevel.Error); }
     }
     private Texture2D Load(string path) => helper.ModContent.Load<Texture2D>(path);
-    internal void Reset() { view = null; history.Reset(); }
 
-    internal void RefreshCatalog()
+    /// <summary>The pinyin table, read once and only for Chinese. Without it, searches still match the text itself.</summary>
+    private PinyinTable? LoadPinyin()
     {
-        if (view is null || !Context.IsWorldReady) return;
-        bool visible = OwnsMenu(Game1.activeClickableMenu);
+        if (LocalizedContentManager.CurrentLanguageCode != LocalizedContentManager.LanguageCode.zh || pinyinFailed)
+            return null;
         try
         {
-            ReleaseInput();
-            view = new(catalog.Get(), helper.Translation, textures!, photos, this, isUnlocked, replay.Access)
-                { Names = names, Appearance = appearance, EventSource = sourceDetails };
-            if (visible) ShowCurrent();
+            return pinyin ??= PinyinTable.Parse(File.ReadLines(Path.Combine(helper.DirectoryPath, "assets", "pinyin.txt")));
         }
         catch (Exception error)
         {
-            monitor.Log($"Gallery source filter refresh failed: {error}", LogLevel.Error);
-            Reset();
-            if (visible) Close();
+            // A missing or damaged table must not keep the gallery from opening.
+            pinyinFailed = true;
+            monitor.Log($"Pinyin search is off because assets/pinyin.txt could not be read: {error.Message}", LogLevel.Warn);
+            return null;
         }
     }
+
+    /// <summary>Carry photos and names from entries that 2.10.0 merged into another identity; best effort, never blocks opening.</summary>
+    private void AdoptFormerEntries(GalleryCatalog snapshot)
+    {
+        foreach ((EventIdentity current, EventIdentity former) in NativeGlobalEventCopies.FormerTrailerCopies(snapshot))
+        {
+            try
+            {
+                photos.Adopt(current, former);
+                names.Adopt(current, former);
+            }
+            catch (Exception error)
+            {
+                monitor.LogOnce($"Photos or name of {former} could not be moved to {current}; they stay where they are: {error.Message}", LogLevel.Warn);
+            }
+        }
+    }
+    internal void Reset() { view = null; history.Reset(); }
 
     public void OpenCharacter(string name)
     {
@@ -117,8 +136,8 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
         if (view is null || history.Current is not { } page || !Context.IsWorldReady) return;
         if (page.Page == GalleryPage.Album && !view.Catalog.Characters.Any(character => character.Name == page.CharacterName)
             || page.Page == GalleryPage.Prerequisite && view.Catalog.FindPrerequisite(page.PrerequisiteId!) is null) { Back(); return; }
-        // An already-open name editor may finish or cancel after exclusion removes its event.
-        // The refreshed catalog still governs every content page and replay entry point.
+        // An already-open name editor may finish or cancel after its event leaves the current catalog.
+        // The catalog still governs every content page and replay entry point.
         if (page.Page != GalleryPage.Rename && page.Event is { } identity && view.Catalog.Find(identity) is not { Kind: not StoryKind.Internal }) { Back(); return; }
         Game1.activeClickableMenu = page.Page switch
         {

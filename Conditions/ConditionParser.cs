@@ -56,19 +56,19 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
     internal ConditionExpression ParseSegment(string rawSegment)
     {
         string segment = rawSegment.Trim();
-        bool negated = false;
-        while (segment.StartsWith('!'))
-        {
-            negated = !negated;
-            segment = segment[1..].TrimStart();
-        }
         if (segment.Length == 0 || segment.Count(c => c == '"') % 2 != 0)
-            return new OpaqueCondition(OpaqueConditionKind.MalformedSyntax, null, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
+            return Malformed(rawSegment, segment.StartsWith('!'));
         string[] tokens = splitArguments(segment);
         if (tokens.Length == 0)
-            return new OpaqueCondition(OpaqueConditionKind.MalformedSyntax, null, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
+            return Malformed(rawSegment, segment.StartsWith('!'));
 
+        // Event.CheckPrecondition (1.6.15) strips a single '!' from the name token, so "!!X" and a lone "!" name no precondition.
         string head = tokens[0];
+        bool negated = head.StartsWith('!');
+        if (negated)
+            head = head[1..];
+        if (head.Length == 0 || head.StartsWith('!'))
+            return Malformed(rawSegment, negated);
         string canonical;
         if (Aliases.TryGetValue(head, out var alias))
         {
@@ -85,8 +85,6 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
         string[] args = tokens.Skip(1).ToArray();
         ConditionSource source = canonical == "GameStateQuery" ? ConditionSource.GameStateQuery : ConditionSource.LegacyEventPrecondition;
         ConditionExpression? parsed = args.Any(string.IsNullOrWhiteSpace) ? null : ParseCanonical(canonical, args, source, rawSegment, negated);
-        if (parsed is NativeQueryCondition query)
-            parsed = query with { Query = args.Length == 1 ? args[0] : segment[head.Length..].Trim() };
         return parsed ?? new OpaqueCondition(OpaqueConditionKind.MalformedKnown, canonical, ConditionSource.OpaqueEventPrecondition, rawSegment, negated);
     }
 
@@ -122,7 +120,8 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
         "Roommate" when a.Length == 0 => new RoommateCondition(s, raw, n),
         "NpcVisible" when a.Length == 1 => new NpcVisibleCondition(a[0], false, s, raw, n),
         "NpcVisibleHere" when a.Length == 1 => new NpcVisibleCondition(a[0], true, s, raw, n),
-        "Season" when Seasons(a) => new SeasonCondition(a, s, raw, n),
+        // Preconditions.Season (1.6.15) parses and compares only args[1]; later seasons never affect the result.
+        "Season" when a.Length > 0 && IsSeason(a[0]) => new SeasonCondition(a, s, raw, n),
         "SpouseBed" when a.Length == 0 => new SpouseBedCondition(s, raw, n),
         "ReachedMineBottom" when OptionalInt(a, 1, out int bottoms) => new ReachedMineBottomCondition(bottoms, s, raw, n),
         "Year" when Int(a, 0, out int year) => new YearCondition(year, s, raw, n),
@@ -132,7 +131,7 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
         "ActiveDialogueEvent" when a.Length == 1 => new ActiveDialogueEventCondition(a[0], s, raw, n),
         "DayOfMonth" when a.Length > 0 && a.All(value => TryInt(value, out _)) => new DayOfMonthCondition(a.Select(ParseInt).ToList(), s, raw, n),
         "UpcomingFestival" when Int(a, 0, out int festivalDays) => new UpcomingFestivalCondition(festivalDays, s, raw, n),
-        "GameStateQuery" when a.Length > 0 => new NativeQueryCondition(string.Join(' ', a), s, raw, n),
+        "GameStateQuery" when a.Length > 0 => new NativeQueryCondition(UnsplitQuoteAware(a), s, raw, n),
         "Skill" when a.Length == 2 && TryInt(a[1], out int skillLevel) => new SkillCondition(a[0], skillLevel, s, raw, n),
         _ => null
     };
@@ -142,10 +141,19 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
     private static bool Float(string[] a, out float value) { value = 0; return a.Length == 1 && float.TryParse(a[0], NumberStyles.Float, CultureInfo.InvariantCulture, out value); }
     private static bool TryInt(string value, out int result) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result);
     private static int ParseInt(string value) => int.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture);
-    private static bool Seasons(string[] a) => a.Length > 0 && a.All(value => value.Equals("spring", StringComparison.OrdinalIgnoreCase) || value.Equals("summer", StringComparison.OrdinalIgnoreCase) || value.Equals("fall", StringComparison.OrdinalIgnoreCase) || value.Equals("winter", StringComparison.OrdinalIgnoreCase));
+    private static bool IsSeason(string value) => value.Equals("spring", StringComparison.OrdinalIgnoreCase) || value.Equals("summer", StringComparison.OrdinalIgnoreCase) || value.Equals("fall", StringComparison.OrdinalIgnoreCase) || value.Equals("winter", StringComparison.OrdinalIgnoreCase);
     private static bool Days(string[] a, out List<DayOfWeek> values) { values = []; string[] names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; foreach (string value in a) { int index = Array.FindIndex(names, name => name.Equals(value, StringComparison.OrdinalIgnoreCase) || ((DayOfWeek)Array.IndexOf(names, name)).ToString().Equals(value, StringComparison.OrdinalIgnoreCase)); if (index < 0) return false; values.Add((DayOfWeek)index); } return values.Count > 0; }
     private static bool Tiles(string[] a, out List<TilePosition> values) { values = []; if (a.Length == 0 || a.Length % 2 != 0) return false; for (int i = 0; i < a.Length; i += 2) { if (!TryInt(a[i], out int x) || !TryInt(a[i + 1], out int y)) return false; values.Add(new(x, y)); } return true; }
     private static bool Pairs(string[] a, out List<FriendshipRequirement> values) { values = []; if (a.Length == 0 || a.Length % 2 != 0) return false; for (int i = 0; i < a.Length; i += 2) { if (!TryInt(a[i + 1], out int number)) return false; values.Add(new(a[i], number)); } return true; }
     private static bool Pairs(string[] a, out List<ShippedRequirement> values) { values = []; if (a.Length == 0 || a.Length % 2 != 0) return false; for (int i = 0; i < a.Length; i += 2) { if (!TryInt(a[i + 1], out int number)) return false; values.Add(new(a[i], number)); } return true; }
     private static OpaqueCondition Unknown(string raw, bool negated) => new(OpaqueConditionKind.UnknownType, null, ConditionSource.OpaqueEventPrecondition, raw, negated);
+    private static OpaqueCondition Malformed(string raw, bool negated) => new(OpaqueConditionKind.MalformedSyntax, null, ConditionSource.OpaqueEventPrecondition, raw, negated);
+
+    // Preconditions.GameStateQuery (1.6.15) rebuilds its query with ArgUtility.UnsplitQuoteAware(args, ' ', 1):
+    // quotes are escaped and any value containing a space is quoted again, so a fully quoted query stays one token.
+    private static string UnsplitQuoteAware(IEnumerable<string> values) => string.Join(' ', values.Select(value =>
+    {
+        string escaped = value.Replace("\"", "\\\"");
+        return escaped.Contains(' ') ? "\"" + escaped + "\"" : escaped;
+    }));
 }

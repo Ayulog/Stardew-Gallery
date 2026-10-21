@@ -145,6 +145,8 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
         else if (direction == 3) Select(selected - 1);
         else if (direction == 1) Select(selected + 1);
     }
+    // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
+    public override void populateClickableComponentList() => BuildComponents();
     public override void snapToDefaultClickableComponent() => Focus(Selected is null ? 100 : 300 + selected % 3);
     public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds) { base.gameWindowSizeChanged(oldBounds, newBounds); Layout(); }
 

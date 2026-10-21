@@ -3,6 +3,7 @@
 ## 项目与事实来源
 
 - 本仓库为 `Ayulog/Stardew-Gallery`，以 C# / SMAPI 实现星露谷剧情画廊、条件查询、剧情回放及截图封面。
+- 产品范围、功能需求和“不做”清单以 `docs/REQUIREMENTS.md` 为准；新增或删减功能先更新该文档并取得用户确认。
 - 以当前代码、`StardewGallery.csproj`、`manifest.json` 和最新发布说明为准；`docs/` 内旧任务记录与验收结论仅适用于对应版本，不能视为本次任务授权或验证结果。
 - 默认用中文沟通，维护 README 的中英文说明；保留现有命名与模块风格，长期规则写在本文件，任务进度放在对应文档。
 - 本项目及后续项目的公开作者、版权和发布署名统一为 `Ayulog`，Git 提交使用该别名与已核实的 GitHub noreply 邮箱；不得从本机账户、文件路径或旧材料中提取真实身份作为署名。
@@ -24,6 +25,9 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 
 - 仅外观逻辑修改可运行已提供的定向入口：`dotnet run --project Checks/StardewGallery.Checks.csproj -c Release -- --appearance`。
 - 两个 Checks 项目是可执行检查程序，按需使用上述 `dotnet run`；不要以 `dotnet test` 没报错代替它们。
+- Windows 上 `tools/Verify-Local.ps1 -GamePath "<游戏目录>"` 依次执行构建、两套检查、全部 SMAPI 运行时检查和打包；发布前用它做完整本地验证。
+- 素材改动后用 `tools/Optimize-Assets.ps1` 生成派生图标并无损压缩；带 C2PA 内容凭证的图片保持原样。
+- 拼音表 `assets/pinyin.txt` 只用 `tools/Generate-PinyinTable.ps1 -Readings <Unihan_Readings.txt>` 生成，不手工编辑；Unihan 版本变化时同步 `THIRD-PARTY-NOTICES.md`。
 - `.github/workflows/checks.yml` 对 PR 和 main 推送运行两套独立检查；完整 MOD 构建仍需带 SMAPI 的游戏目录，CI 通过不等于实机验收通过。
 - Release 产物位于 `bin/Release/net6.0/`；项目设置 `EnableModDeploy=false`，构建不会自动安装到游戏。
 
@@ -45,7 +49,8 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 - 事件身份包含资产与 ID；同名地点、同 ID 或演员别名的查询分组不能覆盖真实身份、原始脚本和回放地点。
 - 回放仅支持单人。保留回放期间禁止保存、备份、正常结束/跳过/异常时恢复玩家及环境的机制。
 - 原版快照不能保证恢复第三方私有状态、外部文件或任意回调；研究和验证结论要写清实际覆盖范围。
-- `config.json`、`event-photos/`、`user-data/` 为玩家数据；更新与测试必须保留它们。照片按存档区分，事件自定义名称在本机存档间共用。AI 名单排除统一使用 `config.json` 的 `EnableAiModExclusion`，默认关闭；按已授权的配置替换范围，运行时清理已废弃的 `ai-mod-exclusion.json`，不迁移其旧值。
+- `config.json`、`event-photos/`、`user-data/` 为玩家数据；更新与测试必须保留它们。照片按存档区分，事件自定义名称在本机存档间共用。
+- 画廊不联网，不补丁 SMAPI 或其他 Mod 的内部实现。AI 名单排除、运行时修改追踪已在 2.10.0 移除，不要重新引入按名单隐藏内容的功能；事件来源只做只读的静态文件匹配，用于显示和查询，不影响收录、解锁与回放。
 - 存储变更保持已有数据兼容，验证迁移、失败恢复与未来 schema 保护；使用临时数据或测试副本验证，不把真实存档用作可丢弃夹具。
 - 已删除旧历史采集、冻结回放、预览注入及 SQLite 源码和依赖；当前持久化只保留照片、名称和必要的存档身份。不要重新引入死功能，也不要删除玩家已有历史数据库。
 - GMCM、Portraiture、DDFC、Scale Up 均为可选依赖；缺失或读取失败时保留可用回退、恢复重试与日志限频，不能令基础画廊不可用。
@@ -57,7 +62,7 @@ dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -
 - 回放相关修改重点验证自然结束、跳过、启动失败和恢复异常，以及金钱、邮件、任务、已看记录、位置和时间恢复。
 - UI 修改检查受影响页面的分辨率、缩放、长文本及键鼠/手柄导航；本地化修改核对 12 语言的键和占位符。
 - 外观兼容按具体框架版本及组合验证；隔离渲染结果不能直接当作真实游戏全部组合验收。
-- 参考 `docs/RELEASE_2.5.0_STORY_TESTING.md` 中相关场景，区分历史验收和本次验证；缺少 SDK、游戏或实机条件时如实记录未验证项。
+- 参考 `docs/RELEASE_2.5.0_STORY_TESTING.md` 和最新的 `docs/RELEASE_*_ACCEPTANCE.md` 中相关场景，区分历史验收和本次验证；缺少 SDK、游戏或实机条件时如实记录未验证项。
 - 研究游戏或其他 Mod 的 DLL 时，优先看对应版本的公开源码；需要反编译时记录程序集版本、哈希和关键方法，区分直接证据与推断。
 - 游戏 DLL、其他 Mod 的 DLL 和逆向样本仅用于引用或隔离研究，不覆盖游戏原件，不随代码或发布包收录；项目正常依赖按许可和现有打包规则处理。
 

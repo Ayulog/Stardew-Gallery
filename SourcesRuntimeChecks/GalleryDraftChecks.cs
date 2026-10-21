@@ -10,7 +10,6 @@ internal static class GalleryDraftChecks
     private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
     private static Assembly mod = null!;
     private static int assertions, failures;
-    private static object nextCatalog = null!;
     private static object? activeMenu;
 
     internal static void Run(Assembly assembly, string gameDirectory)
@@ -30,7 +29,6 @@ internal static class GalleryDraftChecks
             harmony.Patch(game1.GetProperty("activeClickableMenu", Flags)!.GetMethod!, prefix: new HarmonyMethod(typeof(GalleryDraftChecks), nameof(GetActiveMenu)));
             harmony.Patch(game1.GetProperty("activeClickableMenu", Flags)!.SetMethod!, prefix: new HarmonyMethod(typeof(GalleryDraftChecks), nameof(SetActiveMenu)));
             harmony.Patch(typeof(Context).GetProperty("IsWorldReady", Flags)!.GetMethod!, prefix: new HarmonyMethod(typeof(GalleryDraftChecks), nameof(WorldReady)));
-            harmony.Patch(Type("GalleryCatalogCache").GetMethod("Get", Flags)!, prefix: new HarmonyMethod(typeof(GalleryDraftChecks), nameof(CatalogFixture)));
             harmony.Patch(Type("GalleryCharacterNames").GetConstructors(Flags).Single(ctor => !ctor.IsStatic), prefix: new HarmonyMethod(typeof(GalleryDraftChecks), nameof(CharacterFixture)));
             // The destination query is only a navigation sentinel; its rendering/search UI is outside this fixture.
             harmony.Patch(Type("GalleryQueryMenu").GetConstructors(Flags).Single(ctor => !ctor.IsStatic), prefix: new HarmonyMethod(typeof(GalleryDraftChecks), nameof(SkipGraphics)));
@@ -38,7 +36,6 @@ internal static class GalleryDraftChecks
             FilterRefresh();
             MissingSelections();
             RenameRefresh();
-            ApplicationRefresh(game1);
         }
         finally { harmony.UnpatchAll(harmony.Id); }
         Console.WriteLine($"Gallery draft runtime checks: {assertions - failures}/{assertions} passed; {failures} failed.");
@@ -53,19 +50,19 @@ internal static class GalleryDraftChecks
         object first = New("GalleryFilterMenu", view, state);
         Call(first, "Set", "npc", "Abigail");
         Call(first, "Set", "location", "Data/Events/Town");
-        Call(first, "Set", "season", "winter");
-        Set(first, "more", true); Set(first, "picker", "location"); Set(first, "returnFocus", 102);
+        Call(first, "Set", "state", "1");
+        Set(first, "picker", "location"); Set(first, "returnFocus", 102);
         object refreshed = New("GalleryFilterMenu", view, state);
         Check(Equals(Call(refreshed, "Value", "npc"), "Abigail") && Equals(Call(refreshed, "Value", "location"), "Data/Events/Town")
-            && Equals(Call(refreshed, "Value", "season"), "winter"), "unapplied filter edits survive actual menu reconstruction");
-        Check(Equals(Get(refreshed, "more"), true) && Equals(Get(refreshed, "picker"), "location") && Equals(Get(refreshed, "returnFocus"), 102),
-            "expanded filters and nested picker survive menu reconstruction");
-        Check(Get(original, "Npc") is null && Get(original, "Location") is null && Get(original, "Season") is null,
+            && Equals(Call(refreshed, "Value", "state"), "1"), "unapplied filter edits survive actual menu reconstruction");
+        Check(Equals(Get(refreshed, "picker"), "location") && Equals(Get(refreshed, "returnFocus"), 102),
+            "nested picker survives menu reconstruction");
+        Check(Get(original, "Npc") is null && Get(original, "Location") is null && Equals(Get(original, "Completion")?.ToString(), "Any"),
             "editing and refreshing never mutates the applied query filter");
-        Set(refreshed, "picker", null); Set(refreshed, "more", false);
+        Set(refreshed, "picker", null);
         Call(refreshed, "Extra");
         object reset = New("GalleryFilterMenu", view, state);
-        Check(Call(reset, "Value", "npc") is null && Call(reset, "Value", "season") is null,
+        Check(Call(reset, "Value", "npc") is null && Equals(Call(reset, "Value", "state"), "0"),
             "reset remains a draft through the next refresh");
     }
 
@@ -105,7 +102,7 @@ internal static class GalleryDraftChecks
         object view = View();
         object first = New("GalleryRenameMenu", view, state);
         Set(Get(first, "input")!, "Text", "my unsaved title");
-        Call(first, "DeselectSearch"); // GalleryApplication.RefreshCatalog releases input before replacing the menu.
+        Call(first, "DeselectSearch"); // Navigation releases input before replacing the menu.
         object refreshed = New("GalleryRenameMenu", view, state);
         Check(Equals(Get(Get(refreshed, "input")!, "Text"), "my unsaved title"), "rename text survives release/reconstruction without saving");
         Set(Get(refreshed, "input")!, "Text", ""); Call(refreshed, "DeselectSearch");
@@ -113,68 +110,9 @@ internal static class GalleryDraftChecks
         Check(Equals(Get(Get(empty, "input")!, "Text"), ""), "intentional empty rename draft survives refresh");
     }
 
-    private static void ApplicationRefresh(Type game1)
-    {
-        string directory = Path.Combine(Path.GetTempPath(), "GalleryDraftChecks-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            object names = New("EventNameStore", directory, (Action<string>)(message => throw new InvalidOperationException(message)));
-            object identity = New("EventIdentity", "Data/Events/Town", "123");
-            Call(names, "Set", identity, "saved title");
-            object view = View(); Set(view, "Names", names);
-            object catalog = FormatterServices.GetUninitializedObject(Type("GalleryCatalogCache"));
-            object replay = FormatterServices.GetUninitializedObject(Type("ReplayService"));
-            IModHelper helper = DispatchProxy.Create<IModHelper, FakeProxy>(); ((FakeProxy)(object)helper).Values["get_Translation"] = Get(view, "I18n");
-            IMonitor monitor = DispatchProxy.Create<IMonitor, FakeProxy>();
-            object app = New("GalleryApplication", helper, monitor, catalog, null, replay, (Func<bool>)(() => false), (Action)(() => { }), null, null);
-            Set(app, "view", view); Set(app, "names", names); Set(view, "Navigation", app);
-            nextCatalog = Get(view, "Catalog")!; // Fresh rules remove the target; empty live catalog is deliberate.
-            object history = Get(app, "history")!; Call(history, "Reset");
-            object query = Page("Query"); Set(query, "Scroll", 6); Set(query, "Focus", 2003); Call(history, "Open", query);
-            object detail = Page("Detail"); Set(detail, "Event", identity); Call(history, "Open", detail);
-            object rename = Page("Rename"); Set(rename, "Event", identity); Call(history, "Open", rename);
-            object menu = New("GalleryRenameMenu", view, rename);
-            Set(Get(menu, "input")!, "Text", "draft after exclusion");
-            game1.GetProperty("activeClickableMenu", Flags)!.SetValue(null, menu);
-            Call(app, "RefreshCatalog");
-            object? refreshed = game1.GetProperty("activeClickableMenu", Flags)!.GetValue(null);
-            bool retained = refreshed?.GetType() == Type("GalleryRenameMenu");
-            Check(retained && Equals(Get(Get(refreshed!, "input")!, "Text"), "draft after exclusion"),
-                "actual application refresh retains the rename editor even when its event is excluded");
-            Check(ReferenceEquals(Get(Get(app, "view")!, "Catalog"), nextCatalog) && Call(nextCatalog, "Find", identity) is null,
-                "the live catalog applies exclusion immediately while the name editor remains open");
-            Check(Equals(Call(names, "Get", identity), "saved title"), "refresh never writes the rename draft to storage");
-            if (retained)
-            {
-                Call(refreshed!, "HandleControllerBack");
-                Check(ReferenceEquals(Get(history, "Current"), query) && Equals(Get(query, "Scroll"), 6),
-                    "cancel skips excluded detail and restores the existing query without saving");
-                object fresh = Page("Rename"); Set(fresh, "Event", identity); Call(history, "Open", fresh);
-                object editor = New("GalleryRenameMenu", Get(app, "view"), fresh);
-                Check(Equals(Get(Get(editor, "input")!, "Text"), "saved title"), "cancelled rename draft is absent from a fresh editor");
-                game1.GetProperty("activeClickableMenu", Flags)!.SetValue(null, editor);
-                Set(Get(editor, "input")!, "Text", "confirmed title"); Call(editor, "Apply");
-                Check(Equals(Call(names, "Get", identity), "confirmed title") && ReferenceEquals(Get(history, "Current"), query),
-                    "explicit Save writes the edited title and returns through normal navigation");
-                fresh = Page("Rename"); Set(fresh, "Event", identity); Call(history, "Open", fresh);
-                editor = New("GalleryRenameMenu", Get(app, "view"), fresh);
-                game1.GetProperty("activeClickableMenu", Flags)!.SetValue(null, editor);
-                Call(editor, "Extra");
-                Check(Call(names, "Get", identity) is null && ReferenceEquals(Get(history, "Current"), query),
-                    "Restore Default still removes the stored name only on explicit confirmation");
-            }
-            Check(((FakeProxy)(object)monitor).Messages.Count == 0, "application refresh completes without error fallback");
-        }
-        finally
-        {
-            game1.GetProperty("activeClickableMenu", Flags)!.SetValue(null, null);
-            if (Directory.Exists(directory)) Directory.Delete(directory, true);
-        }
-    }
     private static bool GetActiveMenu(ref object? __result) { __result = activeMenu; return false; }
     private static bool SetActiveMenu(object? __0) { activeMenu = __0; return false; }
     private static bool WorldReady(ref bool __result) { __result = true; return false; }
-    private static bool CatalogFixture(ref object __result) { __result = nextCatalog; return false; }
     private static bool CharacterFixture(object __instance, object[] __args)
     {
         Set(__instance, "names", new Dictionary<string, string> { ["Abigail"] = "Abigail" });

@@ -1,6 +1,6 @@
 # 本地功能整合、B1–B11 修复及旧代码清理
 
-发布对应：本次整合纳入 [2.9.0](RELEASE_2.9.0_NOTES.md)。下文保留整合阶段 2.8.0 development 包的原始校验信息；正式 2.9.0 包以发布页的版本和 SHA256 为准。
+发布对应：本次整合纳入 [2.9.0](../RELEASE_2.9.0_NOTES.md)。下文保留整合阶段 2.8.0 development 包的原始校验信息；正式 2.9.0 包以发布页的版本和 SHA256 为准。
 
 日期：2026-10-08。基线为远端 `main` / `v2.8.0` 的 `f30e6019be8adf7ee460f70d9a7520cdae43936f`，加上任务开始时已有的本地开发功能。原有工作先保存为独立副本提交 `5039d0727348c2053ea0753cbe360214cf83c8a2`，各模块在独立副本处理后整合。
 
@@ -50,7 +50,7 @@
 | 打包正向与负向检查 | 31 个条目，仅 1 个本项目 DLL；12 语言各 533 键；8 类注入 SQLite 残留均在输出前被拒绝 |
 | 依赖及独立代码复核 | 主工程 NuGet 仅保留 ModBuildConfig 4.1.1；无 SQLite 编译引用，无失联项目 Compile 项，无删除翻译键调用 |
 
-上述 8 组运行时模式合计 214 项断言，SMAPI 加载检查另计。Checks 有一项目录符号链接夹具因本机 IOException 跳过；检查工程显示已有 NETSDK1138（.NET 6 支持周期）提示。原始日志在 `diagnostics/integration-20261008/`，命令与各夹具替代边界见 [BUILDING.md](../BUILDING.md) 和 [SourcesRuntimeChecks/README.md](../SourcesRuntimeChecks/README.md)。
+上述 8 组运行时模式合计 214 项断言，SMAPI 加载检查另计。Checks 有一项目录符号链接夹具因本机 IOException 跳过；检查工程显示已有 NETSDK1138（.NET 6 支持周期）提示。原始日志在 `diagnostics/integration-20261008/`，命令与各夹具替代边界见 [BUILDING.md](../../BUILDING.md) 和 [SourcesRuntimeChecks/README.md](../../SourcesRuntimeChecks/README.md)。
 
 已将 86 个任务变更路径写回原本地仓库（新增 10、删除 37、修改 39；文件搬迁按新增和删除分别计）。所有原有待修改／删除文件先与本地初始快照逐一核对，回写后逐文件校验一致。保留原仓库已有未提交工作；源码变更仍可在原工作区检查，没有替换其 Git 历史。
 

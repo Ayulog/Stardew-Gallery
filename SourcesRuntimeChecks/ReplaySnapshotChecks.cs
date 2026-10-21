@@ -45,7 +45,7 @@ internal static class ReplaySnapshotChecks
             var sets = SetFields.Select(name => (Name: name, Values: (ICollection<string>)Get(farmer, name)))
                 .Append((Name: "eventsSeenSinceLastLocationChange", Values: (ICollection<string>)Get(game1, "eventsSeenSinceLastLocationChange"))).ToArray();
             foreach (var entry in sets) Seed(entry.Values);
-            object snapshot = capture.Invoke(null, null)!;
+            object snapshot = capture.Invoke(null, capture.GetParameters().Length == 0 ? null : [null])!;
             foreach (var entry in sets) { entry.Values.Clear(); entry.Values.Add("ReplayOnly"); }
             restore.Invoke(snapshot, null);
             foreach (var entry in sets) CheckPair(entry.Values, entry.Name + " survives real capture/restore");
@@ -71,7 +71,7 @@ internal static class ReplaySnapshotChecks
             Put(friendships, "CASE.KEY", second);
             try
             {
-                snapshot = capture.Invoke(null, null)!;
+                snapshot = capture.Invoke(null, capture.GetParameters().Length == 0 ? null : [null])!;
                 foreach (string field in DictionaryFields)
                 {
                     object dictionary = Get(farmer, field);
@@ -101,10 +101,94 @@ internal static class ReplaySnapshotChecks
             var currentFriendships = (IReadOnlyDictionary<string, int>)Get(current, "Friendship");
             Check(currentFriendships.Count == 2 && currentFriendships["Case.Key"] == 123 && currentFriendships["CASE.KEY"] == 456
                 && !currentFriendships.ContainsKey("case.key"), "RuntimeStateReader preserves distinct friendships and lookup semantics");
+            CheckInventory((StardewValley.Farmer)farmer, capture, restore);
+            CheckProgressFlags((StardewValley.Farmer)farmer, capture, restore);
+            CheckRelationshipState(mod, (StardewValley.Farmer)farmer);
         }
         finally { harmony.UnpatchAll(harmony.Id); }
         if (failures > 0) throw new InvalidOperationException($"{failures} of {assertions} replay snapshot checks failed.");
         Console.WriteLine($"All {assertions} replay snapshot checks passed.");
+    }
+
+    /// <summary>Preconditions.Dating uses Friendship.IsDating(); Preconditions.Roommate uses hasCurrentOrPendingRoommate() (1.6.15).</summary>
+    private static void CheckRelationshipState(Assembly mod, StardewValley.Farmer farmer)
+    {
+        MethodInfo read = mod.GetType("StardewGallery.RuntimeStateReader", true)!.GetMethod("Capture", Members)!;
+        farmer.friendshipData.Clear();
+        foreach ((string npc, StardewValley.FriendshipStatus status) in new[]
+        {
+            ("Dated", StardewValley.FriendshipStatus.Dating), ("Engaged", StardewValley.FriendshipStatus.Engaged),
+            ("Married", StardewValley.FriendshipStatus.Married), ("Friend", StardewValley.FriendshipStatus.Friendly),
+            ("Divorced", StardewValley.FriendshipStatus.Divorced)
+        })
+            farmer.friendshipData[npc] = new StardewValley.Friendship { Status = status };
+        farmer.spouse = "Engaged";
+        object state = read.Invoke(null, null)!;
+        Check(((IReadOnlySet<string>)Get(state, "Dating")).SetEquals(["Dated", "Engaged", "Married"]), "D counts dating, engaged and married NPCs like the game");
+        Check(Equals(Get(state, "Roommate"), false), "an engaged spouse is not a roommate");
+        farmer.friendshipData["Krobus"] = new StardewValley.Friendship { Status = StardewValley.FriendshipStatus.Engaged, RoommateMarriage = true };
+        farmer.spouse = "Krobus";
+        Check(Equals(Get(read.Invoke(null, null)!, "Roommate"), true), "R counts a roommate before the move-in day");
+        farmer.friendshipData.Clear();
+        farmer.spouse = null;
+    }
+
+    /// <summary>Event music, warps, dialogue actions and food change these outside the event cast.</summary>
+    private static void CheckProgressFlags(StardewValley.Farmer farmer, MethodInfo capture, MethodInfo restore)
+    {
+        farmer.songsHeard.Clear(); farmer.songsHeard.Add("Before");
+        farmer.locationsVisited.Clear(); farmer.locationsVisited.Add("Town");
+        farmer.triggerActionsRun.Clear(); farmer.triggerActionsRun.Add("Fixture.Rule");
+        farmer.stats.Values.Clear(); farmer.stats.Values["stepsTaken"] = 10;
+        object snapshot = capture.Invoke(null, capture.GetParameters().Length == 0 ? null : [null])!;
+        farmer.songsHeard.Add("ReplayOnly");
+        farmer.locationsVisited.Add("Mountain");
+        farmer.triggerActionsRun.Add("Fixture.ReplayRule");
+        farmer.stats.Values["stepsTaken"] = 99; farmer.stats.Values["replayOnly"] = 1;
+        restore.Invoke(snapshot, null);
+        Check(farmer.songsHeard.SetEquals(["Before"]), "songs heard during replay music are removed");
+        Check(farmer.locationsVisited.Count == 1 && farmer.locationsVisited.Contains("Town"), "locations visited only by the replay are removed");
+        Check(farmer.triggerActionsRun.Count == 1 && farmer.triggerActionsRun.Contains("Fixture.Rule"), "trigger actions applied during replay can run again later");
+        Check(farmer.stats.Values.Count == 1 && farmer.stats.Values["stepsTaken"] == 10, "stats return to their pre-replay values");
+    }
+
+    /// <summary>Real tools with attachments; Item.getOne() copies would drop bait, tackle and ammo.</summary>
+    private static void CheckInventory(StardewValley.Farmer farmer, MethodInfo capture, MethodInfo restore)
+    {
+        // Minimal item data so constructors resolve without the content pipeline.
+        StardewValley.Game1.objectData = new Dictionary<string, StardewValley.GameData.Objects.ObjectData>
+        {
+            ["685"] = new() { Name = "Bait", DisplayName = "Bait", Type = "Basic", Category = -21, Price = 1 },
+            ["687"] = new() { Name = "Dressed Spinner", DisplayName = "Dressed Spinner", Type = "Basic", Category = -22, Price = 500 },
+            ["441"] = new() { Name = "Explosive Ammo", DisplayName = "Explosive Ammo", Type = "Basic", Category = -1, Price = 20 },
+            ["388"] = new() { Name = "Wood", DisplayName = "Wood", Type = "Basic", Category = -16, Price = 2 }
+        };
+        StardewValley.Game1.weaponData = new Dictionary<string, StardewValley.GameData.Weapons.WeaponData>
+            { ["32"] = new() { Name = "Slingshot", DisplayName = "Slingshot", Type = 4 } };
+        StardewValley.ItemRegistry.ItemTypes.Add(new StardewValley.ItemTypeDefinitions.ObjectDataDefinition());
+        StardewValley.ItemRegistry.ItemTypes.Add(new StardewValley.ItemTypeDefinitions.WeaponDataDefinition());
+        var rod = new StardewValley.Tools.FishingRod { AttachmentSlotsCount = 2 };
+        rod.attachments[0] = new StardewValley.Object("685", 25);
+        rod.attachments[1] = new StardewValley.Object("687", 1);
+        var sling = new StardewValley.Tools.Slingshot("32") { AttachmentSlotsCount = 1 };
+        sling.attachments[0] = new StardewValley.Object("441", 40);
+        var wood = new StardewValley.Object("388", 50);
+        farmer.Items.Clear();
+        farmer.Items.Add(rod); farmer.Items.Add(sling); farmer.Items.Add(wood); farmer.Items.Add(null);
+        object snapshot = capture.Invoke(null, capture.GetParameters().Length == 0 ? null : [null])!;
+        farmer.Items[0] = new StardewValley.Tools.FishingRod();
+        farmer.Items[1] = null;
+        wood.Stack = 3;
+        farmer.Items[3] = new StardewValley.Object("388", 7);
+        restore.Invoke(snapshot, null);
+        Check(ReferenceEquals(farmer.Items[0], rod) && rod.attachments[0]?.Stack == 25 && rod.attachments[1]?.Name == "Dressed Spinner",
+            "restored fishing rod is the original instance with its bait and tackle");
+        Check(ReferenceEquals(farmer.Items[1], sling) && sling.attachments[0]?.Stack == 40, "restored slingshot keeps its ammo");
+        Check(ReferenceEquals(farmer.Items[2], wood) && wood.Stack == 50, "changed stack size is restored on the original instance");
+        Check(farmer.Items[3] is null, "items added during replay are removed");
+        restore.Invoke(snapshot, null);
+        Check(ReferenceEquals(farmer.Items[0], rod) && rod.attachments[0]?.Stack == 25 && wood.Stack == 50 && farmer.Items[3] is null,
+            "repeated restore keeps the original inventory");
     }
 
     private static bool SkipGraphics() => false;

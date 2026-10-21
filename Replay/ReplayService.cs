@@ -10,6 +10,7 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
     private bool warningShown;
     private bool confirmationPending;
     private EventIdentity? activeIdentity;
+    private (ulong Game, uint Day, bool SaveReady, string? Festival)? today;
     internal bool IsBusy => coordinator.IsActive || confirmationPending;
 
     internal EventIdentity? ActiveIdentity
@@ -22,9 +23,29 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
     }
 
     internal ReplayAccess Access(GalleryEvent entry)
-        => ReplayAccessPolicy.Evaluate(entry.Kind, Game1.player?.eventsSeen.Contains(entry.EventId) == true,
+    {
+        (bool saveReady, string? festival) = Today();
+        return ReplayAccessPolicy.Evaluate(entry.Kind, Game1.player?.eventsSeen.Contains(entry.EventId) == true,
             unlockAll(), ordinaryEnabled(), protectionReady(), Context.IsMultiplayer,
-            coordinator.IsActive || confirmationPending || Game1.eventUp || Game1.CurrentEvent is not null);
+            coordinator.IsActive || confirmationPending || Game1.eventUp || Game1.CurrentEvent is not null,
+            saveFileReady: saveReady,
+            festivalLocation: festival is not null && festival.Equals(entry.LocationName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The save-folder check reads the disk and the festival check loads festival data. Pages evaluate access for every
+    /// visible entry each frame, so read both once per day; the save folder can only appear when the day ends.
+    /// </summary>
+    private (bool SaveReady, string? Festival) Today()
+    {
+        (ulong game, uint day) = (Game1.uniqueIDForThisGame, Game1.stats.DaysPlayed);
+        if (today is { } known && known.Game == game && known.Day == day)
+            return (known.SaveReady, known.Festival);
+        bool saveReady = Constants.CurrentSavePath is not null;
+        string? festival = Utility.isFestivalDay() ? Game1.whereIsTodaysFest : null;
+        today = (game, day, saveReady, festival);
+        return (saveReady, festival);
+    }
 
     internal void Request(GalleryEvent entry, Action completed)
     {
@@ -100,6 +121,7 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
 
     internal void ResetWarnings()
     {
+        today = null;
         warningShown = false;
         confirmationPending = false;
         activeIdentity = null;

@@ -9,6 +9,7 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
 {
     private EventPhotoStore? store;
     private CaptureRequest? request;
+    private bool? hiddenSkip;
     private readonly Dictionary<string, CachedTexture> thumbnails = [];
     private readonly Dictionary<string, CachedTexture> previews = [];
     private long cacheClock;
@@ -30,6 +31,12 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
 
     internal EventPhotoSet Read(EventIdentity identity) => store?.Read(identity) ?? new([], null, ReadOnly: true);
 
+    internal void Adopt(EventIdentity current, EventIdentity former)
+    {
+        if (store?.Adopt(current, former) == true)
+            ClearTextures();
+    }
+
     internal void Request(EventIdentity identity, Event playing)
     {
         if (store is not null && request is null)
@@ -48,6 +55,29 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
         if (capture is null)
             return;
         request = null;
+        try
+        {
+            CaptureWorld(batch, playing, capture);
+        }
+        finally
+        {
+            if (hiddenSkip is { } skippable)
+                capture.Event.skippable = skippable;
+            hiddenSkip = null;
+        }
+    }
+
+    /// <summary>Hide the event's skip button for the frame being photographed; it is drawn with the world.</summary>
+    internal void PrepareCapture(Event? playing)
+    {
+        if (request is null || playing is null || !ReferenceEquals(request.Event, playing) || hiddenSkip is not null)
+            return;
+        hiddenSkip = playing.skippable;
+        playing.skippable = false;
+    }
+
+    private void CaptureWorld(SpriteBatch batch, Event? playing, CaptureRequest capture)
+    {
         if (!ReferenceEquals(capture.Event, playing) || !ReferenceEquals(capture.Store, store)
             || Game1.locationRequest is not null || Game1.fadeToBlackAlpha > 0 || Game1.globalFade)
         {
@@ -64,6 +94,8 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
             // Read only the completed world pass. HUD, dialogue and gallery controls are drawn later.
             Color[] pixels = new Color[target.Width * target.Height];
             target.GetData(pixels);
+            if (Array.TrueForAll(pixels, pixel => pixel.A == 0))
+                throw new InvalidOperationException($"The bound render target ({target.Name}) holds no world image.");
             using Texture2D original = new(batch.GraphicsDevice, target.Width, target.Height);
             original.SetData(pixels);
             using Texture2D thumbnail = Reduced(batch.GraphicsDevice, pixels, target.Width, target.Height, 512, 288);
@@ -111,7 +143,8 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
         }
         catch (Exception error)
         {
-            monitor.Log($"Photo unavailable; using placeholder: {Path.GetFileName(path)}: {error.Message}", LogLevel.Warn);
+            // A missing or damaged photo is reported once per session, not on every cache refresh.
+            monitor.LogOnce($"Photo unavailable; using placeholder: {Path.GetFileName(path)}: {error.Message}", LogLevel.Warn);
         }
         cache[path] = new(texture, ++cacheClock);
         int limit = preview ? 2 : 24;

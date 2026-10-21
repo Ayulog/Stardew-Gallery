@@ -3,7 +3,12 @@ using System.Text.RegularExpressions;
 
 namespace StardewGallery;
 
-internal sealed record EventDefinitionScanIssue(string RelativePath, string Reason);
+/// <summary>
+/// Missing: a referenced path that Content Patcher couldn't load either. Limitation: something this static scan
+/// can't follow, so declarations may be missed. Unreadable: an existing file that failed to read or parse.
+/// </summary>
+internal enum ScanIssueKind { Limitation, Missing, Unreadable }
+internal sealed record EventDefinitionScanIssue(string RelativePath, string Reason, ScanIssueKind Kind = ScanIssueKind.Limitation);
 internal sealed record EventDefinitionScanResult(int FilesRead, int DefinitionsAdded, IReadOnlyList<EventDefinitionScanIssue> Issues);
 
 /// <summary>
@@ -15,28 +20,31 @@ internal sealed class ContentPackEventScanner
     private readonly Dictionary<string, CachedScan> scans = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly Func<string, string, IReadOnlyDictionary<string, string>?>? readCompiledEvents;
     private readonly Func<string, string>? normalizeJson;
+    private readonly bool ignoreCase;
 
     internal ContentPackEventScanner(Func<string, string, IReadOnlyDictionary<string, string>?>? readCompiledEvents = null,
-        Func<string, string>? normalizeJson = null)
+        Func<string, string>? normalizeJson = null, bool ignoreCase = false)
     {
         this.readCompiledEvents = readCompiledEvents;
         this.normalizeJson = normalizeJson;
+        this.ignoreCase = ignoreCase;
     }
     internal EventDefinitionScanResult Scan(EventDefinitionPack pack, EventDefinitionIndex index)
     {
         index.RegisterPack(pack);
         string cacheKey = pack.Actor.UniqueId + "\0" + pack.DirectoryPath;
-        if (!scans.TryGetValue(cacheKey, out CachedScan? scan))
+        // Reuse a pack's scan until a file it read (or looked for) changes, e.g. after a config edit or patch reload.
+        if (!scans.TryGetValue(cacheKey, out CachedScan? scan) || !scan.Files.All(file => file.IsCurrent()))
         {
-            using var reader = new PackReader(pack, readCompiledEvents, normalizeJson);
+            using var reader = new PackReader(pack, readCompiledEvents, normalizeJson, ignoreCase);
             scan = reader.Read();
-            scans.Add(cacheKey, scan);
+            scans[cacheKey] = scan;
         }
         foreach (EventDefinitionCandidate candidate in scan.Candidates) index.Add(candidate);
         return scan.Result;
     }
 
-    private sealed record CachedScan(EventDefinitionScanResult Result, IReadOnlyList<EventDefinitionCandidate> Candidates);
+    private sealed record CachedScan(EventDefinitionScanResult Result, IReadOnlyList<EventDefinitionCandidate> Candidates, IReadOnlyList<FileStamp> Files);
 
     private sealed class PackReader : IDisposable
     {
@@ -51,6 +59,7 @@ internal sealed class ContentPackEventScanner
         private readonly EventDefinitionPack pack;
         private readonly Func<string, string, IReadOnlyDictionary<string, string>?>? readCompiledEvents;
         private readonly Func<string, string>? normalizeJson;
+        private readonly PackFiles files;
         private readonly Dictionary<string, IReadOnlyDictionary<string, string>?> compiledFiles = new(PathComparer);
         private readonly Dictionary<string, JsonDocument?> documents = new(PathComparer);
         private readonly Dictionary<string, List<string>> tokens = new(StringComparer.OrdinalIgnoreCase);
@@ -62,18 +71,19 @@ internal sealed class ContentPackEventScanner
         private long bytesRead;
         private int filesRead;
 
-        internal PackReader(EventDefinitionPack pack, Func<string, string, IReadOnlyDictionary<string, string>?>? readCompiledEvents, Func<string, string>? normalizeJson)
+        internal PackReader(EventDefinitionPack pack, Func<string, string, IReadOnlyDictionary<string, string>?>? readCompiledEvents, Func<string, string>? normalizeJson, bool ignoreCase)
         {
             this.pack = pack;
             this.readCompiledEvents = readCompiledEvents;
             this.normalizeJson = normalizeJson;
+            files = new PackFiles(pack.DirectoryPath, ignoreCase);
         }
 
         internal CachedScan Read()
         {
             try
             {
-                root = Path.GetFullPath(pack.DirectoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                root = files.Root;
                 tokens["ModId"] = new() { pack.Actor.UniqueId };
                 JsonDocument? content = ReadJson("content.json");
                 if (content is not null)
@@ -82,9 +92,9 @@ internal sealed class ContentPackEventScanner
                     ReadChanges("content.json", 0);
                 }
             }
-            catch (Exception ex) when (IsReadFailure(ex)) { Issue("content.json", ex.GetType().Name); }
+            catch (Exception ex) when (IsReadFailure(ex)) { Issue("content.json", PackFiles.Describe(ex), ScanIssueKind.Unreadable); }
             EventDefinitionCandidate[] result = candidates.ToArray();
-            return new(new(filesRead, result.Length, issues.AsReadOnly()), result);
+            return new(new(filesRead, result.Length, issues.AsReadOnly()), result, files.Observed);
         }
 
         private void ReadTokens(JsonElement content)
@@ -93,6 +103,7 @@ internal sealed class ContentPackEventScanner
                 foreach (JsonProperty setting in schema.EnumerateObject())
                     if (Property(setting.Value, "Default", out JsonElement value)) SetToken(setting.Name, value);
             // Content Patcher writes this file only when a pack has configurable settings.
+            files.Observe(Path.Combine(root, "config.json"));
             if (File.Exists(Path.Combine(root, "config.json")))
             {
                 JsonDocument? config = ReadJson("config.json");
@@ -158,7 +169,7 @@ internal sealed class ContentPackEventScanner
                 if (!Property(change, "Target", out JsonElement target) || target.ValueKind != JsonValueKind.String) continue;
                 if (!CouldContainEventTarget(target.GetString()!)) continue;
                 foreach (string asset in ExpandList(target.GetString()!, null, false, relativePath)
-                    .Select(EventSourceScope.NormalizeAssetName).Where(EventDefinitionIndex.IsEventAsset))
+                    .Select(EventAssetName.Normalize).Where(EventDefinitionIndex.IsEventAsset))
                 {
                     if (!isLoad && Property(change, "Entries", out JsonElement entries)) ReadEntries(entries, asset, relativePath);
                     if (Property(change, "FromFile", out JsonElement from) && from.ValueKind == JsonValueKind.String)
@@ -200,13 +211,13 @@ internal sealed class ContentPackEventScanner
                     filesRead++;
                     // The game-specific reader can throw a framework exception which this pure module
                     // cannot reference. Limit isolation to this one callback and continue other files.
-                    try { values = readCompiledEvents(root, NormalizeRelative(relativePath)); }
-                    catch (Exception ex) { Issue(relativePath, ex.GetType().Name); return; }
+                    try { values = readCompiledEvents(root, NormalizeRelative(Path.GetRelativePath(root, path))); }
+                    catch (Exception ex) { Issue(relativePath, PackFiles.Describe(ex), ScanIssueKind.Unreadable); return; }
                     compiledFiles[path] = values;
                     if (values is null) Issue(relativePath, "Binary event dictionary could not be read");
                 }
                 catch (Exception ex) when (IsReadFailure(ex) || ex is InvalidOperationException)
-                { Issue(relativePath, ex.GetType().Name); return; }
+                { Issue(relativePath, PackFiles.Describe(ex), ScanIssueKind.Unreadable); return; }
             }
             if (values is not null)
                 foreach (KeyValuePair<string, string> entry in values)
@@ -304,14 +315,14 @@ internal sealed class ContentPackEventScanner
                     // Runtime supplies Content Patcher's own JSON dialect reader (Newtonsoft), including
                     // single-quoted strings and unquoted property names, without coupling pure checks to it.
                     try { json = normalizeJson(json); }
-                    catch (Exception ex) { Issue(relativePath, ex.GetType().Name); return null; }
+                    catch (Exception ex) { Issue(relativePath, PackFiles.Describe(ex), ScanIssueKind.Unreadable); return null; }
                 }
                 else json = EscapeLiteralStringControls(json);
                 JsonDocument document = JsonDocument.Parse(json, JsonOptions);
                 documents[path] = document;
                 return document;
             }
-            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relativePath, ex.GetType().Name); return null; }
+            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relativePath, PackFiles.Describe(ex), ScanIssueKind.Unreadable); return null; }
         }
 
         /// <summary>
@@ -370,24 +381,12 @@ internal sealed class ContentPackEventScanner
         }
         private string? ResolvePath(string relativePath)
         {
-            try
-            {
-                string normalized = relativePath.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
-                if (Path.IsPathRooted(normalized)) { Issue(relativePath, "Absolute paths are not allowed"); return null; }
-                string path = Path.GetFullPath(Path.Combine(root, normalized));
-                if (!path.StartsWith(root + Path.DirectorySeparatorChar, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                { Issue(relativePath, "Path leaves the content pack"); return null; }
-                // Check the file and each ancestor, including the pack itself, before reading anything.
-                for (string? current = path; current is not null; current = Path.GetDirectoryName(current))
-                {
-                    if (!File.Exists(current) && !Directory.Exists(current))
-                    { Issue(relativePath, "Referenced file or directory is missing"); return null; }
-                    if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                    { Issue(relativePath, "Reparse points are not followed"); return null; }
-                }
-                return path;
-            }
-            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relativePath, ex.GetType().Name); return null; }
+            string? path = files.Resolve(relativePath, out string? problem);
+            // Content Patcher can't load a missing, absolute or escaping path either; anything else may hide declarations.
+            if (path is null)
+                Issue(relativePath, problem!, problem is "Referenced file or directory is missing" or "Absolute paths are not allowed" or "Path leaves the content pack"
+                    ? ScanIssueKind.Missing : ScanIssueKind.Limitation);
+            return path;
         }
 
         private static bool CouldContainEventTarget(string rawTarget)
@@ -413,9 +412,9 @@ internal sealed class ContentPackEventScanner
         }
         private static bool IsReadFailure(Exception ex) => ex is IOException or UnauthorizedAccessException
             or JsonException or ArgumentException or NotSupportedException or System.Security.SecurityException;
-        private void Issue(string path, string reason)
+        private void Issue(string path, string reason, ScanIssueKind kind = ScanIssueKind.Limitation)
         {
-            if (issues.Count < 100 && issueKeys.Add(path + "\0" + reason)) issues.Add(new(NormalizeRelative(path), reason));
+            if (issues.Count < 100 && issueKeys.Add(path + "\0" + reason)) issues.Add(new(NormalizeRelative(path), reason, kind));
         }
         public void Dispose()
         {

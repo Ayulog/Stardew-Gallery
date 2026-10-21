@@ -5,14 +5,17 @@ namespace StardewGallery;
 // Reads only the explicitly supported game fields. Never invokes registered GSQ handlers.
 internal static class SafeQueryStateReader
 {
-    internal static bool? Read(SafeQueryClause clause, GameLocation? target)
+    /// <param name="location">Where the check runs: the event location for event preconditions, else the player's location.</param>
+    internal static bool? Read(SafeQueryClause clause, GameLocation? location)
     {
         string[] a = clause.Arguments;
         if (clause.Name == "WEATHER")
         {
-            GameLocation? location = a[0].Equals("Here", StringComparison.OrdinalIgnoreCase) ? Game1.currentLocation
-                : a[0].Equals("Target", StringComparison.OrdinalIgnoreCase) ? target ?? Game1.currentLocation : Game1.getLocationFromName(a[0]);
-            return location is null ? null : a.Skip(1).Contains(location.GetWeather().Weather, StringComparer.OrdinalIgnoreCase);
+            // GameStateQuery resolves Here to Game1.currentLocation and Target to the checked location. The game checks
+            // event preconditions after the player enters the event location, so both mean that location here.
+            GameLocation? weatherLocation = a[0].Equals("Here", StringComparison.OrdinalIgnoreCase) || a[0].Equals("Target", StringComparison.OrdinalIgnoreCase)
+                ? location : Game1.getLocationFromName(a[0]);
+            return weatherLocation is null ? null : a.Skip(1).Contains(weatherLocation.GetWeather().Weather, StringComparer.OrdinalIgnoreCase);
         }
         if (!clause.Name.StartsWith("PLAYER_", StringComparison.Ordinal) || a.Length < 2) return null;
         Farmer[]? players = a[0].ToUpperInvariant() switch

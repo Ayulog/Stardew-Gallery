@@ -5,17 +5,14 @@ using StardewGallery;
 AppearanceChecks.Run();
 if (args.Contains("--appearance")) return;
 
-EventSourceChecks.Run();
-EventSourceDetailChecks.Run();
 EventDefinitionChecks.Run();
 ModDirectoryDiscoveryChecks.Run();
 EventOriginPresentationChecks.Run();
-AiModExclusionChecks.Run();
-GallerySourceVisibilityChecks.Run();
 SourceQueryChecks.Run();
 if (args.Contains("--event-sources")) return;
 
 GallerySearchChecks.Run();
+PinyinChecks.Run();
 GalleryCorrectionChecks.Run();
 GalleryNavigationChecks.Run();
 GalleryDraftStateChecks.Run();
@@ -30,11 +27,16 @@ if (args.Contains("--benchmark-search"))
 Check(EventKey.TryGetId("75160185/f Alissa 500", out string id) && id == "75160185");
 Check(EventKey.TryGetId("mod.event/id/condition", out id) && id == "mod.event");
 Check(!EventKey.TryGetId(" /condition", out _));
+// GameLocation.checkEventPrecondition (1.6.15) uses Event.SplitPreconditions(key)[0] as-is.
+Check(EventKey.TryGetId("123 /f Abigail 500", out id) && id == "123 ", "event ID keeps the game's trailing space");
+Check(EventKey.TryGetId("/123/f Abigail 500", out id) && id == "123", "empty leading entries are skipped like the game");
+Check(EventKey.TryGetId("\"mod/event\"/f Abigail 500", out id) && id == "\"mod/event\"", "quoted slash stays inside the ID with its quotes");
+Check(!EventKey.TryGetId("-1/f Abigail 500", out _) && !EventKey.TryGetId("", out _), "-1 and empty keys never play");
 Check(EventKey.IsPlaceholderScript("speak Abigail \"You open up the XNB file hoping to find a secret, only to see this sentence. You are now disappointed.\""));
 Check(!EventKey.IsPlaceholderScript("speak Abigail real event"));
 EventIdentity normalizedIdentity = new(" Data\\Events\\Town ", " 123 ");
 Check(normalizedIdentity.AssetName == "Data/Events/Town");
-Check(normalizedIdentity.EventId == "123");
+Check(normalizedIdentity.EventId == " 123 " && normalizedIdentity.StorageEventId == "123", "identity keeps the game ID and stores the trimmed one");
 Check(normalizedIdentity == new EventIdentity("Data/Events/Town", "123"));
 Check(normalizedIdentity == new EventIdentity("data/events/town", "123"));
 Check(new EventIdentity("Data/Events/Town", "abc") != new EventIdentity("Data/Events/Town", "ABC"));
@@ -132,7 +134,9 @@ Check(filteredCandidates[0].Resolved.RootDefinitionHash == EventHashes.RootDefin
 Check(filteredCandidates[0].Resolved.RootScriptHash == EventHashes.RootScript(filteredCandidates[0].Resolved.ResolvedScript));
 ResolvedEventIndex filteredIndex = ResolvedEventIndex.Build(filteredCandidates);
 Check(filteredIndex.CurrentEvents.Single() == filteredCandidates[0].Resolved);
-Check(filteredPreconditionKey == "mod.event/id/condition");
+Check(filteredPreconditionKey is null, "a lone candidate is not probed");
+filteredCandidates[0].ProbePrecondition();
+Check(filteredPreconditionKey == "mod.event/id/condition", "the probe receives the raw key");
 EventAssetSource missingFragmentSource = new(
     "Data/Events/Missing",
     "MissingLaunch",
@@ -190,9 +194,8 @@ ResolvedEventIndex visitedIndex = ResolvedEventIndex.ReadCurrent(
 );
 Check(pipelineCalls.SequenceEqual([
     "visit:AlphaLaunch", "load:Alpha", "after:AlphaLaunch",
-    "visit:BetaLaunch", "load:Beta", "after:BetaLaunch",
-    "check:Alpha", "check:Beta"
-]));
+    "visit:BetaLaunch", "load:Beta", "after:BetaLaunch"
+]), "fragments load during the visit; lone candidates need no native check");
 Check(visitedIndex.Groups.Count == 2);
 Check(visitedIndex.CurrentEvents.Select(entry => entry.LocationName).SequenceEqual(["AlphaLaunch", "BetaLaunch"]));
 Check(visitedIndex.CurrentEvents.All(entry => entry.Fragments.Scripts.Count == 2));
@@ -331,6 +334,13 @@ ResolvedEventIndex unsafeFirst = ResolvedEventIndex.Build([
 Check(unsafeFirst.CurrentEvents.Single().LocationName == "UnsafeFirst");
 Check(unsafeFirstNativeCalls == 0);
 Check(unsafeFirst.Groups.Single().SelectionSource == ResolvedEventSelectionSource.IndeterminateFallback);
+
+int singleProbeCalls = 0;
+ResolvedEventIndex single = ResolvedEventIndex.Build([
+    Candidate("Data/Events/Town", "lone", "Only", "lone/a", "a", () => CountedMatch(() => singleProbeCalls++))
+]);
+Check(single.CurrentEvents.Single().LocationName == "Only" && singleProbeCalls == 0
+    && single.Groups.Single().SelectionSource == ResolvedEventSelectionSource.SingleCandidate, "a lone candidate is current without a native probe");
 
 ResolvedEventReader galleryReader = new(
     (_, _) => true,
@@ -789,7 +799,11 @@ Check(aliasParser.ParseSegment("localmall letter") is OpaqueCondition);
 Check(aliasParser.ParseSegment("Season") is OpaqueCondition);
 Check(aliasParser.ParseSegment("!f Alex 1000") is FriendshipCondition { Negated: true });
 Check(aliasParser.ParseSegment("!k 123") is SawEventCondition { EventIds: ["123"], Negated: false });
-Check(aliasParser.ParseSegment("!!k 123") is SawEventCondition { EventIds: ["123"], Negated: true });
+// Event.CheckPrecondition strips only one '!'; "!!k" and a lone "!" name no precondition (always false in the game).
+Check(aliasParser.ParseSegment("!!k 123") is OpaqueCondition { Kind: OpaqueConditionKind.MalformedSyntax }, "double ! is malformed");
+Check(aliasParser.ParseSegment("! k 123") is OpaqueCondition { Kind: OpaqueConditionKind.MalformedSyntax }, "detached ! is malformed");
+Check(aliasParser.ParseSegment("Season spring nonsense") is SeasonCondition { Seasons: ["spring", "nonsense"] }, "the game never parses seasons after the first");
+Check(aliasParser.ParseSegment("Season nonsense spring") is OpaqueCondition, "an invalid first season is malformed");
 Check(aliasParser.ParseSegment("F 123 1000") is OpaqueCondition);
 Check(aliasParser.ParseSegment("e 123 456") is SawEventCondition { EventIds.Count: 2 });
 Check(aliasParser.ParseSegment("f Haley 2500 Abigail 1000") is FriendshipCondition { Requirements.Count: 2 });
@@ -798,7 +812,10 @@ int quoteSplitCalls = 0;
 ConditionParser quoteParser = new(_ => [], segment => { quoteSplitCalls++; return FakeSplitArgs(segment); });
 ConditionExpression quotedGsq = quoteParser.ParseSegment("GameStateQuery \"SEASON Spring\"");
 Check(quoteSplitCalls == 1, "quote parser must invoke injected splitArguments");
-Check(quotedGsq is NativeQueryCondition { Query: "SEASON Spring" }, "quoted query unquoted");
+// Preconditions.GameStateQuery re-quotes it with ArgUtility.UnsplitQuoteAware, so GSQ sees one unknown query name.
+Check(quotedGsq is NativeQueryCondition { Query: "\"SEASON Spring\"" }, "quoted query keeps the game's quotes");
+Check(quoteParser.ParseSegment("G PLAYER_HAS_MAIL Current \"a b\"") is NativeQueryCondition { Query: "PLAYER_HAS_MAIL Current \"a b\"" },
+    "an argument with a space is re-quoted like UnsplitQuoteAware");
 Check(quotedGsq.RawSegment == "GameStateQuery \"SEASON Spring\"", "raw segment preserved verbatim");
 
 Check(aliasParser.ParseSegment("Time 1800") is OpaqueCondition, "Time missing max");
@@ -1174,6 +1191,15 @@ foreach (string? nativeResult in new string?[] { null, "", "-1" })
         "2.0.4 native false mapping");
 string[] localeFiles = Directory.GetFiles(i18nDirectory, "*.json");
 Check(localeFiles.Length == 12, "all 12 official locale files present");
+var placeholderPattern = new System.Text.RegularExpressions.Regex(@"\{\{\s*(\w+)\s*\}\}");
+string[] Placeholders(string text) => placeholderPattern.Matches(text).Select(match => match.Groups[1].Value).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+foreach (string localeFile in localeFiles)
+{
+    Dictionary<string, string> translated = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(localeFile))!;
+    Check(translated.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(defaultLocale.Keys), "locale keys match default.json: " + Path.GetFileName(localeFile));
+    Check(translated.All(pair => Placeholders(pair.Value).SequenceEqual(Placeholders(defaultLocale[pair.Key]))),
+        "locale placeholders match default.json: " + Path.GetFileName(localeFile));
+}
 foreach (string localeFile in localeFiles)
 {
     using var localeJson = System.Text.Json.JsonDocument.Parse(File.ReadAllText(localeFile));
@@ -1234,29 +1260,30 @@ Check(p6Current.RootScript != p6CandidateB.ResolvedScript, "P6-B candidate B scr
 ConditionParser sceneParser = new(key => key.Split('/', StringSplitOptions.RemoveEmptyEntries), FakeSplitArgs);
 ReplaySceneEnvironment scene = ReplaySceneEnvironmentResolver.Resolve(
     sceneParser.ParseRawKey("200/SEASON summer fall/TIME 1800 2400/WEATHER rainy").Conditions,
-    "spring", 900, "Storm");
-Check(scene.Season == "summer", "2.0.1 scene picks first allowed season when current is disallowed");
+    900, "Storm");
+Check(scene.Season == "summer", "2.0.1 scene picks the first listed season");
 Check(scene.Time == 1800, "2.0.1 scene picks minimum time when current is outside range");
 Check(scene.Weather == "Storm", "2.0.1 rainy keeps current storm");
 ReplaySceneEnvironment keptScene = ReplaySceneEnvironmentResolver.Resolve(
     sceneParser.ParseRawKey("201/SEASON summer fall/TIME 800 1200/WEATHER sunny").Conditions,
-    "fall", 900, "Rain");
-Check(keptScene.Season == "fall" && keptScene.Time == 900 && keptScene.Weather == "Sun", "2.0.1 scene keeps valid season/time and normalizes sun");
+    900, "Rain");
+// Preconditions.Season (1.6.15) checks only the first season, so the event never starts in fall.
+Check(keptScene.Season == "summer" && keptScene.Time == 900 && keptScene.Weather == "Sun", "2.10.0 scene uses the game's first season; keeps valid time and normalizes sun");
 ReplaySceneEnvironment safeScene = ReplaySceneEnvironmentResolver.Resolve(
     sceneParser.ParseRawKey("202/!SEASON winter/!TIME 600 900/WEATHER CustomWeather").Conditions,
-    "spring", 1200, "Sun");
+    1200, "Sun");
 Check(safeScene.Season is null && safeScene.Time is null && safeScene.Weather is null && safeScene.Warning is not null,
     "2.0.1 negative requirements are ignored and custom weather warns");
 
 foreach (string weather in new[] { "Sun", "Rain", "Storm", "Snow", "Wind", "GreenRain" })
 {
     ReplaySceneEnvironment vanillaScene = ReplaySceneEnvironmentResolver.Resolve(
-        sceneParser.ParseRawKey("203/WEATHER " + weather).Conditions, "summer", 900, "Sun");
+        sceneParser.ParseRawKey("203/WEATHER " + weather).Conditions, 900, "Sun");
     Check(vanillaScene.Weather == weather && vanillaScene.Warning is null,
         "P2 scene accepts vanilla weather " + weather);
 }
 ReplaySceneEnvironment greenRainScene = ReplaySceneEnvironmentResolver.Resolve(
-    sceneParser.ParseRawKey("204/WEATHER rainy").Conditions, "summer", 900, "GreenRain");
+    sceneParser.ParseRawKey("204/WEATHER rainy").Conditions, 900, "GreenRain");
 Check(greenRainScene.Weather == "GreenRain" && greenRainScene.Warning is null,
     "P2 rainy retains already-satisfying green rain");
 Console.WriteLine("Stardew Gallery checks passed.");

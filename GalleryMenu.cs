@@ -69,7 +69,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         scrollbarTrackTexture = context.Textures.Scrollbar;
         isUnlocked = context.IsUnlocked;
         search = new GalleryTextBox();
-        search.OnEnterPressed += _ => OpenFirstMatch();
+        search.OnEnterPressed += _ => FinishSearch();
         search.Text = state.SearchText;
         RecalculateLayout();
         RefreshFilter();
@@ -138,8 +138,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         }
         if (searchBounds.Contains(x, y))
         {
-            if (GallerySearchInputGuard.Ready)
-                search.SelectMe();
+            GalleryTextBox.SelectForInput(search);
             return;
         }
         DeselectSearch();
@@ -212,7 +211,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         base.receiveKeyPress(key);
         RefreshFilter();
         if (key == Keys.Enter)
-            OpenFirstMatch();
+            OpenFocused();
     }
 
     public void HandleControllerBack()
@@ -252,6 +251,9 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         else base.receiveGamePadButton(button);
     }
 
+    // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
+    public override void populateClickableComponentList() => BuildClickableComponents();
+
     public override void snapToDefaultClickableComponent()
     {
         currentlySnappedComponent = confirming
@@ -274,7 +276,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         DrawButton(b, queryBounds, i18n.Get("query.open"));
         search.Draw(b);
         if (search.Text.Length == 0 && !search.Selected)
-            DrawLeftFitted(b, i18n.Get(GallerySearchInputGuard.Ready ? "home.search" : "home.search-unavailable"),
+            DrawLeftFitted(b, i18n.Get("home.search"),
                 new Rectangle(searchBounds.X + 12, searchBounds.Y + 8, searchBounds.Width - 24, searchBounds.Height - 16));
 
         int first = scrollRow * Columns;
@@ -361,7 +363,7 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
             validatedSearchText = search.Text;
         }
         bool changed = searchFilter.Update(catalog, search.Text, i18n.Locale,
-            LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.zh);
+            LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.zh, context.Pinyin);
         filtered = searchFilter.Results;
         if (!changed)
             return;
@@ -370,14 +372,26 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         BuildClickableComponents();
     }
 
-    public void OpenFirstMatch()
+    public void FinishSearch()
     {
         RefreshFilter();
-        GalleryCharacter? character = filtered.FirstOrDefault();
-        if (character is null || !character.IsMet && !isUnlocked())
+        DeselectSearch();
+        // Show the matching characters with the first one focused; a second Enter or A opens it.
+        currentlySnappedComponent = cardComponents.FirstOrDefault() ?? searchComponent;
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
+    }
+
+    /// <summary>Enter outside the search box opens the focused character, or the first one when nothing is focused.</summary>
+    private void OpenFocused()
+    {
+        int slot = currentlySnappedComponent is { myID: >= 0 and < Columns * VisibleRows } focused ? focused.myID : 0;
+        if (scrollRow * Columns + slot >= ResultCount)
             return;
-        scrollRow = 0;
-        SaveState(0);
+        GalleryCharacter character = filtered[scrollRow * Columns + slot];
+        if (!character.IsMet && !isUnlocked())
+            return;
+        SaveState(slot);
         DeselectSearch();
         context.Navigation.OpenCharacter(character.Name);
     }

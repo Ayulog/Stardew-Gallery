@@ -221,7 +221,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
                 && (focus.Action == EventCardAction.Replay || !IsReplayAvailable(events[focus.EventIndex])))
         {
             lastCardFocus = focus;
-            currentlySnappedComponent = allClickableComponents.First(component => component.myID == BackComponentId);
+            currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == BackComponentId) ?? currentlySnappedComponent;
             SnapCurrent();
             return;
         }
@@ -242,6 +242,9 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target.GetComponentId(CardComponentBase));
         SnapCurrent();
     }
+
+    // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
+    public override void populateClickableComponentList() => BuildClickableComponents();
 
     public override void snapToDefaultClickableComponent()
     {

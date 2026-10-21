@@ -15,7 +15,8 @@ internal static class RuntimeStateReader
         {
             Friendship? value = player.friendshipData[npc];
             friendship[npc] = value?.Points ?? 0;
-            if (value?.Status == FriendshipStatus.Dating)
+            // Preconditions.Dating (1.6.15) uses IsDating(), which also counts engaged and married NPCs.
+            if (value?.IsDating() == true)
             {
                 dating.Add(npc);
             }
@@ -34,7 +35,8 @@ internal static class RuntimeStateReader
             HostOrLocalMail: player.mailReceived?.Concat(host.mailReceived ?? []).ToHashSet(StringComparer.Ordinal),
             Dating: dating,
             Spouse: string.IsNullOrEmpty(player.spouse) ? new HashSet<string>(StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal) { player.spouse },
-            Roommate: player.hasRoommate(),
+            // Preconditions.Roommate counts a pending roommate, before the move-in day.
+            Roommate: player.hasCurrentOrPendingRoommate(),
             WorldState: Game1.worldStateIDs is null ? null : new HashSet<string>(Game1.worldStateIDs, StringComparer.Ordinal),
             IsRaining: null);
     }

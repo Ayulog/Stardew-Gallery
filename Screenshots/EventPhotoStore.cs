@@ -9,9 +9,12 @@ internal sealed record EventPhotoSet(IReadOnlyList<EventPhoto> Photos, string? C
 
 internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Action<string> warn)
 {
+    /// <summary>Earlier catalogs kept per event in <c>archive/</c>; removed photos there are never deleted.</summary>
+    internal const int MaxIndexBackups = 5;
     private readonly string directory = Path.Combine(Path.GetFullPath(root),
         profile.FarmUniqueId.ToString("X16", CultureInfo.InvariantCulture) + "-" + profile.PlayerUniqueId.ToString("X16", CultureInfo.InvariantCulture));
     private readonly Dictionary<EventIdentity, EventPhotoSet> sets = [];
+    private readonly Dictionary<EventIdentity, string> directories = [];
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     internal EventPhotoSet Read(EventIdentity identity)
@@ -50,9 +53,20 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         string id = Guid.NewGuid().ToString("N");
         EventPhoto photo = new(id, DateTimeOffset.UtcNow, dimensions.Width, dimensions.Height);
         Directory.CreateDirectory(EventDirectory(identity));
-        WriteNew(ImagePath(identity, id), image);
-        WriteNew(ImagePath(identity, id, thumbnail: true), thumbnail);
-        Commit(identity, new(old.Photos.Append(photo).ToArray(), old.Photos.Count == 0 ? id : old.CoverId));
+        string imagePath = ImagePath(identity, id), thumbnailPath = ImagePath(identity, id, thumbnail: true);
+        try
+        {
+            WriteNew(imagePath, image);
+            WriteNew(thumbnailPath, thumbnail);
+            Commit(identity, new(old.Photos.Append(photo).ToArray(), old.Photos.Count == 0 ? id : old.CoverId));
+        }
+        catch
+        {
+            // An uncommitted photo has no catalog entry; don't leave its new files behind.
+            foreach (string path in new[] { imagePath, thumbnailPath })
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
+            throw;
+        }
         return photo;
     }
 
@@ -86,6 +100,52 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         }
     }
 
+    /// <summary>
+    /// Move a retired entry's photos into its current identity. Images are copied before the merged catalog is
+    /// committed, and only then is the old catalog retired; photo IDs are unique, so an interrupted move resumes
+    /// without duplicates. The old images stay on disk.
+    /// </summary>
+    internal bool Adopt(EventIdentity current, EventIdentity former)
+    {
+        string formerIndex = Path.Combine(EventDirectory(former), "index.json");
+        if (current == former || !File.Exists(formerIndex))
+            return false;
+        EventPhotoSet source = Read(former), target = Read(current);
+        if (source.ReadOnly || target.ReadOnly)
+            return false;
+        EventPhoto[] added = source.Photos.Where(photo => target.Photos.All(existing => existing.Id != photo.Id)).ToArray();
+        if (added.Length > 0)
+        {
+            List<string> copied = [];
+            try
+            {
+                Directory.CreateDirectory(EventDirectory(current));
+                foreach (EventPhoto photo in added)
+                foreach (bool thumbnail in new[] { false, true })
+                {
+                    string from = ImagePath(former, photo.Id, thumbnail), to = ImagePath(current, photo.Id, thumbnail);
+                    if (!File.Exists(from) || File.Exists(to))
+                        continue;
+                    File.Copy(from, to);
+                    copied.Add(to);
+                }
+                Commit(current, new(target.Photos.Concat(added).ToArray(), target.CoverId ?? source.CoverId));
+            }
+            catch
+            {
+                foreach (string path in copied)
+                    try { File.Delete(path); } catch { }
+                throw;
+            }
+        }
+        // Retire the old catalog so photos archived later don't return from it.
+        string archive = Path.Combine(EventDirectory(former), "archive");
+        Directory.CreateDirectory(archive);
+        File.Move(formerIndex, Path.Combine(archive, $"index-adopted-{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.json"));
+        sets.Remove(former);
+        return true;
+    }
+
     internal string ImagePath(EventIdentity identity, string id, bool thumbnail = false)
     {
         if (!Guid.TryParseExact(id, "N", out _))
@@ -93,8 +153,13 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         return Path.Combine(EventDirectory(identity), id + (thumbnail ? ".thumb.png" : ".png"));
     }
 
+    // Covers are looked up while drawing, so hash each event's folder name once.
     internal string EventDirectory(EventIdentity identity)
-        => Path.Combine(directory, EventHashes.RootScript(JsonSerializer.Serialize(new[] { identity.AssetName.ToUpperInvariant(), identity.EventId })));
+    {
+        if (!directories.TryGetValue(identity, out string? path))
+            directories[identity] = path = Path.Combine(directory, EventHashes.RootScript(JsonSerializer.Serialize(new[] { identity.AssetName.ToUpperInvariant(), identity.StorageEventId })));
+        return path;
+    }
 
     internal static (int Width, int Height) ValidatePng(Stream image)
     {
@@ -141,13 +206,29 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         string temporary = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".tmp");
         WriteNew(temporary, JsonSerializer.SerializeToUtf8Bytes(new PhotoDocument
         {
-            AssetName = identity.AssetName, EventId = identity.EventId, CoverId = set.CoverId, Photos = set.Photos.ToList()
+            AssetName = identity.AssetName, EventId = identity.StorageEventId, CoverId = set.CoverId, Photos = set.Photos.ToList()
         }, JsonOptions));
         if (File.Exists(path))
+        {
             File.Replace(temporary, path, Path.Combine(archive, $"index-{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.json"));
+            TrimIndexBackups(archive);
+        }
         else
             File.Move(temporary, path);
         sets[identity] = set;
+    }
+
+    private void TrimIndexBackups(string archive)
+    {
+        try
+        {
+            // Timestamped names sort by age; a catalog retired by adoption is kept.
+            foreach (string old in Directory.EnumerateFiles(archive, "index-*.json")
+                .Where(path => !Path.GetFileName(path).StartsWith("index-adopted-", StringComparison.Ordinal))
+                .OrderByDescending(Path.GetFileName, StringComparer.Ordinal).Skip(MaxIndexBackups))
+                File.Delete(old);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { warn("Old photo catalog backups could not be removed: " + error.Message); }
     }
 
     private static void WriteNew(string path, byte[] bytes)

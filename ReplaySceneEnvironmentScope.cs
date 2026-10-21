@@ -7,26 +7,31 @@ namespace StardewGallery;
 
 internal sealed class ReplaySceneEnvironmentScope : IDisposable
 {
+    private readonly GameLocation location;
     private readonly string contextId;
     private readonly string originalSeason;
+    private readonly Color originalEveningColor;
     private readonly int originalTime;
     private readonly WeatherSnapshot originalWeather;
     private bool seasonChanged;
     private bool timeChanged;
     private bool weatherChanged;
     private bool restored;
+    private IMonitor? monitor;
 
     private ReplaySceneEnvironmentScope(GameLocation location)
     {
+        this.location = location;
         contextId = location.GetLocationContextId();
         originalSeason = Game1.currentSeason;
+        originalEveningColor = Game1.eveningColor;
         originalTime = Game1.timeOfDay;
         originalWeather = WeatherSnapshot.Capture(Game1.netWorldState.Value.GetWeatherForLocation(contextId));
     }
 
     internal static ReplaySceneEnvironmentScope Apply(GameLocation location, ReplaySceneEnvironment environment, IMonitor monitor)
     {
-        ReplaySceneEnvironmentScope scope = new(location);
+        ReplaySceneEnvironmentScope scope = new(location) { monitor = monitor };
         scope.TryApply("季节", () => scope.ApplySeason(environment.Season), monitor);
         scope.TryApply("时间", () => scope.ApplyTime(environment.Time), monitor);
         scope.TryApply("天气", () => scope.ApplyWeather(environment.Weather), monitor);
@@ -38,20 +43,23 @@ internal sealed class ReplaySceneEnvironmentScope : IDisposable
         if (restored)
             return;
         restored = true;
+        // Failures writing the original values are restore failures. Failures refreshing the screen,
+        // clock or music afterwards leave the restored values intact and are only logged.
         List<Exception> errors = [];
         TryRestore(() =>
         {
             if (!seasonChanged)
                 return;
             Game1.currentSeason = originalSeason;
-            Game1.setGraphicsForSeason();
+            Game1.eveningColor = originalEveningColor;
+            Refresh("季节画面", () => location.updateSeasonalTileSheets());
         }, errors);
         TryRestore(() =>
         {
             if (!timeChanged)
                 return;
             Game1.timeOfDay = originalTime;
-            RefreshClock();
+            Refresh("时钟", RefreshClock);
         }, errors);
         TryRestore(() =>
         {
@@ -59,10 +67,20 @@ internal sealed class ReplaySceneEnvironmentScope : IDisposable
                 return;
             originalWeather.Apply(Game1.netWorldState.Value.GetWeatherForLocation(contextId));
             SyncDefaultWeather(contextId, originalWeather);
-            RefreshWeather(originalWeather.IsDebrisWeather);
+            Refresh("天气画面", () => RefreshWeather(originalWeather.IsDebrisWeather));
         }, errors);
         if (errors.Count > 0)
             throw new AggregateException("回放演出环境恢复失败。", errors);
+    }
+
+    private void Refresh(string label, Action refresh)
+    {
+        try { refresh(); }
+        catch (Exception error)
+        {
+            try { monitor?.Log($"回放演出环境的{label}刷新失败；原始数值已恢复。\n{error}", LogLevel.Warn); }
+            catch { }
+        }
     }
 
     public void Dispose()
@@ -76,8 +94,11 @@ internal sealed class ReplaySceneEnvironmentScope : IDisposable
         if (string.IsNullOrWhiteSpace(season) || season.Equals(Game1.currentSeason, StringComparison.OrdinalIgnoreCase))
             return;
         seasonChanged = true;
+        // Only the scene's appearance changes. Game1.setGraphicsForSeason() would run every location's
+        // seasonUpdate, clearing out-of-season fruit, fertilizer, forage and weeds in the real world.
         Game1.currentSeason = season;
-        Game1.setGraphicsForSeason();
+        Game1.eveningColor = Game1.season == Season.Winter ? new Color(245, 225, 170) : new Color(255, 255, 0);
+        location.updateSeasonalTileSheets();
     }
 
     private void ApplyTime(int? time)

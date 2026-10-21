@@ -87,11 +87,12 @@ internal sealed class ConditionEvaluator(Func<string, bool>? checkNativeQuery = 
     {
         if (context.Season is null)
             return Unknown(leaf, ConditionKnowledge.MissingData);
-        bool matches = leaf.Seasons.Contains(context.Season, StringComparer.OrdinalIgnoreCase);
+        // Like the game, only the first listed season counts.
+        bool matches = leaf.Seasons[0].Equals(context.Season, StringComparison.OrdinalIgnoreCase);
         return matches
             ? Known(leaf, ConditionTruth.True, NoGap)
             : Known(leaf, ConditionTruth.False,
-                new ConditionGap(ConditionGapKind.MissingState, Target: string.Join(' ', leaf.Seasons), Current: context.Season));
+                new ConditionGap(ConditionGapKind.MissingState, Target: leaf.Seasons[0], Current: context.Season));
     }
 
     private ConditionEvaluation EvaluateDayOfMonth(DayOfMonthCondition leaf, ConditionEvaluationContext context)

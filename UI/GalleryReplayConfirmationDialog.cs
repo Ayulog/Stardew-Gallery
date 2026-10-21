@@ -91,12 +91,7 @@ internal sealed class GalleryReplayConfirmationDialog : ConfirmationDialog
         if (finished) return;
         EnsureLayout();
         if (button == Buttons.B) { cancel(); return; }
-        if (button == Buttons.A)
-        {
-            Rectangle target = (currentlySnappedComponent ?? cancelButton).bounds;
-            receiveLeftClick(target.Center.X, target.Center.Y);
-            return;
-        }
+        // Game1 turns A into a click at the cursor (snapped in snappy mode), so both cursor modes confirm what is pointed at.
         base.receiveGamePadButton(button);
     }
 

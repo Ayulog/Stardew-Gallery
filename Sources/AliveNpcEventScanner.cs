@@ -14,10 +14,15 @@ internal sealed class AliveNpcEventScanner
     private const long MaxFileBytes = 16 * 1024 * 1024;
     private const long MaxTotalBytes = 128 * 1024 * 1024;
     private readonly Func<string, string>? normalizeJson;
+    private readonly bool ignoreCase;
     private readonly Dictionary<string, ScanCache> scans = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private static readonly JsonDocumentOptions JsonOptions = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
 
-    internal AliveNpcEventScanner(Func<string, string>? normalizeJson = null) => this.normalizeJson = normalizeJson;
+    internal AliveNpcEventScanner(Func<string, string>? normalizeJson = null, bool ignoreCase = false)
+    {
+        this.normalizeJson = normalizeJson;
+        this.ignoreCase = ignoreCase;
+    }
 
     internal EventDefinitionScanResult Scan(EventDefinitionPack pack, EventDefinitionIndex index, string? contentPackFor = null)
     {
@@ -26,10 +31,11 @@ internal sealed class AliveNpcEventScanner
             return new(0, 0, Array.Empty<EventDefinitionScanIssue>());
         index.RegisterPack(pack);
         string key = pack.Actor.UniqueId + "\0" + pack.DirectoryPath + "\0" + isCore;
-        if (!scans.TryGetValue(key, out ScanCache? scan))
+        // Reuse a pack's scan until a file or scene folder it read changes.
+        if (!scans.TryGetValue(key, out ScanCache? scan) || !scan.Files.All(file => file.IsCurrent()))
         {
             scan = Read(pack, isCore);
-            scans.Add(key, scan);
+            scans[key] = scan;
         }
         foreach (EventDefinitionCandidate candidate in scan.Candidates) index.Add(candidate);
         return scan.Result;
@@ -42,14 +48,15 @@ internal sealed class AliveNpcEventScanner
         HashSet<string> directories = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         int filesRead = 0, entriesVisited = 0;
         long bytesRead = 0;
+        var files = new PackFiles(pack.DirectoryPath, ignoreCase);
         string root = string.Empty;
-        void Issue(string path, string reason)
+        void Issue(string path, string reason, ScanIssueKind kind = ScanIssueKind.Limitation)
         {
-            if (issues.Count < 100) issues.Add(new(path.Replace('\\', '/'), reason));
+            if (issues.Count < 100) issues.Add(new(path.Replace('\\', '/'), reason, kind));
         }
         try
         {
-            root = Path.GetFullPath(pack.DirectoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            root = files.Root;
             if (isCore) ScanDirectory("assets/scene_events");
             else
             {
@@ -65,8 +72,8 @@ internal sealed class AliveNpcEventScanner
                 }
             }
         }
-        catch (Exception ex) when (IsReadFailure(ex)) { Issue(isCore ? "assets/scene_events" : "alive-npcs-ec.json", ex.GetType().Name); }
-        return new(new(filesRead, candidates.Count, issues.AsReadOnly()), candidates.ToArray());
+        catch (Exception ex) when (IsReadFailure(ex)) { Issue(isCore ? "assets/scene_events" : "alive-npcs-ec.json", PackFiles.Describe(ex), ScanIssueKind.Unreadable); }
+        return new(new(filesRead, candidates.Count, issues.AsReadOnly()), candidates.ToArray(), files.Observed);
 
         void ScanDirectory(string relative)
         {
@@ -75,20 +82,11 @@ internal sealed class AliveNpcEventScanner
 
         bool SafePath(string relative, out string fullPath)
         {
-            fullPath = string.Empty;
-            try
-            {
-                string normalized = relative.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
-                if (Path.IsPathRooted(normalized)) { Issue(relative, "Absolute paths are not allowed"); return false; }
-                fullPath = Path.GetFullPath(Path.Combine(root, normalized));
-                if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                { Issue(relative, "Path leaves the content pack"); return false; }
-                for (string? path = fullPath; path is not null; path = Path.GetDirectoryName(path))
-                    if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-                    { Issue(relative, "Reparse points are not followed"); return false; }
-                return true;
-            }
-            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relative, ex.GetType().Name); return false; }
+            fullPath = files.Resolve(relative, out string? problem) ?? string.Empty;
+            if (problem is not null)
+                Issue(relative, problem, problem is "Referenced file or directory is missing" or "Absolute paths are not allowed" or "Path leaves the content pack"
+                    ? ScanIssueKind.Missing : ScanIssueKind.Limitation);
+            return problem is null;
         }
 
         void ReadDirectory(string directory, int depth)
@@ -96,6 +94,8 @@ internal sealed class AliveNpcEventScanner
             string relativeDirectory = Path.GetRelativePath(root, directory);
             if (depth > MaxDepth) { Issue(relativeDirectory, "Scene directory depth limit exceeded"); return; }
             if (!directories.Add(directory)) return;
+            // A folder's write time changes when scenes are added, removed or renamed in it.
+            files.Observe(directory);
             try
             {
                 foreach (string path in Directory.EnumerateFileSystemEntries(directory).Take(MaxFiles + 1).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
@@ -105,20 +105,21 @@ internal sealed class AliveNpcEventScanner
                     try
                     {
                         FileAttributes attributes = File.GetAttributes(path);
-                        if ((attributes & FileAttributes.ReparsePoint) != 0) { Issue(relative, "Reparse points are not followed"); continue; }
+                        if ((attributes & FileAttributes.ReparsePoint) != 0) { Issue(relative, "Links inside a content pack are not followed"); continue; }
                         if ((attributes & FileAttributes.Directory) != 0) ReadDirectory(path, depth + 1);
                         else if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase)) ReadScene(path, relative);
                     }
-                    catch (Exception ex) when (IsReadFailure(ex)) { Issue(relative, ex.GetType().Name); }
+                    catch (Exception ex) when (IsReadFailure(ex)) { Issue(relative, PackFiles.Describe(ex), ScanIssueKind.Unreadable); }
                 }
             }
-            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relativeDirectory, ex.GetType().Name); }
+            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relativeDirectory, PackFiles.Describe(ex), ScanIssueKind.Unreadable); }
         }
 
         JsonDocument? ReadJson(string path, string relative)
         {
             try
             {
+                files.Observe(path);
                 long length = new FileInfo(path).Length;
                 if (length > MaxFileBytes || bytesRead + length > MaxTotalBytes) { Issue(relative, "Scene JSON size limit exceeded"); return null; }
                 bytesRead += length;
@@ -128,11 +129,11 @@ internal sealed class AliveNpcEventScanner
                 if (normalizeJson is not null)
                 {
                     try { json = normalizeJson(json); }
-                    catch (Exception ex) { Issue(relative, ex.GetType().Name); return null; }
+                    catch (Exception ex) { Issue(relative, PackFiles.Describe(ex), ScanIssueKind.Unreadable); return null; }
                 }
                 return JsonDocument.Parse(json, JsonOptions);
             }
-            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relative, ex.GetType().Name); return null; }
+            catch (Exception ex) when (IsReadFailure(ex)) { Issue(relative, PackFiles.Describe(ex), ScanIssueKind.Unreadable); return null; }
         }
 
         void ReadScene(string path, string relative)
@@ -173,5 +174,5 @@ internal sealed class AliveNpcEventScanner
     }
     private static bool IsReadFailure(Exception ex) => ex is IOException or UnauthorizedAccessException
         or JsonException or ArgumentException or NotSupportedException or System.Security.SecurityException;
-    private sealed record ScanCache(EventDefinitionScanResult Result, IReadOnlyList<EventDefinitionCandidate> Candidates);
+    private sealed record ScanCache(EventDefinitionScanResult Result, IReadOnlyList<EventDefinitionCandidate> Candidates, IReadOnlyList<FileStamp> Files);
 }

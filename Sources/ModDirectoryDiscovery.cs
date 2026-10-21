@@ -52,23 +52,26 @@ internal static class ModDirectoryDiscovery
             root = NormalizePath(root);
             if (IsVolumeRoot(root)) throw new ArgumentException("A filesystem root cannot be scanned as a mods directory.");
             if (!Directory.Exists(root)) throw new DirectoryNotFoundException("The configured mods directory does not exist.");
-            if (HasLinkedAncestor(root)) throw new IOException("The configured mods directory contains a symbolic link or junction.");
-            Visit(root, 0);
+            Visit(root, root, 0, new HashSet<string>(PathComparer));
         }
         catch (Exception error) when (IsReadFailure(error)) { issues.Add(new(".", error.Message)); }
         return new(directories, issues);
 
         void Issue(string path, string reason) => issues.Add(new(Path.GetRelativePath(root, path), reason));
 
-        void Visit(string directory, int depth)
+        // SMAPI follows directory links, and managers such as Stardrop deploy mods as junctions or symbolic links.
+        // Paths stay under the configured root; real targets are tracked only to stop link loops.
+        void Visit(string directory, string parentReal, int depth, HashSet<string> ancestors)
         {
             if (exhausted) return;
             if (depth > MaxDepth) { Issue(directory, "Directory discovery depth limit reached."); return; }
+            if (depth > 0 && (!IsWithin(root, directory) || IsIgnoredDirectory(Path.GetFileName(directory)))) return;
+            string real;
+            try { real = RealPath(directory, depth == 0 ? directory : Path.Combine(parentReal, Path.GetFileName(directory))); }
+            catch (Exception error) when (IsReadFailure(error)) { Issue(directory, error.Message); return; }
+            if (!ancestors.Add(real)) { Issue(directory, "A directory link loops back to a parent folder."); return; }
             try
             {
-                if (depth > 0 && (!IsWithin(root, directory) || IsIgnoredDirectory(Path.GetFileName(directory)))) return;
-                if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-                { Issue(directory, "Symbolic links and junctions are not scanned."); return; }
                 string? manifest = null;
                 var children = new List<string>();
                 foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
@@ -91,9 +94,10 @@ internal static class ModDirectoryDiscovery
                 // SMAPI's root is a container. Inside it, a manifest ends descent so personal data,
                 // assets, and backup manifests nested inside installed mods are never searched.
                 if (depth > 0 && manifest is not null) { ReadManifest(directory, manifest); return; }
-                foreach (string child in children.OrderBy(path => path, StringComparer.Ordinal)) Visit(child, depth + 1);
+                foreach (string child in children.OrderBy(path => path, StringComparer.Ordinal)) Visit(child, real, depth + 1, ancestors);
             }
             catch (Exception error) when (IsReadFailure(error)) { Issue(directory, error.Message); }
+            finally { ancestors.Remove(real); }
         }
 
         void ReadManifest(string directory, string path)
@@ -101,7 +105,8 @@ internal static class ModDirectoryDiscovery
             try
             {
                 var file = new FileInfo(path);
-                if ((file.Attributes & FileAttributes.ReparsePoint) != 0) { Issue(path, "Linked manifests are not read."); return; }
+                // Measure a linked manifest by its target, which is what gets read.
+                if ((file.Attributes & FileAttributes.ReparsePoint) != 0 && file.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target) file = target;
                 if (file.Length > MaxManifestBytes) { Issue(path, "Manifest exceeds the size limit."); return; }
                 if ((manifestBytes += file.Length) > 64L * 1024 * 1024)
                 {
@@ -167,12 +172,12 @@ internal static class ModDirectoryDiscovery
     private static string NormalizePath(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
     private static bool IsVolumeRoot(string path) => path.Equals(Path.GetPathRoot(path), PathComparison);
     private static bool IsWithin(string root, string path) => path.StartsWith(root + Path.DirectorySeparatorChar, PathComparison);
-    private static bool HasLinkedAncestor(string path)
-    {
-        for (DirectoryInfo? directory = new(path); directory is not null; directory = directory.Parent)
-            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) return true;
-        return false;
-    }
+    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>A link's final target, or <paramref name="fallback"/> (the real parent path plus this name) for an ordinary folder.</summary>
+    private static string RealPath(string directory, string fallback)
+        => (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0 && new DirectoryInfo(directory).ResolveLinkTarget(returnFinalTarget: true) is { } target
+            ? NormalizePath(target.FullName) : fallback;
     private static bool IsIgnoredDirectory(string name) => name.StartsWith('.')
         || name.Equals("__MACOSX", StringComparison.OrdinalIgnoreCase)
         || name.Equals("__folder_managed_by_vortex", StringComparison.OrdinalIgnoreCase)

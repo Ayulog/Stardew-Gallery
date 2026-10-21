@@ -11,53 +11,43 @@ internal static class EventOriginPresentationChecks
         var candidate = new EventDefinitionCandidate(actor, "Data/Events/Town", "42/f Abigail 500", "events/story.json", EventHashes.RootScript("original"));
         var resolved = new ResolvedEvent(new EventIdentity("Data/Events/Town", "42"), "Town", "42/f Abigail 1000", "changed by another mod",
             new EventFragments([], []), "definition-hash", EventHashes.RootScript("changed by another mod"));
+
         var origin = new EventOriginMatch(actor, [candidate], EventOriginMatchStatus.Identified);
-        foreach (var state in new[] { EventSourceDisplayState.Disabled, EventSourceDisplayState.Unavailable, EventSourceDisplayState.RestartRequired, EventSourceDisplayState.Ready })
-        {
-            EventSourceDisplay display = EventOriginPresentation.Build(resolved, origin, null, state, Translate);
-            Check(display.Summary.Contains("Story Pack") && display.Status == "source.origin-matched", "Original definition remains visible independently of tracing state: " + state);
-            Check(display.Details.Any(line => line.Contains("events/story.json")), "Matched definition file is visible when tracing is unavailable");
-        }
-        var observed = new EventSourceInfo(new EventSourceScope(resolved.AssetName, "zh-CN", 0, "test"), resolved.RawEventKey,
-            resolved.RootScriptHash, 1, 1, new EventSourceActor("Fixture.Translation", "Translation Pack"), null, [], EventSourceStatus.Complete, null);
-        var knownDisplay = EventOriginPresentation.Build(resolved, origin, observed, EventSourceDisplayState.Ready, Translate);
-        Check(knownDisplay.Summary.Contains("Story Pack") && !knownDisplay.Summary.Contains("Translation"), "Later runtime provider never replaces matched original definition");
+        EventSourceDisplay display = EventOriginPresentation.Build(resolved, origin, Translate);
+        Check(display.Summary.Contains("Story Pack") && display.Status == "source.origin-matched", "Matched original definition is the summary provider");
+        Check(display.Details.Any(line => line.Contains("events/story.json")), "Matched definition file is listed");
+        Check(display.Details.Any(line => line.Contains("42/f Abigail 1000")) && display.Details.Contains("source.scope"),
+            "Details keep the current raw key and the main-event scope note");
+
+        var vanilla = new EventOriginMatch(EventSourceActor.GameBase, [candidate with { Actor = EventSourceActor.GameBase }], EventOriginMatchStatus.Identified);
+        display = EventOriginPresentation.Build(resolved, vanilla, Translate);
+        Check(display.Summary.Contains("source.game") && display.Status == "source.origin-vanilla", "Base game definitions are labeled as game content");
+
         var ambiguous = new EventOriginMatch(null, [candidate, candidate with { Actor = new EventSourceActor("Fixture.Other", "Other Pack") }], EventOriginMatchStatus.Ambiguous);
-        var ambiguousDisplay = EventOriginPresentation.Build(resolved, ambiguous, observed, EventSourceDisplayState.Ready, Translate);
-        Check(ambiguousDisplay.Summary.Contains("source.origin-ambiguous") && !ambiguousDisplay.Summary.Contains("Translation"), "Observed last provider cannot resolve ambiguous original files");
-        var unknown = new EventOriginMatch(null, [], EventOriginMatchStatus.Unknown);
-        var fallback = EventOriginPresentation.Build(resolved, unknown, observed, EventSourceDisplayState.Ready, Translate);
-        Check(fallback.Summary.Contains("Translation Pack") && fallback.Status == "source.origin-runtime", "Runtime-only fallback is explicitly identified as observed rather than file origin");
-        var mismatch = EventOriginPresentation.Build(resolved, unknown, observed with { ScriptMatches = false }, EventSourceDisplayState.Ready, Translate);
-        Check(!mismatch.Summary.Contains("Translation Pack"), "Stale runtime evidence cannot become a fallback original provider");
-        foreach (EventOriginMatch matchedOrigin in new[] { origin, ambiguous, unknown })
-        {
-            EventSourceDisplay partial = EventOriginPresentation.Build(resolved, matchedOrigin,
-                observed with { Status = EventSourceStatus.Partial, Reason = "private failure" }, EventSourceDisplayState.Ready, Translate);
-            Check(partial.Details.Contains("source.partial") && partial.Details.Contains("source.partial-help"),
-                "Incomplete runtime evidence stays visible with original origin " + matchedOrigin.Status);
-            Check(partial.Details.Contains("source.no-modifications") && !partial.Details.Any(line => line.Contains("private failure")),
-                "Zero observed mutations neither hide incompleteness nor expose private errors");
-        }
-        Check(knownDisplay.Details.Contains("source.complete") && !knownDisplay.Details.Contains("source.partial-help"),
-            "Complete runtime evidence is shown independently of matched original source");
-        foreach (EventSourceInfo stale in new[] { observed with { ScriptMatches = false }, observed with { IsDeleted = true }, observed with { Status = EventSourceStatus.Unknown } })
-        {
-            EventSourceDisplay staleDisplay = EventOriginPresentation.Build(resolved, origin, stale, EventSourceDisplayState.Ready, Translate);
-            Check(staleDisplay.Details.Contains("source.missing-help") && !staleDisplay.Details.Contains("source.complete")
-                && !staleDisplay.Details.Contains("source.no-modifications"), "Stale/deleted/unknown evidence never claims complete unchanged content");
-        }
-        foreach (EventSourceDisplayState state in new[] { EventSourceDisplayState.Disabled, EventSourceDisplayState.RestartRequired, EventSourceDisplayState.Unavailable })
-        {
-            EventSourceDisplay inactive = EventOriginPresentation.Build(resolved, origin, observed with { Status = EventSourceStatus.Partial }, state, Translate);
-            Check(!inactive.Details.Contains("source.partial") && !inactive.Details.Contains("source.no-modifications"),
-                "Disabled tracing doesn't reuse prior runtime evidence: " + state);
-        }
-        string CollidingTranslate(string key, object? args) => key is "source.asset" or "source.modifications" ? "same translated label" : Translate(key, args);
-        EventSourceDisplay collision = EventOriginPresentation.Build(resolved, origin,
-            observed with { Status = EventSourceStatus.Partial }, EventSourceDisplayState.Ready, CollidingTranslate);
-        Check(collision.Details.Contains("source.partial-help") && collision.Details.Contains("source.no-modifications"),
-            "Runtime evidence structure does not depend on translated label equality");
+        display = EventOriginPresentation.Build(resolved, ambiguous, Translate);
+        Check(display.Summary.Contains("source.origin-ambiguous") && display.Details.Contains("source.origin-ambiguous-help"),
+            "Ambiguous declarations never pick a single provider");
+        Check(display.Details.Any(line => line.Contains("Story Pack")) && display.Details.Any(line => line.Contains("Other Pack")),
+            "Every ambiguous candidate stays visible");
+
+        var overrider = new EventSourceActor("Fixture.Override", "Override Pack", "2.0");
+        var withOthers = new EventOriginMatch(actor, [candidate, candidate with { Actor = overrider, RelativePath = "patches/override.json" }], EventOriginMatchStatus.Identified);
+        display = EventOriginPresentation.Build(resolved, withOthers, Translate);
+        int others = display.Details.ToList().IndexOf("source.origin-others");
+        Check(others > display.Details.ToList().IndexOf("source.origin-candidates") && display.Details[others + 1].Contains("patches/override.json")
+            && !display.Details.Take(others).Any(line => line.Contains("Override Pack")), "Other declarers are listed apart from the provider's own files");
+        display = EventOriginPresentation.Build(resolved, origin, Translate);
+        Check(!display.Details.Contains("source.origin-others"), "No other-declarers heading without other packs");
+
+        var unread = new EventSourceActor("Fixture.Base", "Base Pack", "1.0");
+        var incomplete = new EventOriginMatch(actor, [candidate], EventOriginMatchStatus.Incomplete) { UnreadDependencies = [unread] };
+        display = EventOriginPresentation.Build(resolved, incomplete, Translate);
+        Check(display.Summary.Contains("Story Pack") && display.Status == "source.origin-incomplete"
+            && display.Details.Contains("source.origin-incomplete-help:packs=Base Pack"), "Incomplete evidence names the provider found and the pack that wasn't fully read");
+
+        display = EventOriginPresentation.Build(resolved, EventOriginMatch.Unknown, Translate);
+        Check(display.Summary.Contains("source.unknown") && display.Status == "source.origin-missing"
+            && display.Details.Contains("source.origin-unknown-help"), "Missing definitions are unknown, never assumed vanilla");
         Console.WriteLine($"Event origin presentation checks passed: {checks}");
     }
 }

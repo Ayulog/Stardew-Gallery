@@ -25,7 +25,7 @@ internal sealed class GalleryRenameMenu : GalleryToolMenu
         Rows.Add(new("ID " + identity.EventId, SelectInput));
         RefreshRows(state.Focus >= 0 ? state.Focus : RowId);
     }
-    private void SelectInput() { if (GallerySearchInputGuard.Ready) input.SelectMe(); }
+    private void SelectInput() => GalleryTextBox.SelectForInput(input);
     public override void update(GameTime time) { base.update(time); input.Text = GallerySearchInput.CleanText(input.Text); }
     protected override void DrawTop(SpriteBatch b) => input.Draw(b);
     public override void DeselectSearch()

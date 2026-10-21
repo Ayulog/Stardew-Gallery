@@ -26,9 +26,10 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
     private Event? activeReplayEvent;
     private ReplaySceneEnvironmentScope? environmentScope;
     private bool failSafeRunning;
+    private int lastGameTick;
 
     internal bool IsActive => snapshot is not null;
-    internal bool OwnsEvent(Event value) => IsActive && ReferenceEquals(value, activeReplayEvent);
+    internal bool OwnsEvent(Event? value) => IsActive && value is not null && ReferenceEquals(value, activeReplayEvent);
     internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
     internal int SpeedMultiplier => speedMultiplier;
     internal int EffectiveSpeedMultiplier => !IsActive || restoring || !observed || Game1.CurrentEvent is null
@@ -65,7 +66,8 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
             Trace($"回放请求：地点={playback.LocationName}，事件={playback.EventId}。");
             backupPath = ReplayBackup.Create();
             Trace($"回放备份完成：{backupPath}");
-            snapshot = ReplaySnapshot.Capture();
+            snapshot = ReplaySnapshot.Capture(Game1.getLocationFromName(playback.LocationName));
+            lastGameTick = Game1.ticks;
             reopen = reopenMenu;
             eventId = playback.EventId;
             targetLocationName = playback.LocationName;
@@ -75,7 +77,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
             Event? scheduledEvent = null;
             EventLaunchResult launch = eventLauncher.TryLaunch(playback, location => PrepareEnvironment(entry, location),
                 value => activeReplayEvent = scheduledEvent = value,
-                () => snapshot is not null && !restoring && ReferenceEquals(activeReplayEvent, scheduledEvent), FailSafe);
+                () => snapshot is not null && !restoring && ReferenceEquals(activeReplayEvent, scheduledEvent), FailPlayback);
             if (launch.Accepted && snapshot is not null)
             {
                 Trace($"事件回放已接受：地点={playback.LocationName}，事件={playback.EventId}。");
@@ -113,7 +115,6 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         {
             ReplaySceneEnvironment environment = ReplaySceneEnvironmentResolver.Resolve(
                 conditionParser.ParseRawKey(entry.EventKey).Conditions,
-                Game1.currentSeason,
                 Game1.timeOfDay,
                 location.GetWeather().Weather);
             if (environment.Warning is not null)
@@ -137,13 +138,26 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         }
         catch (Exception error)
         {
-            FailSafe(error);
+            // Only a failure while restoring player state justifies rolling back to the last save.
+            if (restoring) FailSafe(error);
+            else FailPlayback(error);
         }
+    }
+
+    private void FailPlayback(Exception error)
+    {
+        SafeLog($"回放演出失败，将按正常流程恢复回放前状态：事件={eventId}。\n{error}", LogLevel.Error);
+        Restore(helper.Translation.Get("replay.interrupted"));
     }
 
     private void UpdateCore()
     {
         ReplaySnapshot activeSnapshot = snapshot!;
+        // Count only frames the game actually advanced. A paused or unfocused game freezes fades and
+        // warps while SMAPI keeps raising UpdateTicked, which must never look like a stuck replay.
+        if (Game1.ticks == lastGameTick)
+            return;
+        lastGameTick = Game1.ticks;
 
         if (restoring)
         {
@@ -273,7 +287,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         failSafeRunning = true;
         string? failedBackup = backupPath;
         string? failedEvent = eventId;
-        SafeLog($"内存恢复失败，将使用回放前备份并返回标题：事件={failedEvent}，备份={failedBackup}。\n{error}", LogLevel.Error);
+        SafeLog($"回放状态恢复失败，将使用回放前备份并重新载入存档：事件={failedEvent}，备份={failedBackup}。\n{error}", LogLevel.Error);
         try
         {
             if (failedBackup is not null)

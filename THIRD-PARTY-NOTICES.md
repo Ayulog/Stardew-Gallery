@@ -6,6 +6,8 @@
 - DDFC (MangusuPixel/aedenthorn), Scale Up Unofficial (Arborsm) and Portraiture (Platonymous) are optional cosmetic integrations. Their assemblies and portrait artwork are not bundled.
 - Harmony is supplied by SMAPI and is not bundled as a separate library in this mod package.
 - The release includes project-created UI and promotional assets. No code or assets from other user-created mods are redistributed.
+- Pinyin search uses `assets/pinyin.txt`, generated from the Unicode Han Database (Unihan), Unicode 18.0.0. Unicode data is copyright © 1991-2026 Unicode, Inc. and is used under the Unicode License V3, included as `licenses/Unicode-License-v3.txt` and in the header of `assets/pinyin.txt`.
+- Steam's on-screen keyboard is opened through Steamworks.NET, which ships with the game and is not bundled.
 
 - 《星露谷物语》由 ConcernedApe 创作。本项目是非官方玩家 Mod，与 ConcernedApe 无隶属或背书关系。
 - 运行时必须安装 SMAPI。
@@ -13,6 +15,8 @@
 - DDFC（MangusuPixel/aedenthorn）、Scale Up Unofficial（Arborsm）和 Portraiture（Platonymous）为可选美化集成，不捆绑其程序或立绘素材。
 - Harmony 由 SMAPI 提供，本 Mod 发布包不单独捆绑该库。
 - 发布内容包含本项目制作的 UI 与宣传素材，不重新分发其他玩家 Mod 的代码或素材。
+- 拼音搜索使用的 `assets/pinyin.txt` 由 Unicode 汉字数据库（Unihan，Unicode 18.0.0）生成。Unicode 数据版权归 Unicode, Inc.（1991-2026），按 Unicode License V3 使用，许可全文见 `licenses/Unicode-License-v3.txt` 和 `assets/pinyin.txt` 文件头。
+- Steam 屏幕键盘通过游戏自带的 Steamworks.NET 调用，不随包分发。
 
 ## Runtime dependencies / 运行时依赖
 

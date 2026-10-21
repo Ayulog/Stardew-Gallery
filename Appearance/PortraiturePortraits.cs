@@ -11,21 +11,12 @@ internal sealed class PortraiturePortraits
     private sealed record Access(bool Supported, MethodInfo? Tick);
     private readonly Dictionary<Type, Access> accessors = [];
 
+    /// <summary>Whether a texture is one of Portraiture's own types, which only Portraiture can draw correctly.</summary>
+    internal bool IsPortraiture(Texture2D source) => Accessor(source.GetType()).Supported;
+
     internal PortraitureImage? Read(Texture2D source)
     {
-        Type type = source.GetType();
-        if (!accessors.TryGetValue(type, out var access))
-        {
-            bool scaled = false, animated = false;
-            for (Type? current = type; current is not null; current = current.BaseType)
-            {
-                if (current.Assembly.GetName().Name != "Portraiture") continue;
-                scaled |= current.FullName == "Portraiture.ScaledTexture2D";
-                animated |= current.FullName == "Portraiture.AnimatedTexture2D";
-            }
-            accessors[type] = access = new(scaled, animated
-                ? type.GetMethod("Tick", BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes) : null);
-        }
+        Access access = Accessor(source.GetType());
         if (!access.Supported) return null;
 
         // Portraiture guards Tick by its own update counter, including shared portraits.
@@ -43,5 +34,19 @@ internal sealed class PortraiturePortraits
 
         // Drawing the real image keeps gallery placement independent of Above Box mode.
         return new(texture, frame);
+    }
+
+    private Access Accessor(Type type)
+    {
+        if (accessors.TryGetValue(type, out var access)) return access;
+        bool scaled = false, animated = false;
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            if (current.Assembly.GetName().Name != "Portraiture") continue;
+            scaled |= current.FullName == "Portraiture.ScaledTexture2D";
+            animated |= current.FullName == "Portraiture.AnimatedTexture2D";
+        }
+        return accessors[type] = new(scaled, animated
+            ? type.GetMethod("Tick", BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes) : null);
     }
 }

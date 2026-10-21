@@ -16,8 +16,7 @@ internal sealed record PrerequisiteEvent(string EventId, IReadOnlyList<MarkerAct
 internal static class PrerequisiteCatalog
 {
     internal static IReadOnlyList<PrerequisiteEvent> Build(IEnumerable<PrerequisiteRule> rules,
-        GalleryCatalog catalog, Func<string, string[]> splitArguments, ConditionParser parser, Func<string, string[]> parseCommands,
-        IReadOnlySet<string>? reservedStoryIds = null)
+        GalleryCatalog catalog, Func<string, string[]> splitArguments, ConditionParser parser, Func<string, string[]> parseCommands)
     {
         Dictionary<string, List<MarkerAction>> markers = new(StringComparer.Ordinal);
         foreach (PrerequisiteRule rule in rules.Where(rule => rule.Actions.Any(action => !string.IsNullOrWhiteSpace(action)))
@@ -37,7 +36,8 @@ internal static class PrerequisiteCatalog
                     rule.Condition, rule.HostOnly, rule.Once, mail, rule.SkipCondition));
             }
         }
-        var dependencies = catalog.StoryEntries.SelectMany(story => ConditionEventReferences.Read(parser.ParseRawKey(story.EventKey))
+        // A story that requires an event to be unseen doesn't depend on it.
+        var dependencies = catalog.StoryEntries.SelectMany(story => ConditionEventReferences.Required(parser.ParseRawKey(story.EventKey))
                 .Select(id => (Id: id, Story: story)))
             .GroupBy(pair => pair.Id, StringComparer.Ordinal).ToDictionary(group => group.Key,
                 group => group.Select(pair => pair.Story).DistinctBy(story => story.Resolved.Identity).ToArray(), StringComparer.Ordinal);
@@ -50,7 +50,6 @@ internal static class PrerequisiteCatalog
                             is "mail" or "mailtomorrow" or "addmailreceived" or "addquest" or "completequest" or "seteventseen" or "setworldstate")))
             .GroupBy(story => story.EventId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
         HashSet<string> stories = catalog.StoryEntries.Select(entry => entry.EventId).ToHashSet(StringComparer.Ordinal);
-        if (reservedStoryIds is not null) stories.UnionWith(reservedStoryIds);
         var result = markers.Keys.Concat(internalSources.Keys).Distinct(StringComparer.Ordinal)
             .Where(id => !stories.Contains(id))
             .Select(id => new PrerequisiteEvent(id, markers.TryGetValue(id, out var sources) ? sources : [],
@@ -65,7 +64,7 @@ internal static class PrerequisiteCatalog
         {
             if (clause.Name is "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" or "PLAYER_NPC_RELATIONSHIP"
                 && !clause.Arguments[1].Equals("Any", StringComparison.OrdinalIgnoreCase)) npcs[entry.EventId].Add(clause.Arguments[1]);
-            if (clause.Name == "PLAYER_HAS_SEEN_EVENT")
+            if (clause.Name == "PLAYER_HAS_SEEN_EVENT" && !clause.Negated)
                 foreach (var story in catalog.StoryEntries.Where(story => clause.Arguments.Skip(1).Contains(story.EventId, StringComparer.Ordinal)))
                     npcs[entry.EventId].UnionWith(story.RelatedNpcNames);
         }
@@ -76,7 +75,7 @@ internal static class PrerequisiteCatalog
             foreach (var entry in result)
             {
                 int before = npcs[entry.EventId].Count;
-                foreach (var clause in clausesById[entry.EventId])
+                foreach (var clause in clausesById[entry.EventId].Where(clause => !clause.Negated))
                 {
                     var upstream = clause.Name == "PLAYER_HAS_MAIL" ? result.Where(other => other.Sources.Any(source => source.MailIds.Contains(clause.Arguments[1])))
                         : clause.Name == "PLAYER_HAS_SEEN_EVENT" ? result.Where(other => clause.Arguments.Skip(1).Contains(other.EventId)) : [];

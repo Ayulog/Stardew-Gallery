@@ -16,6 +16,9 @@ diagnostics/
 backups/
 event-photos/
 user-data/
+# Local task handoffs; they may contain machine-specific paths.
+.ai/
 
+# Left over from versions before 2.10.0, which had the removed AI list.
 ai-mod-exclusion.json
 exclusion-cache/

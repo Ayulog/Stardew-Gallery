@@ -1,5 +1,6 @@
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
+using StardewModdingAPI.Utilities;
 using StardewValley;
 using StardewValley.Menus;
 using Microsoft.Xna.Framework;
@@ -11,20 +12,20 @@ namespace StardewGallery;
 internal sealed class ModEntry : Mod
 {
     private const int CollectionsGalleryComponentId = 7099;
+    private const string SaveDataKey = "gallery-state";
     private GalleryCatalogCache catalog = null!;
-    private bool unlockAll;
-    private bool pendingOpen;
+    // Split-screen players each have their own gallery pages, photos and unlock choice.
+    private readonly PerScreen<bool> unlockAll = new();
+    private readonly PerScreen<bool> pendingOpen = new();
+    private readonly PerScreen<GalleryTypingKeys> typingKeys = new(() => new GalleryTypingKeys());
+    private PerScreen<GalleryApplication> application = null!;
+    private PerScreen<GalleryPhotos> photos = null!;
     private Texture2D tabIcon = null!;
     private ReplayCoordinator replay = null!;
     private ReplayService replayService = null!;
-    private GalleryApplication application = null!;
     private bool replayProtectionReady;
-    private GalleryPhotos photos = null!;
     private CharacterAppearance appearance = null!;
-    private SmapiEventSourceObserver eventSources = null!;
     private EventDefinitionSources eventDefinitions = null!;
-    private AiModExclusionService eventExclusions = null!;
-    private bool savedExclusionEnabled;
 
     internal ModConfig Config { get; private set; } = new();
 
@@ -39,43 +40,29 @@ internal sealed class ModEntry : Mod
             Monitor.Log(helper.Translation.Get("log.config-invalid", new { error = error.Message }), LogLevel.Error);
         }
 
-        savedExclusionEnabled = Config.EnableAiModExclusion;
-
         eventDefinitions = new EventDefinitionSources(helper, Monitor);
-        eventExclusions = new AiModExclusionService(helper.DirectoryPath,
-            message => Monitor.Log(message, LogLevel.Info), message => Monitor.Log(message, LogLevel.Warn));
-        helper.Events.GameLoop.GameLaunched += (_, _) => StartEventExclusions();
-        helper.Events.GameLoop.SaveLoaded += (_, _) => StartEventExclusions();
-        helper.Events.GameLoop.ReturnedToTitle += (_, _) => eventExclusions.EndSession();
-        eventSources = new SmapiEventSourceObserver(ModManifest.UniqueID, Monitor);
-        if (Config.EnableEventSourceDiagnostics)
-            eventSources.Start();
         helper.ConsoleCommands.Add("gallery_event_source", "Inspect event definition sources: gallery_event_source <location> <event-id> | status | rescan",
-            new EventSourceDiagnostics(eventDefinitions, eventSources, Monitor).Run);
-        helper.Events.Content.AssetReady += (_, e) => eventSources.OnAssetReady(e.Name);
+            new EventSourceDiagnostics(eventDefinitions, Monitor, () => catalog.Invalidate()).Run);
         helper.Events.Content.AssetsInvalidated += (_, e) =>
         {
-            eventSources.Invalidate(e.NamesWithoutLocale);
             // CP config/reload can change referenced files, targets and event IDs during a save.
             if (e.NamesWithoutLocale.Any(name => name.StartsWith("Data/Events")))
                 eventDefinitions.Reset();
         };
-        helper.Events.Content.LocaleChanged += (_, _) => eventSources.Clear();
-        helper.Events.GameLoop.SaveLoaded += (_, _) => eventSources.OnSaveLoaded();
-        helper.Events.GameLoop.ReturnedToTitle += (_, _) => { eventSources.Clear(); eventDefinitions.Reset(); };
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => eventDefinitions.Reset();
 
         catalog = new GalleryCatalogCache(Monitor, () => Config.DebugDiagnostics,
-            identity => eventDefinitions.Read(identity.AssetName, identity.EventId),
-            origin => eventExclusions.Enabled && eventExclusions.Rules.ShouldExclude(origin));
-        photos = new GalleryPhotos(helper, Monitor, (key, error) =>
-            Game1.addHUDMessage(new HUDMessage(helper.Translation.Get(key), error ? HUDMessage.error_type : HUDMessage.newQuest_type)));
+            identity => eventDefinitions.Read(identity.AssetName, identity.EventId));
+        photos = new(() => new GalleryPhotos(helper, Monitor, (key, error) =>
+            Game1.addHUDMessage(new HUDMessage(helper.Translation.Get(key), error ? HUDMessage.error_type : HUDMessage.newQuest_type))));
+        SteamTextInput.Log = Monitor.Log;
         try
         {
-            GallerySearchInputGuard.Apply(helper, Monitor);
+            PhotoCapturePatches.Apply(helper, () => photos.Value.Pending);
         }
         catch (Exception error)
         {
-            Monitor.Log($"Search input isolation unavailable; search is disabled: {error}", LogLevel.Error);
+            Monitor.Log($"Replay photos at 100% zoom are unavailable: {error}", LogLevel.Warn);
         }
         replay = new ReplayCoordinator(Monitor, helper, () => Config.AutoAdvanceDialogue, () => Config.DebugDiagnostics);
         try
@@ -88,59 +75,76 @@ internal sealed class ModEntry : Mod
         {
             Monitor.Log($"回放存档保护无法启用，本次运行已禁用回放：{error}", LogLevel.Error);
         }
-        tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-horizontal-v5.png");
+        // Pre-scaled copies of the tab art (tools/Optimize-Assets.ps1): 2x the Collections button, and a portrait placeholder.
+        tabIcon = helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-104x80.png");
         replayService = new ReplayService(helper, Monitor, replay, () => replayProtectionReady,
-            () => Config.EnableOrdinaryEventReplay, () => unlockAll, () => Config.ShowRollbackWarning);
-        appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor, tabIcon);
-        application = new GalleryApplication(helper, Monitor, catalog, photos, replayService, () => unlockAll, ToggleUnlock, appearance,
-            new EventSourceDetails(eventDefinitions, eventSources, Config.EnableEventSourceDiagnostics, () => Config.EnableEventSourceDiagnostics, helper.Translation, Monitor).Read);
+            () => Config.EnableOrdinaryEventReplay, () => unlockAll.Value, () => Config.ShowRollbackWarning);
+        appearance = new CharacterAppearance(helper.GameContent, helper.ModRegistry, Monitor, helper.ModContent.Load<Texture2D>("assets/GalleryTabIcon-640x490.png"));
+        // Custom names are shared by every save and screen on this computer, so all pages use one store.
+        var names = new EventNameStore(Path.Combine(helper.DirectoryPath, "user-data"), warning => Monitor.Log(warning, LogLevel.Warn));
+        Func<ResolvedEvent, EventSourceDisplay> sourceDetails = new EventSourceDetails(eventDefinitions, helper.Translation).Read;
+        application = new(() => new GalleryApplication(helper, Monitor, catalog, photos.Value, replayService, () => unlockAll.Value, ToggleUnlock,
+            appearance, sourceDetails, names));
         helper.Events.GameLoop.SaveLoaded += (_, _) => appearance.Invalidate();
         helper.Events.GameLoop.DayStarted += (_, _) => appearance.Invalidate();
-        helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); replayService.ResetWarnings(); application.Reset(); };
-        helper.Events.GameLoop.SaveLoaded += (_, _) => photos.Load(new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID));
+        helper.Events.GameLoop.SaveLoaded += (_, _) => { catalog.Invalidate(); replayService.ResetWarnings(); application.Value.Reset(); };
+        helper.Events.GameLoop.SaveLoaded += (_, _) => photos.Value.Load(new SaveProfileKey(Game1.uniqueIDForThisGame, Game1.player.UniqueMultiplayerID));
         helper.Events.GameLoop.GameLaunched += (_, _) => RegisterGmcm();
-        helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll = helper.Data.ReadSaveData<GallerySaveData>("gallery-state")?.UnlockAll == true;
+        helper.Events.GameLoop.SaveLoaded += (_, _) => unlockAll.Value = ReadUnlock();
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
             replay.OnReturnedToTitle();
             catalog.Invalidate();
-            unlockAll = false;
             replayService.ResetWarnings();
-            application.Reset();
-            photos.Dispose();
+            // Returning to the title ends every split-screen session too.
+            foreach ((_, GalleryApplication screen) in application.GetActiveValues()) screen.Reset();
+            foreach ((_, GalleryPhotos screen) in photos.GetActiveValues()) screen.Dispose();
+            unlockAll.ResetAllScreens();
+            pendingOpen.ResetAllScreens();
             appearance.Invalidate();
         };
         helper.Events.Content.LocaleChanged += (_, _) => catalog.Invalidate();
         helper.Events.Content.AssetsInvalidated += (_, e) =>
         {
             if (e.NamesWithoutLocale.Any(appearance.UsesAsset)) appearance.Invalidate();
-            if (e.NamesWithoutLocale.Any(name =>
-                name.IsEquivalentTo("Data/Characters") || name.Name.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase)))
+            // Prerequisite records come from Data/TriggerActions.
+            if (e.NamesWithoutLocale.Any(name => name.IsEquivalentTo("Data/Characters") || name.IsEquivalentTo("Data/TriggerActions")
+                || name.Name.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase)))
                 catalog.Invalidate();
         };
         helper.Events.Input.ButtonPressed += OnButtonPressed;
+        helper.Events.GameLoop.UpdateTicking += (_, _) => GalleryTyping.Update(typingKeys.Value,
+            Game1.activeClickableMenu as IGallerySearchMenu, GalleryTyping.PressedKeys, GalleryTyping.Clipboard);
+        var frames = new GalleryFrameProbe(Monitor, () => Config.DebugDiagnostics);
+        helper.Events.GameLoop.UpdateTicking += (_, _) => frames.BeginUpdate();
+        helper.Events.GameLoop.UpdateTicked += (_, _) => frames.EndUpdate();
+        helper.Events.Display.RenderingActiveMenu += (_, _) => frames.BeginDraw();
+        helper.Events.Display.RenderedActiveMenu += (_, _) => frames.EndDraw();
         helper.Events.Display.RenderedActiveMenu += OnRenderedActiveMenu;
         helper.Events.Display.RenderedHud += OnRenderedHud;
-        helper.Events.Display.RenderedWorld += (_, e) => photos.Capture(e.SpriteBatch, replay.PlayingEvent);
-        helper.Events.Display.WindowResized += (_, _) => photos.ClearTextures();
+        helper.Events.Display.RenderingWorld += (_, _) => photos.Value.PrepareCapture(replay.PlayingEvent);
+        helper.Events.Display.RenderedWorld += (_, e) => photos.Value.Capture(e.SpriteBatch, replay.PlayingEvent);
+        helper.Events.Display.WindowResized += (_, _) =>
+        {
+            foreach ((_, GalleryPhotos screen) in photos.GetActiveValues()) screen.ClearTextures();
+        };
         helper.Events.Display.MenuChanged += (_, e) =>
         {
             if (e.OldMenu is GalleryPhotoMenu)
-                photos.ReleasePreviews();
+                photos.Value.ReleasePreviews();
             if (!GalleryApplication.OwnsMenu(e.NewMenu))
-                photos.ClearTextures();
+                photos.Value.ClearTextures();
         };
+        Func<SButton, bool> buttonDown = helper.Input.IsDown;
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
-            eventSources.PruneIncomplete();
-            // Apply on the game thread, after any replay/confirmation has finished safely.
-            UpdateEventExclusions();
+            SteamTextInput.Update(buttonDown);
             replay.Update();
-            photos.Update(replay.PlayingEvent);
-            if (!pendingOpen)
+            photos.Value.Update(replay.PlayingEvent);
+            if (!pendingOpen.Value)
                 return;
-            pendingOpen = false;
-            application.Open();
+            pendingOpen.Value = false;
+            application.Value.Open();
         };
 
         Monitor.Log(helper.Translation.Get("log.loaded", new { version = ModManifest.Version }), LogLevel.Info);
@@ -148,13 +152,16 @@ internal sealed class ModEntry : Mod
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
     {
+        // The game's on-screen keyboard owns all input while it is open.
+        if (Game1.textEntry is not null)
+            return;
         bool galleryPressed = Config.GalleryKeys.JustPressed();
         if (replayService.ActiveIdentity is { } identity && replay.PlayingEvent is Event playing
             && (Config.ScreenshotKeys.JustPressed() || e.Button == SButton.MouseLeft && GetScreenshotButton().Contains(Game1.getMouseX(true), Game1.getMouseY(true))))
         {
             Helper.Input.SuppressActiveKeybinds(Config.ScreenshotKeys);
             Helper.Input.Suppress(e.Button);
-            photos.Request(identity, playing);
+            photos.Value.Request(identity, playing);
             return;
         }
         if (Config.ReplaySpeedKeys.JustPressed() && replay.IsActive)
@@ -174,7 +181,7 @@ internal sealed class ModEntry : Mod
             && GalleryApplication.OwnsMenu(Game1.activeClickableMenu))
         {
             Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
-            application.Close();
+            application.Value.Close();
             Game1.playSound("bigDeSelect");
             return;
         }
@@ -187,15 +194,15 @@ internal sealed class ModEntry : Mod
         if (e.Button == SButton.ControllerB && GalleryApplication.OwnsMenu(Game1.activeClickableMenu))
         {
             Helper.Input.Suppress(e.Button);
-            application.Back();
+            application.Value.Back();
             return;
         }
+        // Keys typed into the field are hidden before they get here (GalleryTyping); this covers the rest, such as a
+        // controller, or a key pressed in the same tick the field was selected.
         if (Game1.activeClickableMenu is IGallerySearchMenu { IsSearchSelected: true } home)
         {
             if (e.Button == SButton.Escape)
                 home.DeselectSearch();
-            else if (e.Button == SButton.Enter)
-                home.OpenFirstMatch();
             else if (IsControllerNavigation(e.Button))
             {
                 home.DeselectSearch();
@@ -213,7 +220,7 @@ internal sealed class ModEntry : Mod
             if (GetCollectionsButton().Contains(cursor))
             {
                 Helper.Input.Suppress(e.Button);
-                pendingOpen = true;
+                pendingOpen.Value = true;
                 return;
             }
         }
@@ -221,7 +228,7 @@ internal sealed class ModEntry : Mod
             return;
 
         Helper.Input.SuppressActiveKeybinds(Config.GalleryKeys);
-        application.Open();
+        application.Value.Open();
     }
 
     private void OnRenderedActiveMenu(object? sender, RenderedActiveMenuEventArgs e)
@@ -289,7 +296,7 @@ internal sealed class ModEntry : Mod
         {
             Rectangle camera = GetScreenshotButton();
             IClickableMenu.drawTextureBox(e.SpriteBatch, camera.X, camera.Y, camera.Width, camera.Height, Color.White);
-            e.SpriteBatch.Draw(Game1.mouseCursors2, new Rectangle(camera.X + 10, camera.Y + 8, 36, 32), new Rectangle(72, 31, 18, 16), photos.Pending ? Color.Gray : Color.White);
+            e.SpriteBatch.Draw(Game1.mouseCursors2, new Rectangle(camera.X + 10, camera.Y + 8, 36, 32), new Rectangle(72, 31, 18, 16), photos.Value.Pending ? Color.Gray : Color.White);
             if (camera.Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
                 IClickableMenu.drawHoverText(e.SpriteBatch, Helper.Translation.Get("photo.capture"), Game1.smallFont);
         }
@@ -298,30 +305,31 @@ internal sealed class ModEntry : Mod
     private static Rectangle GetReplaySpeedButton() => new(Game1.uiViewport.Width - 190, 24, 150, 48);
     private static Rectangle GetScreenshotButton() => new(Game1.uiViewport.Width - 258, 24, 56, 48);
 
+    // Split-screen players share the host's save data; the main player keeps the original key.
+    private static string UnlockKey => Context.IsMainPlayer ? SaveDataKey : SaveDataKey + "-" + Game1.player.UniqueMultiplayerID;
+
+    private bool ReadUnlock()
+    {
+        // A remote farmhand can't read the host's save data (SMAPI throws), so its unlock lasts for this session only.
+        if (!Context.IsOnHostComputer) return false;
+        try { return Helper.Data.ReadSaveData<GallerySaveData>(UnlockKey)?.UnlockAll == true; }
+        catch (InvalidOperationException error)
+        {
+            Monitor.Log($"The unlock choice can't be read from this save; it applies to this session only. {error.Message}", LogLevel.Debug);
+            return false;
+        }
+    }
+
     private void ToggleUnlock()
     {
         if (!Context.IsWorldReady || replay.IsActive) return;
-        unlockAll = !unlockAll;
-        Helper.Data.WriteSaveData("gallery-state", new GallerySaveData { UnlockAll = unlockAll });
-    }
-
-    private void StartEventExclusions() => eventExclusions.StartSession(savedExclusionEnabled);
-
-    private void SaveConfig()
-    {
-        Helper.WriteConfig(Config);
-        // Sessions and safe ticks use the saved choice, never later GMCM drafts.
-        savedExclusionEnabled = Config.EnableAiModExclusion;
-    }
-
-    private void UpdateEventExclusions()
-    {
-        if (replayService.IsBusy) return;
-        bool changed = eventExclusions.Enabled != savedExclusionEnabled;
-        if (changed)
-            eventExclusions.StartSession(savedExclusionEnabled);
-        if (eventExclusions.TryApplyCompleted() || changed)
-            application.RefreshCatalog();
+        unlockAll.Value = !unlockAll.Value;
+        if (!Context.IsOnHostComputer) return;
+        try { Helper.Data.WriteSaveData(UnlockKey, new GallerySaveData { UnlockAll = unlockAll.Value }); }
+        catch (InvalidOperationException error)
+        {
+            Monitor.Log($"The unlock choice can't be saved to this save; it applies to this session only. {error.Message}", LogLevel.Debug);
+        }
     }
 
     private void RegisterGmcm()
@@ -333,13 +341,9 @@ internal sealed class ModEntry : Mod
             return;
         }
 
-        gmcm.Register(ModManifest, () => Config = new ModConfig(), SaveConfig);
+        gmcm.Register(ModManifest, () => Config = new ModConfig(), () => Helper.WriteConfig(Config));
         gmcm.AddBoolOption(ModManifest, () => Config.EnableOrdinaryEventReplay, value => Config.EnableOrdinaryEventReplay = value,
             () => Helper.Translation.Get("config.ordinary-replay.name"), () => Helper.Translation.Get("config.ordinary-replay.tooltip"));
-        gmcm.AddBoolOption(ModManifest, () => Config.EnableEventSourceDiagnostics, value => Config.EnableEventSourceDiagnostics = value,
-            () => Helper.Translation.Get("config.event-source.name"), () => Helper.Translation.Get("config.event-source.tooltip"));
-        gmcm.AddBoolOption(ModManifest, () => Config.EnableAiModExclusion, value => Config.EnableAiModExclusion = value,
-            () => Helper.Translation.Get("config.ai-exclusion.name"), () => Helper.Translation.Get("config.ai-exclusion.tooltip"), fieldId: "EnableAiModExclusion");
         gmcm.AddKeybindList(ModManifest, () => Config.GalleryKeys, value => Config.GalleryKeys = value,
             () => Helper.Translation.Get("config.key.name"), () => Helper.Translation.Get("config.key.tooltip"));
         gmcm.AddKeybindList(ModManifest, () => Config.ReplaySpeedKeys, value => Config.ReplaySpeedKeys = value,

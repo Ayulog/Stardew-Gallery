@@ -79,23 +79,39 @@ internal static class ModDirectoryDiscoveryChecks
             Check(ModDirectoryDiscovery.Discover(Path.GetPathRoot(root)!, loaded).Directories.Count == 0, "Direct discovery also rejects volume roots");
             Check(ModDirectoryDiscovery.Discover("relative", loaded).Directories.Count == 0, "Direct discovery rejects relative roots");
             Check(ModDirectoryDiscovery.Discover(Path.Combine(temporary, "absent"), loaded).Issues.Count == 1, "Missing configured folder gives one diagnostic");
-            string outside = Path.Combine(temporary, "outside");
+            // Stardrop and similar managers deploy each mod as a directory link; SMAPI loads mods through them.
+            string outside = Path.Combine(temporary, "outside", "Linked mod");
             Directory.CreateDirectory(outside);
-            File.WriteAllText(Path.Combine(outside, "manifest.json"), "{\"UniqueID\":\"Fixture.Disabled\",\"Version\":\"1.0.0\",\"ContentPackFor\":{\"UniqueID\":\"Pathoschild.ContentPatcher\"}}");
-            string link = Path.Combine(root, "LinkedOutside");
-            try
+            File.WriteAllText(Path.Combine(outside, "manifest.json"), "{\"UniqueID\":\"Fixture.Linked\",\"Version\":\"1.0.0\",\"ContentPackFor\":{\"UniqueID\":\"Pathoschild.ContentPatcher\"}}");
+            var linkedLoaded = loaded.Append(new ModDirectoryIdentity("Fixture.Linked", "1.0.0", "Pathoschild.ContentPatcher", null)).ToArray();
+            string link = Path.Combine(root, "Linked mod");
+            string loop = Path.Combine(root, "Group with loop", "Back to Mods");
+            Directory.CreateDirectory(Path.GetDirectoryName(loop)!);
+            if (TestLinks.TryCreate(link, outside) && TestLinks.TryCreate(loop, root))
             {
-                Directory.CreateSymbolicLink(link, outside);
                 try
                 {
-                    result = ModDirectoryDiscovery.Discover(root, loaded);
-                    Check(!result.Directories.ContainsKey("Fixture.Disabled") && result.Issues.Any(issue => issue.Reason.Contains("junction")), "Linked directories never escape the configured root");
-                    Check(ModDirectoryDiscovery.Discover(link, loaded).Directories.Count == 0, "A linked root is rejected as well");
+                    result = ModDirectoryDiscovery.Discover(root, linkedLoaded);
+                    Check(result.Directories.TryGetValue("Fixture.Linked", out string? linked) && linked == link && result.Directories["Fixture.CP"] == cp,
+                        "A linked mod directory is found under its path in the Mods folder");
+                    Check(result.Issues.Any(issue => issue.Reason.Contains("loops back")), "A link back to a parent folder is reported once and not followed");
+                    string linkedRoot = Path.Combine(temporary, "Linked Mods");
+                    if (TestLinks.TryCreate(linkedRoot, root))
+                    {
+                        try
+                        {
+                            Check(ModDirectoryDiscovery.Discover(linkedRoot, linkedLoaded).Directories.ContainsKey("Fixture.CP"), "A Mods folder that is itself a link is scanned");
+                        }
+                        finally { Directory.Delete(linkedRoot); }
+                    }
                 }
-                finally { Directory.Delete(link); }
+                finally
+                {
+                    Directory.Delete(link);
+                    Directory.Delete(loop);
+                }
             }
-            catch (Exception error) when (error is UnauthorizedAccessException or PlatformNotSupportedException or IOException)
-            { Console.WriteLine("Directory symbolic-link check unavailable: " + error.GetType().Name); }
+            else Console.WriteLine("Directory link check unavailable: could not create a directory link.");
         }
         finally { Directory.Delete(temporary, recursive: true); }
         Console.WriteLine($"Mod directory discovery checks passed: {checks}");

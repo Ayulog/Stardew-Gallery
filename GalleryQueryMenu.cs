@@ -34,22 +34,27 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     private static Rectangle ReplayBounds(int slot) => new(1304, 224 + slot * RowHeight, 48, 48);
     private int MaxScroll => Math.Max(0, rows.Count - VisibleRows);
     public bool IsSearchSelected => search.Selected;
+    private bool keyboardFocus;
+    private Point lastMouse;
 
     internal GalleryQueryMenu(GalleryViewContext context, GalleryPageState state)
         : base(0, 0, LogicalWidth, LogicalHeight, true)
     {
         this.context = context;
         this.state = state;
-        index = new StorySearchIndex(context.Catalog, entry => context.Locations.Get(entry.LocationName), context.Characters.Get,
-            identity => context.Catalog.FindPrerequisite(identity.EventId) is { } prerequisite && prerequisite.Identity == identity
-                ? PrerequisitePresentation.Title(prerequisite, context) : context.Name(identity),
-            Game1.player.eventsSeen.ToHashSet(StringComparer.Ordinal), new ConditionParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware),
-            row => row.Event is { } story ? PrerequisitePresentation.Truth(GalleryConditionPresentation.Build(story, context.I18n, locationName: context.Locations.Get(story.LocationName)))
-                : PrerequisitePresentation.Truth(row.Prerequisite!, context.I18n), (entry, id) => context.Characters.Key(id, entry), entry => context.Locations.Key(entry.LocationName), key => context.I18n.Get(key));
+        (index, rowTextScale) = context.QueryIndex(() =>
+        {
+            var built = new StorySearchIndex(context.Catalog, entry => context.Locations.Get(entry.LocationName), context.Characters.Get,
+                identity => context.Catalog.FindPrerequisite(identity.EventId) is { } prerequisite && prerequisite.Identity == identity
+                    ? PrerequisitePresentation.Title(prerequisite, context) : context.Name(identity),
+                Game1.player.eventsSeen.ToHashSet(StringComparer.Ordinal),
+                (entry, id) => context.Characters.Key(id, entry), entry => context.Locations.Key(entry.LocationName), key => context.I18n.Get(key),
+                context.Pinyin);
+            return (built, Math.Min(1f, 29f / built.Rows.Select(row => Game1.smallFont.MeasureString(row.Title + row.Characters + row.Location).Y)
+                .Append((float)Game1.smallFont.LineSpacing).Max()));
+        });
         search = new GalleryTextBox { Height = SearchBounds.Height };
-        rowTextScale = Math.Min(1f, 29f / index.Rows.Select(row => Game1.smallFont.MeasureString(row.Title + row.Characters + row.Location).Y)
-            .Append((float)Game1.smallFont.LineSpacing).Max());
-        search.OnEnterPressed += _ => OpenFirstMatch();
+        search.OnEnterPressed += _ => FinishSearch();
         search.Text = GallerySearchInput.CleanText(state.SearchText);
         lastSearch = search.Text;
         if (state.KindFilter is StoryKind.Heart or StoryKind.Ordinary)
@@ -88,13 +93,14 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             Game1.keyboardDispatcher.Subscriber = null;
     }
 
-    public void OpenFirstMatch()
+    public void FinishSearch()
     {
         RefreshSearch();
-        if (rows.Count == 0)
-            return;
-        scroll = 0;
-        OpenRow(0, replay: false);
+        DeselectSearch();
+        // Show the results with the first one focused; a second Enter or A opens it.
+        keyboardFocus = true;
+        if (rows.Count > 0) FocusRow(0, replay: false);
+        else Focus(SearchId);
     }
 
     public void HandleControllerBack()
@@ -118,8 +124,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         }
         if (SearchBounds.Contains(x, y))
         {
-            if (GallerySearchInputGuard.Ready)
-                search.SelectMe();
+            GalleryTextBox.SelectForInput(search);
             Focus(SearchId);
             return;
         }
@@ -157,6 +162,17 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     }
     public override void releaseLeftClick(int x, int y) => dragging = false;
 
+    // Keyboard navigation shows its focus until the mouse moves again.
+    public override void performHoverAction(int x, int y)
+    {
+        if (lastMouse != new Point(x, y))
+        {
+            if (lastMouse != default) keyboardFocus = false;
+            lastMouse = new Point(x, y);
+        }
+        base.performHoverAction(x, y);
+    }
+
     public override void receiveKeyPress(Keys key)
     {
         if (search.Selected)
@@ -164,6 +180,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             if (key == Keys.Escape) DeselectSearch();
             return;
         }
+        if (key is Keys.Up or Keys.Right or Keys.Down or Keys.Left or Keys.Enter or Keys.PageUp or Keys.PageDown) keyboardFocus = true;
         if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key)) { Return(); return; }
         if (key is Keys.PageUp or Keys.PageDown) { ScrollBy(key == Keys.PageUp ? -VisibleRows : VisibleRows); return; }
         if (key == Keys.Enter) { Activate(currentlySnappedComponent?.myID ?? SearchId); return; }
@@ -178,7 +195,6 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     {
         if (button == Buttons.Y) { DeselectSearch(); OpenFilters(); return; }
         if (button == Buttons.B) { HandleControllerBack(); return; }
-        if (button == Buttons.A) { Activate(currentlySnappedComponent?.myID ?? SearchId); return; }
         if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
         {
             ScrollBy(button == Buttons.LeftShoulder ? -VisibleRows : VisibleRows); return;
@@ -190,7 +206,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     {
         if (id >= RowBase) { OpenRow((id - RowBase) / 2, (id - RowBase) % 2 == 1); return; }
         if (id == KindBase) { DeselectSearch(); OpenFilters(); return; }
-        if (id == SearchId) { if (GallerySearchInputGuard.Ready) search.SelectMe(); return; }
+        if (id == SearchId) { GalleryTextBox.SelectForInput(search); return; }
         if (id == BackId) { HandleControllerBack(); return; }
         if (id == LocationId) { state.Filter = new(); RefreshSearch(force: true); Focus(KindBase); }
     }
@@ -236,11 +252,14 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     private void Focus(int id)
     {
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == id)
-            ?? allClickableComponents.First(component => component.myID == SearchId);
+            ?? allClickableComponents.FirstOrDefault(component => component.myID == SearchId);
         SaveState();
         if (!dragging && Game1.options.snappyMenus && Game1.options.gamepadControls)
             snapCursorToCurrentSnappedComponent();
     }
+
+    // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
+    public override void populateClickableComponentList() => BuildComponents();
 
     public override void snapToDefaultClickableComponent() => Focus(rows.Count == 0 ? SearchId : RowBase + scroll * 2);
 
@@ -321,7 +340,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         }
         int fallback = previous >= RowBase && rows.Count > 0 ? RowBase + Math.Clamp((previous - RowBase) / 2, scroll, Math.Min(rows.Count - 1, scroll + VisibleRows - 1)) * 2 : SearchId;
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previous)
-            ?? allClickableComponents.First(component => component.myID == fallback);
+            ?? allClickableComponents.FirstOrDefault(component => component.myID == fallback)
+            ?? allClickableComponents.FirstOrDefault(component => component.myID == SearchId);
         SaveState();
     }
 
@@ -334,7 +354,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         SpriteText.drawStringHorizontallyCenteredAt(b, context.I18n.Get("query.title"), width / 2, 30, maxWidth: 900);
         search.Draw(b);
         if (search.Text.Length == 0 && !search.Selected)
-            GalleryDrawing.DrawLeftFitted(b, context.I18n.Get(GallerySearchInputGuard.Ready ? "query.search" : "home.search-unavailable"), GalleryDrawing.Inset(SearchBounds, 12, 8));
+            GalleryDrawing.DrawLeftFitted(b, context.I18n.Get("query.search"), GalleryDrawing.Inset(SearchBounds, 12, 8));
         GalleryDrawing.DrawButton(b, FilterBounds, context.I18n.Get("filter.title"));
         if (state.Filter != new QueryFilter() || currentlySnappedComponent?.myID == KindBase)
             b.Draw(Game1.staminaRect, new Rectangle(FilterBounds.X + 20, FilterBounds.Bottom - 7, FilterBounds.Width - 40, 3), new Color(66, 112, 76));
@@ -349,7 +369,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             GalleryEvent? entry = row.Event;
             Rectangle bounds = RowBounds(slot);
             bool hovered = bounds.Contains(mouseX, mouseY);
-            bool focused = Game1.options.snappyMenus && Game1.options.gamepadControls
+            bool focused = (Game1.options.snappyMenus && Game1.options.gamepadControls || keyboardFocus)
                 && (currentlySnappedComponent?.myID - RowBase) / 2 == scroll + slot;
             b.Draw(Game1.staminaRect, bounds, hovered || focused ? new Color(204, 221, 187) * .65f
                 : slot % 2 == 0 ? Color.White * .2f : new Color(101, 85, 68) * .07f);

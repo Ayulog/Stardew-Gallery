@@ -4,18 +4,32 @@ internal static class GalleryCorrectionChecks
 {
     internal static void Run()
     {
-        GalleryKeyboardCapture capture = new();
-        int[] keys = [112, 114, 71, 162, 86];
-        Check(capture.Update(false, keys.ToHashSet()).Length == 0, "normal gameplay not captured");
-        Check(capture.Update(true, keys.ToHashSet()).ToHashSet().SetEquals(keys), "F1/F3, letters and paste chord captured");
-        Check(capture.Update(false, keys.ToHashSet()).ToHashSet().SetEquals(keys), "held keys remain captured after leaving search");
-        Check(capture.Update(false, new HashSet<int>()).ToHashSet().SetEquals(keys), "release events remain captured");
-        Check(!capture.HasCapturedKeys && capture.Update(false, new HashSet<int> { 114 }).Length == 0, "fresh shortcuts work after release");
-        GalleryKeyboardCapture otherInput = new();
-        capture.Update(true, keys.ToHashSet());
-        Check(!otherInput.HasCapturedKeys, "capture state belongs to one input instance");
-        capture.Reset();
-        Check(!capture.HasCapturedKeys, "failed guard can release its local capture state");
+        // XNA key codes: F1 112, F3 114, G 71, K 75, Enter 13, Escape 27, V 86, LeftControl 162, LeftWindows 91.
+        GalleryTypingKeys typing = new();
+        int[] held = [112, 114, 71, 13];
+        Check(typing.Update(false, held, false).Hide.Length == 0, "nothing is hidden outside a text field");
+        Check(typing.Update(true, held, false) is { Paste: false, Escape: false } start && start.Hide.ToHashSet().SetEquals(held),
+            "keys held when typing starts are hidden without acting");
+        Check(typing.Update(true, held, false).Hide.Length == 0, "a held key is hidden once, not again every tick");
+        Check(typing.Update(true, [.. held, 75], false) is { Hide: [75], Paste: false, Escape: false }, "a letter pressed while typing is hidden");
+        Check(typing.Update(true, [75], false).Hide.Length == 0 && typing.Update(true, [75, 71], false) is { Hide: [71] },
+            "a key released and pressed again is hidden again");
+        typing.Update(true, [], false);
+        Check(typing.Update(true, [162], false) is { Hide: [162], Paste: false } && typing.Update(true, [162, 86], false) is { Hide: [86], Paste: true },
+            "Ctrl, then V pastes, and both stay hidden");
+        Check(!typing.Update(true, [162, 86], false).Paste, "holding Ctrl+V pastes once");
+        typing.Update(true, [], false);
+        Check(typing.Update(true, [86], false) is { Hide: [86], Paste: false }, "V alone is typing, not pasting");
+        typing.Update(true, [], true);
+        Check(typing.Update(true, [91, 86], true).Paste, "Cmd+V pastes on macOS");
+        typing.Update(true, [], true);
+        Check(!typing.Update(true, [162, 86], true).Paste, "Ctrl+V doesn't paste on macOS, as in the game");
+        typing.Update(true, [], false);
+        Check(typing.Update(true, [27], false) is { Hide: [27], Escape: true }, "Escape ends typing and is hidden");
+        Check(typing.Update(false, [27, 75], false).Hide.Length == 0 && typing.Update(true, [27, 75], false) is { Escape: false },
+            "after typing ends nothing new is hidden; keys held into the next field are hidden without acting");
+        GalleryTypingKeys otherScreen = new();
+        Check(otherScreen.Update(true, [75], false) is { Hide: [75], Escape: false }, "each screen keeps its own typing state");
 
         string unicode = "Abigail \u963f\u6bd4\u76d6\u5c14 \u30a2\u30d3\u30b2\u30a4\u30eb e\u0301 \ud83d\ude00";
         Check(ReferenceEquals(unicode, GallerySearchInput.CleanText(unicode)), "Unicode and combining text are preserved without allocation");
@@ -42,19 +56,30 @@ internal static class GalleryCorrectionChecks
         ConditionTextSpec tuesdaySpec = ConditionDescriber.Describe(tuesday);
         Check(!tuesdaySpec.Negated && ((ListTextValue)tuesdaySpec.Arguments["days"]).Values is [TermTextValue { Value: "Tuesday" }], "six excluded days display Tuesday");
 
+        // Preconditions.Season (1.6.15) compares only the first listed season, for both Season and its negations.
         string[] seasons = ["spring", "summer", "fall", "winter"];
-        for (int mask = 1; mask < 1 << seasons.Length; mask++)
+        ConditionEvaluator seasonEvaluator = new();
+        ConditionEvaluationContext seasonContext = new(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        foreach (string[] listed in Enumerable.Range(1, (1 << seasons.Length) - 1)
+            .Select(mask => seasons.Where((_, index) => (mask & (1 << index)) != 0).ToArray())
+            .SelectMany(listed => new[] { listed, listed.Reverse().ToArray() }))
+        foreach (bool negated in new[] { false, true })
         {
-            string[] excluded = seasons.Where((_, index) => (mask & (1 << index)) != 0).ToArray();
-            ConditionTextSpec spec = ConditionDescriber.Describe(new SeasonCondition(excluded, ConditionSource.LegacyEventPrecondition, "season fixture", true));
-            HashSet<string> shown = ((ListTextValue)spec.Arguments["seasons"]).Values.Cast<TermTextValue>().Select(term => term.Value).ToHashSet();
-            foreach (string season in seasons)
-                Check(!excluded.Contains(season) == (spec.Negated ? !shown.Contains(season) : shown.Contains(season)), "season complement preserves all four outcomes");
+            SeasonCondition condition = new(listed, ConditionSource.LegacyEventPrecondition, "season fixture", negated);
+            ConditionTextSpec spec = ConditionDescriber.Describe(condition);
+            bool namesFirst = spec.Negated == negated && ((ListTextValue)spec.Arguments["seasons"]).Values is [TermTextValue { Value: var shown }] && shown == listed[0];
+            bool listsIgnored = listed.Length == 1
+                ? spec.LocalizationKey == "condition.season" && !spec.Arguments.ContainsKey("ignored")
+                : spec.LocalizationKey == "condition.season-first-only"
+                    && ((ListTextValue)spec.Arguments["ignored"]).Values.Cast<TermTextValue>().Select(term => term.Value).SequenceEqual(listed.Skip(1));
+            Check(namesFirst && listsIgnored, "season text names only the first season and lists the ignored ones");
+            foreach (string current in seasons)
+                Check(seasonEvaluator.Evaluate(condition, seasonContext with { Season = current }).Truth
+                    == ((current == listed[0]) != negated ? ConditionTruth.True : ConditionTruth.False), "season evaluation follows the game's first-season rule");
         }
-        ConditionTextSpec winter = ConditionDescriber.Describe(new SeasonCondition(["SPRING", "summer", "Fall", "fall"], ConditionSource.LegacyEventPrecondition, "z spring summer fall", true));
-        Check(!winter.Negated && ((ListTextValue)winter.Arguments["seasons"]).Values is [TermTextValue { Value: "winter" }], "three excluded seasons display winter, ignoring case and duplicates");
-        ConditionTextSpec notWinter = ConditionDescriber.Describe(new SeasonCondition(["winter"], ConditionSource.LegacyEventPrecondition, "z winter", true));
-        Check(notWinter.Negated, "short negative is not expanded to three seasons");
+        ConditionTextSpec repeated = ConditionDescriber.Describe(new SeasonCondition(["SPRING", "spring", "Summer", "summer"], ConditionSource.LegacyEventPrecondition, "z spring spring summer summer", true));
+        Check(repeated.Negated && repeated.NaturalNegativeKey == "condition.season-first-only-not"
+            && ((ListTextValue)repeated.Arguments["ignored"]).Values is [TermTextValue { Value: "Summer" }], "repeated seasons are ignored without case duplicates");
 
         Check(GalleryUiRules.ResolveReturnPosition(89, 12, 6, 3, 120) == (12, 17), "late character restores home scroll and visible slot");
         Check(GalleryUiRules.ResolveReturnPosition(15, 5, 2, 3, 20) == (5, 5), "late event restores album scroll and visible slot");

@@ -11,6 +11,7 @@ internal sealed record ResolvedEventGroup(
 
 internal enum ResolvedEventSelectionSource
 {
+    SingleCandidate,
     NativeMatch,
     IndeterminateFallback,
     NoMatchFallback
@@ -103,8 +104,10 @@ internal sealed class ResolvedEventIndex
         {
             List<ResolvedEventCandidate> matches = grouped[identity];
             int selectedIndex = 0;
-            ResolvedEventSelectionSource selectionSource = ResolvedEventSelectionSource.NoMatchFallback;
-            for (int index = 0; index < matches.Count; index++)
+            ResolvedEventSelectionSource selectionSource = matches.Count == 1
+                ? ResolvedEventSelectionSource.SingleCandidate : ResolvedEventSelectionSource.NoMatchFallback;
+            // A lone candidate is current whatever its preconditions say, so it needs no native check.
+            for (int index = 0; matches.Count > 1 && index < matches.Count; index++)
             {
                 NativePreconditionProbeStatus status = matches[index].ProbePrecondition().Status;
                 if (status == NativePreconditionProbeStatus.NotMatched)

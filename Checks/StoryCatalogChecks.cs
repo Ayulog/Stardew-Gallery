@@ -72,8 +72,10 @@ internal static class StoryCatalogChecks
         GalleryCatalogBuildResult result = builder.Build(characters, source);
         GalleryCatalog catalog = result.Catalog;
         GalleryEvent Get(string id) => catalog.Find(new EventIdentity("Data/Events/Town", id))!;
-        foreach (string id in new[] { "heart", "short", "silent", "canonical", "fragment-heart", "continuation", "silent-continuation", "optional-actor", "nonsocial", "dating", "spouse", "typed-dating", "typed-spouse", "unlisted-continuation", "dating-continuation", "double-negative-spouse", "double-negative-dating" })
+        foreach (string id in new[] { "heart", "short", "silent", "canonical", "fragment-heart", "continuation", "silent-continuation", "optional-actor", "nonsocial", "dating", "spouse", "typed-dating", "typed-spouse", "unlisted-continuation", "dating-continuation", "double-negative-spouse" })
             Check(Get(id).Kind == StoryKind.Heart, id + " is a heart story");
+        // The game strips one '!', so "!!D Abigail" names no precondition and gives no relationship evidence.
+        Check(Get("double-negative-dating").Kind == StoryKind.Ordinary, "double-negative-dating stays searchable outside the album");
         foreach (string id in new[] { "ordinary", "zero", "negative", "negative-points", "malformed", "festival", "visible-mail", "unknown", "incomplete", "fragment", "unrelated", "ordinary-child", "internal-child", "multiple", "case", "cycle-a", "cycle-b", "ambiguous", "unknown-continuation", "incomplete-continuation", "negative-dating", "negative-spouse", "not-spouse", "weekday", "invalid-dating", "ordinary-emote", "ordinary-animation", "not-spouse-canonical", "generic-roommate", "spouse-bed", "named-romance-scene" })
             Check(Get(id).Kind == StoryKind.Ordinary, id + " stays searchable outside the album");
         foreach (string id in new[] { "mail", "marker", "queued", "transition", "internal-continuation", "internal-spouse", "empty-continuation", "visible-timing", "visible-long-timing" })
@@ -168,15 +170,6 @@ internal static class StoryCatalogChecks
         Check(catalog.Find(new("Data/Events/Town", "internal"))!.Kind == StoryKind.Internal,
             "query friendship does not promote internal flows");
 
-        ConditionParser parser = new(key => key.Split('/'), Split);
-        StorySearchIndex index = new(catalog, entry => entry.LocationName, name => name, parser: parser);
-        string[] twoHeartIds = ["bounded", "conjunction", "double-negative", "hearts", "legacy", "points", "target"];
-        Check(index.Search("", new QueryFilter { Kind = QueryKind.Heart, Npc = "Sam", MinimumHearts = 2, MaximumHearts = 2 })
-            .Select(row => row.EventId).SequenceEqual(twoHeartIds), "legacy and query thresholds share exact heart and character filters");
-        Check(index.Search("", new QueryFilter { MinimumHearts = 3 }).Single().EventId == "fractional",
-            "friendship points round up consistently for the required heart filter");
-        Check(index.Search("", new QueryFilter { MaximumHearts = 0 }).Count == 0,
-            "zero, negative and relationship-only queries do not invent numeric thresholds");
         Check(catalog.AllEntries.All(entry => sources.Contains(entry.Resolved)), "relationship evidence preserves raw source records");
     }
 
