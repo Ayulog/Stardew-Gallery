@@ -1,6 +1,6 @@
 # Stardew Gallery 2.10.0
 
-起草于 2026-10-21，实机验收后发布。需求依据：[REQUIREMENTS.md](REQUIREMENTS.md)；待验收项目：[RELEASE_2.10.0_ACCEPTANCE.md](RELEASE_2.10.0_ACCEPTANCE.md)。
+2026-10-21 发布。需求依据：[REQUIREMENTS.md](REQUIREMENTS.md)；游戏内验收场景：[RELEASE_2.10.0_ACCEPTANCE.md](RELEASE_2.10.0_ACCEPTANCE.md)。
 
 ## 中文
 
@@ -87,7 +87,7 @@
 
 - 构建、Checks、PersistenceChecks 和 10 组 SMAPI 运行时检查全部通过，可用 `tools/Verify-Local.ps1` 一次运行。
 - 新增条件对拍检查：在同一玩家状态下直接调用游戏自身的判定代码，与画廊逐项比对，75 项一致。
-- 以上都不代替游戏内验收；待验收的场景见 [RELEASE_2.10.0_ACCEPTANCE.md](RELEASE_2.10.0_ACCEPTANCE.md)。
+- 以上都不代替游戏内验收；游戏内验收场景见 [RELEASE_2.10.0_ACCEPTANCE.md](RELEASE_2.10.0_ACCEPTANCE.md)。
 
 ## English
 
@@ -174,4 +174,4 @@
 
 - The build, Checks, PersistenceChecks and ten SMAPI runtime check modes pass; `tools/Verify-Local.ps1` runs them all.
 - A new condition parity check calls the game's own precondition code on the same player state and compares 75 cases with the gallery.
-- None of this replaces in-game acceptance; open items are listed in [RELEASE_2.10.0_ACCEPTANCE.md](RELEASE_2.10.0_ACCEPTANCE.md).
+- None of this replaces in-game acceptance; the in-game scenarios are listed in [RELEASE_2.10.0_ACCEPTANCE.md](RELEASE_2.10.0_ACCEPTANCE.md).

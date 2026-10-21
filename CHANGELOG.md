@@ -1,6 +1,6 @@
 # Changelog / 更新日志
 
-## 2.10.0 - Unreleased - Scope Reset & Fixes / 范围收窄与集中修复
+## 2.10.0 - 2026-10-21 - Scope Reset & Fixes / 范围收窄与集中修复
 
 - **范围调整 / Scope**：删除 AI 模组排除名单（画廊不再联网）和运行时修改追踪；查询筛选去掉条件状态、季节、天气、时间和心数。 / Removed the AI mod exclusion list (the gallery no longer goes online) and runtime modification tracking; query filters no longer cover condition status, season, weather, time or hearts.
 - **回放存档安全 / Replay Safety**：背包不再克隆，鱼饵、钓具和弹药不会丢失；季节只改事件画面，不再清空果实和肥料；失焦与暂停不计入超时；节日会场当天不可回放；回放期间不触发真实事件与 TriggerAction；快照补全 Buff、统计、已听歌曲、已访问地点和壁炉。 / Inventory is no longer cloned, so bait, tackle and ammo survive; season changes are visual only, so fruit and fertilizer stay; unfocused or paused time doesn't count toward timeouts; festival venues can't be replayed on festival days; real events and trigger actions don't run during replay; the snapshot also covers buffs, stats, songs, visited locations and fireplaces.
