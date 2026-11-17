@@ -1,0 +1,15 @@
+{
+  "Changes": [
+    {
+      "Action": "EditData",
+      "Target": "Data\\TriggerActions",
+      "Entries": {
+        "Shared_Rule": { "Id": "Shared_Rule", "Trigger": "DayEnding", "Action": "AddMail Current SharedMail" }
+      },
+      "Fields": {
+        "Vanilla_Rule": { "Condition": "TRUE" },
+        "{{DynamicEditTarget}}": { "Condition": "FALSE" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+[
+  { "Id": "Shared_Rule", "Trigger": "DayStarted", "Action": "AddMail Current IndependentMail" },
+  { "Id": "Independent_Rule", "Trigger": "DayStarted", "Actions": [ "MarkEventSeen Current 900002" ] }
+]

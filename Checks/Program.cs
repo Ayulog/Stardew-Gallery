@@ -4,9 +4,22 @@ using StardewGallery;
 
 AppearanceChecks.Run();
 if (args.Contains("--appearance")) return;
+// --stage1 / --stage2 / --stage3 / --stage4 run every in-memory check (including the 1.6 GSQ, replay environment,
+// static source, parallel If-routes, encounter clues, quotes/BGM, $q/fork sandbox, auto-memento, wedding keepsakes,
+// favorites, local folder rules, three-bookmark spread layout, pagination, scenic window, and card title formatting)
+// while skipping the two suites that create and delete temporary fixture directories.
+bool memoryOnly = args.Contains("--stage1") || args.Contains("--stage2") || args.Contains("--stage3") || args.Contains("--stage4");
+ConditionStage1Checks.Run(FakeSplitArgs);
+SourceStage1Checks.Run();
+Stage2Checks.Run(FakeSplitArgs);
+Stage3Checks.Run();
+Stage4Checks.Run();
 
-EventDefinitionChecks.Run();
-ModDirectoryDiscoveryChecks.Run();
+if (!memoryOnly)
+{
+    EventDefinitionChecks.Run();
+    ModDirectoryDiscoveryChecks.Run();
+}
 EventOriginPresentationChecks.Run();
 SourceQueryChecks.Run();
 if (args.Contains("--event-sources")) return;
@@ -733,8 +746,8 @@ Check(eval.Evaluate(datingEmily, noRelationships with { Dating = null }).Knowled
 Check(eval.Evaluate(spouseAlex, noRelationships with { Spouse = null }).Knowledge == ConditionKnowledge.MissingData, "null spouse remains unknown");
 
 int nativeCalls = 0;
-ConditionEvaluator nativeEval = new(query => { nativeCalls++; return query == "SEASON Spring"; });
-ConditionSet nativeSet = parser2.Parse(["GameStateQuery SEASON Spring"]);
+ConditionEvaluator nativeEval = new(query => { nativeCalls++; return query == "CustomMod.Query Value"; });
+ConditionSet nativeSet = parser2.Parse(["GameStateQuery CustomMod.Query Value"]);
 Check(nativeEval.Evaluate(nativeSet.Conditions[0], missingContext).Truth == ConditionTruth.True);
 Check(nativeEval.Evaluate(nativeSet.Conditions[0], missingContext).Knowledge == ConditionKnowledge.Known);
 Check(nativeCalls == 2);
@@ -899,7 +912,9 @@ ConditionTextSpec roommateReadable = ConditionDescriber.Describe(parser2.Parse([
 Check(roommateReadable.LocalizationKey == "condition.roommate-with");
 ConditionTextSpec worldReadable = ConditionDescriber.Describe(parser2.Parse(["WorldState flag"]).Conditions[0]);
 Check(worldReadable.LocalizationKey == "condition.world-state" && worldReadable.Arguments["id"] is PlainTextValue { Value: "flag" });
-ConditionTextSpec nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
+ConditionTextSpec nativeSeasonReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery SEASON Spring"]).Conditions[0]);
+Check(nativeSeasonReadable.LocalizationKey == "condition.season" && nativeSeasonReadable.Arguments.ContainsKey("seasons"));
+ConditionTextSpec nativeReadable = ConditionDescriber.Describe(parser2.Parse(["GameStateQuery CustomMod.Query Value"]).Conditions[0]);
 Check(nativeReadable.LocalizationKey == "condition.native-query" && nativeReadable.Arguments.ContainsKey("query"));
 
 // ---------- 2.0.3 complete vanilla event-precondition domain ----------

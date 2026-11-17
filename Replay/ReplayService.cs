@@ -5,7 +5,8 @@ using StardewValley.Menus;
 namespace StardewGallery;
 
 internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayCoordinator coordinator,
-    Func<bool> protectionReady, Func<bool> ordinaryEnabled, Func<bool> unlockAll, Func<bool> showWarning)
+    Func<bool> protectionReady, Func<bool> ordinaryEnabled, Func<bool> unlockAll, Func<bool> showWarning,
+    Func<GalleryEvent, bool>? parallelBranchUnlocked = null)
 {
     private bool warningShown;
     private bool confirmationPending;
@@ -29,7 +30,9 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
             unlockAll(), ordinaryEnabled(), protectionReady(), Context.IsMultiplayer,
             coordinator.IsActive || confirmationPending || Game1.eventUp || Game1.CurrentEvent is not null,
             saveFileReady: saveReady,
-            festivalLocation: festival is not null && festival.Equals(entry.LocationName, StringComparison.OrdinalIgnoreCase));
+            festivalLocation: festival is not null && festival.Equals(entry.LocationName, StringComparison.OrdinalIgnoreCase),
+            parallelBranchUnlocked: parallelBranchUnlocked?.Invoke(entry) == true,
+            isWedding: WeddingMemento.IsWeddingIdentity(entry.Resolved.Identity));
     }
 
     /// <summary>
@@ -47,7 +50,7 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
         return (saveReady, festival);
     }
 
-    internal void Request(GalleryEvent entry, Action completed)
+    internal void Request(GalleryEvent entry, Action completed, ReplayForkOption? forkOverride = null)
     {
         bool finished = false;
         void Complete()
@@ -72,7 +75,7 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
             }
             try
             {
-                if (coordinator.TryStart(entry, Complete, out string error))
+                if (coordinator.TryStart(entry, Complete, out string error, forkOverride))
                     activeIdentity = entry.Resolved.Identity;
                 else
                 {

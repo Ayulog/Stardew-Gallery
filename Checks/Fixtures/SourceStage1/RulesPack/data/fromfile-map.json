@@ -1,0 +1,13 @@
+{
+  "FromFile_MapRule": {
+    "Id": "FromFile_MapRule",
+    "Trigger": "DayStarted",
+    "Action": "AddMail Current MapRuleMail"
+  },
+  "#0": {
+    "Id": "FromFile_IndexedRule",
+    "Trigger": "DayEnding",
+    "Action": "Null"
+  },
+  "FromFile_Removed": null
+}

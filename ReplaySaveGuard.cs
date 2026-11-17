@@ -52,6 +52,10 @@ internal static class ReplaySaveGuard
             harmony.Patch(AccessTools.Method(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.AddConversationTopic)),
                 prefix: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(BeforeTopic)),
                 finalizer: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(AfterTopic)));
+            harmony.Patch(AccessTools.Method(typeof(Event.DefaultCommands), nameof(Event.DefaultCommands.Fork))
+                ?? throw new MissingMethodException(typeof(Event.DefaultCommands).FullName, nameof(Event.DefaultCommands.Fork)),
+                prefix: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(BeforeFork)),
+                finalizer: new HarmonyMethod(typeof(ReplaySaveGuard), nameof(AfterFork)));
             foreach (string command in ReplayEffectPolicy.SuppressedNativeHandlers)
                 Patch(typeof(Event.DefaultCommands), command, nameof(BeforeEffectCommand));
             IsReady = true;
@@ -103,6 +107,57 @@ internal static class ReplaySaveGuard
     private static void AfterTopic(Event __0, bool? __state)
     {
         if (__state.HasValue) __0.isMemory = __state.Value;
+    }
+
+    private static bool BeforeFork(Event __0, ref string[] __1, EventContext __2, out (bool Active, bool OldVar)? __state)
+    {
+        __state = null;
+        if (!replay.OwnsEvent(__0) || replay.ForkOverride is not { } selected || selected.Mode == ReplayForkMode.FollowSave)
+            return true;
+        if (!ArgUtility.TryGet(__1, 1, out string? requiredId, out _, allowBlank: true, "string requiredId")
+            || !ArgUtility.TryGetOptional(__1, 2, out string? newKey, out _, defaultValue: null, allowBlank: true, "string newKey")
+            || !ArgUtility.TryGetOptionalBool(__1, 3, out bool isTranslationKey, out _, defaultValue: false, "bool isTranslationKey"))
+            return true;
+        if (newKey is null)
+        {
+            newKey = requiredId;
+            requiredId = null;
+        }
+        string currentLocation = Game1.currentLocation?.Name is { Length: > 0 } liveLocation
+            ? liveLocation
+            : __2.Location?.Name ?? "";
+        ForkInterceptDecision decision = ReplayBranchControl.DecideFork(selected, currentLocation, requiredId, newKey, isTranslationKey);
+        if (decision == ForkInterceptDecision.Native)
+            return true;
+        if (decision == ForkInterceptDecision.ForceSkip)
+        {
+            __0.CurrentCommand++;
+            return false;
+        }
+        if (isTranslationKey)
+        {
+            string? script = SafeTranslationLoader.TryLoad(Game1.content, newKey, localeFallback: true);
+            if (script is null)
+            {
+                __2.LogErrorAndSkip("can't load new script from translation key '" + newKey + "' because that translation wasn't found");
+                return false;
+            }
+            __0.ReplaceAllCommands(Event.ParseCommands(script, __2.Event.farmer));
+            __0.forked = true;
+            return false;
+        }
+        // Delegate to native Fork using a 1-arg fork call + temporary specialEventVariable1 on the owned replay event,
+        // so Farmer.mailReceived and Farmer.dialogueQuestionsAnswered are never mutated even momentarily.
+        __state = (true, __0.specialEventVariable1);
+        __0.specialEventVariable1 = true;
+        __1 = ["fork", newKey!];
+        return true;
+    }
+
+    private static void AfterFork(Event __0, (bool Active, bool OldVar)? __state)
+    {
+        if (__state is { Active: true } state)
+            __0.specialEventVariable1 = state.OldVar;
     }
 
     private static bool BeforeEnd(Event __instance)

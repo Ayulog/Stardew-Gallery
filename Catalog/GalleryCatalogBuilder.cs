@@ -10,7 +10,8 @@ internal sealed class GalleryCatalogBuilder(
     Func<string, string[]> parseCommands,
     Func<string, string[]> splitArguments,
     Func<string, string[]> splitPositions,
-    Func<string?> getSpouse)
+    Func<string?> getSpouse,
+    Func<string, string?>? loadTranslation = null)
 {
     private readonly ConditionParser conditionParser = new(splitPreconditions, splitArguments);
 
@@ -88,11 +89,22 @@ internal sealed class GalleryCatalogBuilder(
         List<GalleryCharacter> galleryCharacters = characters
             .Where(character => galleryNames.Contains(character.Name))
             .ToList();
+        IReadOnlyDictionary<EventIdentity, string> parallelGroups = ParallelBranchAnalyzer.Analyze(
+            includedEvents,
+            currentEvents,
+            conditionParser,
+            parseCommands,
+            splitArguments,
+            loadTranslation
+        );
         GalleryCatalog catalog = new(
             galleryCharacters,
             includedEvents,
             analyzedEvents.Where(entry => entry.Kind != StoryKind.Heart).ToList()
-        );
+        )
+        {
+            ParallelGroups = parallelGroups
+        };
         return new GalleryCatalogBuildResult(catalog, analyzedEvents);
     }
 
@@ -176,6 +188,8 @@ internal sealed class GalleryCatalogBuilder(
             foreach (string command in parseCommands(fragment))
                 yield return command;
     }
+
+    internal bool IsInternalFlow(ResolvedEvent entry) => InternalFlowReason(entry) is not null;
 
     private string? InternalFlowReason(ResolvedEvent entry)
     {

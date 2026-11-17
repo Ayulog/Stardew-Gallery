@@ -24,14 +24,20 @@ internal sealed class GalleryTextBox : TextBox
             Game1.showTextEntry(box);
     }
 
+    /// <summary>False when the page draws its own skinned field frame behind the text.</summary>
+    internal bool DrawFrame { get; set; } = true;
+
     public override void Draw(SpriteBatch b, bool drawShadow = true)
     {
+        if (DrawFrame)
+        {
         int[] sx = [0, 16, texture.Width - 16, texture.Width], sy = [0, 8, texture.Height - 8, texture.Height];
         int[] dx = [X, X + 16, X + Width - 16, X + Width], dy = [Y, Y + 8, Y + Height - 8, Y + Height];
         for (int row = 0; row < 3; row++)
         for (int col = 0; col < 3; col++)
             b.Draw(texture, new Rectangle(dx[col], dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row]),
                 new Rectangle(sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row]), Color.White);
+        }
         string text = Text;
         float scale = Math.Min(1f, (Height - 20f) / Math.Max(1f, Game1.smallFont.MeasureString(text.Length == 0 ? "Ag" : text).Y));
         float available = (Width - 40f) / scale;

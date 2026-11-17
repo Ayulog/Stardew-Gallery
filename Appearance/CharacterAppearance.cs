@@ -8,7 +8,7 @@ namespace StardewGallery.Appearance;
 internal sealed class CharacterAppearance : ICharacterAppearance
 {
     private sealed record Visual(Texture2D Texture, Texture2D Original, string Context, PortraitFrame? Portrait,
-        AnimatedSprite? Sprite, DetailedSprite? Detailed)
+        AnimatedSprite? Sprite, DetailedSprite? Detailed, HdPortraitEntry? AnimatedHd = null)
     {
         internal long Used { get; set; }
     }
@@ -16,6 +16,7 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     private readonly IMonitor monitor;
     private readonly Texture2D placeholder;
     private readonly DialoguePortraits dialogue;
+    private readonly HdPortraits hdPortraits;
     private readonly ScaleUpSprites scaleUp;
     private readonly PortraiturePortraits portraiture = new();
     private readonly Dictionary<(string Name, CharacterVisual Kind), Visual> visuals = [];
@@ -24,17 +25,20 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     private long clock;
     private Dictionary<string, NPC>? npcs;
     private long npcsReadAt;
+    private static double NowMs => Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0d;
 
     internal CharacterAppearance(IGameContentHelper content, IModRegistry registry, IMonitor monitor, Texture2D placeholder)
     {
         this.content = content; this.monitor = monitor;
         this.placeholder = placeholder;
-        dialogue = new(content, registry); scaleUp = new(registry);
+        dialogue = new(content, registry);
+        hdPortraits = new(content, registry);
+        scaleUp = new(registry);
     }
 
     internal void Invalidate()
     {
-        visuals.Clear(); failed.Clear(); dialogue.Invalidate(); npcs = null;
+        visuals.Clear(); failed.Clear(); dialogue.Invalidate(); hdPortraits.Invalidate(); npcs = null;
     }
 
     /// <summary>
@@ -64,20 +68,26 @@ internal sealed class CharacterAppearance : ICharacterAppearance
         return npcs.GetValueOrDefault(name);
     }
 
-    internal bool UsesAsset(IAssetName name) => name.IsEquivalentTo("Data/Characters")
-        || name.Name.StartsWith("Portraits/", StringComparison.OrdinalIgnoreCase)
-        || name.Name.StartsWith("Characters/", StringComparison.OrdinalIgnoreCase)
-        || name.IsEquivalentTo(DialoguePortraits.AssetName)
-        || name.Name.StartsWith("Arborsm.ScaleUpUnofficial/", StringComparison.OrdinalIgnoreCase)
-        || visuals.Values.Any(v => v.Texture.Name is { Length: > 0 } asset && name.IsEquivalentTo(asset)
-            || v.Original.Name is { Length: > 0 } original && name.IsEquivalentTo(original));
+    internal bool UsesAsset(IAssetName name)
+    {
+        string normalized = name.Name.Replace('\\', '/');
+        return name.IsEquivalentTo("Data/Characters")
+            || normalized.StartsWith("Portraits/", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("Characters/", StringComparison.OrdinalIgnoreCase)
+            || name.IsEquivalentTo(DialoguePortraits.AssetName)
+            || name.IsEquivalentTo(HdPortraits.DictionaryAssetName)
+            || normalized.StartsWith(HdPortraits.AssetPrefix, StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("Arborsm.ScaleUpUnofficial/", StringComparison.OrdinalIgnoreCase)
+            || visuals.Values.Any(v => v.Texture.Name is { Length: > 0 } asset && name.IsEquivalentTo(asset)
+                || v.Original.Name is { Length: > 0 } original && name.IsEquivalentTo(original));
+    }
 
     public void Prepare(string name, CharacterVisual kind)
     {
         var key = (name, kind);
         if (failed.TryGetValue(key, out double retryAt))
         {
-            if (Game1.currentGameTime.TotalGameTime.TotalMilliseconds < retryAt)
+            if (NowMs < retryAt)
             {
                 if (kind == CharacterVisual.Sprite) Prepare(name, CharacterVisual.Portrait);
                 return;
@@ -108,7 +118,7 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                     Warn("portraiture:" + name, $"Portraiture portrait unavailable for {name}; showing the regular portrait: {error.Message}");
                     original = content.Load<Texture2D>("Portraits/" + NPC.getTextureNameForCharacter(name));
                     if (portraiture.IsPortraiture(original)) throw;
-                    failed[key] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+                    failed[key] = NowMs + 2000;
                 }
             }
             string context = (npc?.LastAppearanceId ?? "") + "|" + npc?.currentLocation?.NameOrUniqueName
@@ -119,44 +129,74 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 && cached.Context == context && cached.Detailed == detailed && !cached.Texture.IsDisposed
                 && (selected is null || ReferenceEquals(cached.Texture, selected.Texture) && cached.Portrait == selected.Frame))
             {
+                if (cached.AnimatedHd is { IsAnimated: true } animHd
+                    && animHd.SelectFrame(NowMs, cached.Texture.Width, cached.Texture.Height) is { } nextFrame
+                    && nextFrame.TryRegion(cached.Texture.Width, cached.Texture.Height, out _))
+                {
+                    cached = cached with { Portrait = nextFrame };
+                    visuals[key] = cached;
+                }
                 cached.Used = ++clock;
-                Animate(cached.Sprite);
+                SetStandingIdle(cached.Sprite);
                 return;
             }
             Texture2D texture = selected?.Texture ?? original;
             PortraitFrame? portrait = selected?.Frame;
+            HdPortraitEntry? animatedHd = null;
             AnimatedSprite? sprite = null;
             if (kind == CharacterVisual.Portrait && selected is null)
             {
+                string adapterSource = "DDFC";
                 try
                 {
-                    portrait = dialogue.Get(npc, name, original);
-                    if (portrait?.TexturePath is { Length: > 0 } path) texture = content.Load<Texture2D>(path);
+                    portrait = dialogue.Get(npc, name, original, includeDefault: false);
+                    if (portrait is null)
+                    {
+                        adapterSource = "HD Portraits";
+                        if (hdPortraits.Get(npc, name, original) is { } hdEntry)
+                        {
+                            portrait = hdEntry.SelectFrame(NowMs);
+                            animatedHd = hdEntry.IsAnimated ? hdEntry : null;
+                        }
+                    }
+                    if (portrait is null)
+                    {
+                        adapterSource = "DDFC";
+                        portrait = dialogue.Get(npc, name, original, includeDefault: true);
+                    }
+
+                    if (portrait?.TexturePath is { Length: > 0 } path)
+                        texture = content.Load<Texture2D>(path);
+                    if (animatedHd is not null)
+                        portrait = animatedHd.SelectFrame(NowMs, texture.Width, texture.Height);
+
                     if (portrait is not null && !portrait.Disabled && !portrait.TryRegion(texture.Width, texture.Height, out _))
                     {
                         string requested = $"{portrait.X},{portrait.Y},{portrait.Width}x{portrait.Height}";
                         string actual = $"{texture.Name ?? "unnamed"} ({texture.Width}x{texture.Height})";
+                        animatedHd = null;
                         portrait = PortraitFrame.FromGameSheet(original.Width, original.Height);
                         if (portrait is not null)
                         {
-                            if (warnings.Add("native-portrait:" + name))
-                                monitor.Log($"Using the current game's 64px portrait for {name}: DDFC frame {requested} does not fit {actual}.", LogLevel.Debug);
+                            if (warnings.Add($"native-portrait:{adapterSource}:{name}"))
+                                monitor.Log($"Using the current game's 64px portrait for {name}: {adapterSource} frame {requested} does not fit {actual}.", LogLevel.Debug);
                         }
                         else
                         {
-                            Warn("portrait-region:" + name, $"Invalid portrait region for {name}: DDFC frame {requested}, texture {actual}; using the gallery placeholder.");
+                            Warn($"portrait-region:{adapterSource}:{name}", $"Invalid portrait region for {name}: {adapterSource} frame {requested}, texture {actual}; using the gallery placeholder.");
                             portrait = new(null, Width: 0, Height: 0);
-                            failed[key] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+                            failed[key] = NowMs + 2000;
                         }
                         texture = original;
                     }
                 }
                 catch (Exception error)
                 {
-                    Warn("dialogue:" + name, $"Portrait metadata unavailable for {name}: {error.Message}");
+                    animatedHd = null;
+                    Warn($"dialogue:{adapterSource}:{name}", $"Portrait metadata unavailable for {name} ({adapterSource}): {error.Message}");
                     portrait = PortraitFrame.FromGameSheet(original.Width, original.Height) ?? new(null, Width: 0, Height: 0);
                     texture = original;
-                    failed[key] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+                    failed[key] = NowMs + 2000;
                 }
             }
             else if (kind == CharacterVisual.Sprite && npc?.Sprite is { } live)
@@ -168,13 +208,11 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 sprite.spriteTexture = original;
                 sprite.CurrentAnimation = null;
                 sprite.ignoreSourceRectUpdates = false;
-                sprite.currentFrame = 0;
-                sprite.UpdateSourceRect();
-                Animate(sprite);
+                SetStandingIdle(sprite);
             }
             if (visuals.Count >= 40 && !visuals.ContainsKey(key))
                 visuals.Remove(visuals.MinBy(pair => pair.Value.Used).Key);
-            visuals[key] = new(texture, original, context, portrait, sprite, detailed) { Used = ++clock };
+            visuals[key] = new(texture, original, context, portrait, sprite, detailed, animatedHd) { Used = ++clock };
         }
         catch (Exception error)
         {
@@ -207,10 +245,22 @@ internal sealed class CharacterAppearance : ICharacterAppearance
             }
             else if (visual.Sprite is { } sprite)
             {
+                (int frame, float strollOffsetX) = AppearanceGeometry.ScenicStroll(
+                    name,
+                    NowMs,
+                    visual.Texture.Width,
+                    visual.Texture.Height,
+                    sprite.SpriteWidth,
+                    sprite.SpriteHeight);
+                ApplySpriteFrame(sprite, visual.Texture, frame, ref strollOffsetX);
                 var p = AppearanceGeometry.SpritePlacement(bounds.X, bounds.Y, bounds.Width, bounds.Height, sprite.SourceRect.Width, sprite.SourceRect.Height, visual.Detailed);
-                Vector2 position = new(p.X, p.Y);
+                float minX = bounds.X + 8f;
+                float maxX = Math.Max(minX, bounds.Right - p.Width - 8f);
+                float drawX = p.Width + 16f <= bounds.Width ? Math.Clamp(p.X + strollOffsetX, minX, maxX) : p.X;
+                float appliedOffset = drawX - p.X;
+                Vector2 position = new(drawX, p.Y);
                 if (visual.Detailed is null) sprite.drawShadow(batch, position, p.Scale, .45f);
-                else batch.Draw(Game1.shadowTexture, new Vector2(bounds.Center.X, bounds.Y + MathF.Round(bounds.Height * .76f)),
+                else batch.Draw(Game1.shadowTexture, new Vector2(bounds.Center.X + appliedOffset, bounds.Y + MathF.Round(bounds.Height * .76f)),
                     null, tint * .35f, 0, new Vector2(Game1.shadowTexture.Width / 2f, Game1.shadowTexture.Height / 2f),
                     p.Scale, SpriteEffects.None, .45f);
                 sprite.draw(batch, position, .9f, 0, 0, tint, false, p.Scale);
@@ -221,7 +271,7 @@ internal sealed class CharacterAppearance : ICharacterAppearance
         catch (Exception error)
         {
             visuals.Remove((name, kind));
-            failed[(name, kind)] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+            failed[(name, kind)] = NowMs + 2000;
             Warn("draw:" + name + kind, $"Appearance drawing failed for {name}: {error.Message}");
             return false;
         }
@@ -230,19 +280,40 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     private void Failed(string name, CharacterVisual kind)
     {
         visuals.Remove((name, kind));
-        failed[(name, kind)] = Game1.currentGameTime.TotalGameTime.TotalMilliseconds + 2000;
+        failed[(name, kind)] = NowMs + 2000;
         if (kind == CharacterVisual.Sprite) Prepare(name, CharacterVisual.Portrait);
     }
 
-    private static void Animate(AnimatedSprite? sprite)
+    private static void ApplySpriteFrame(AnimatedSprite sprite, Texture2D texture, int frame, ref float offsetX)
     {
-        if (sprite is null) return;
-        switch ((int)(Game1.currentGameTime.TotalGameTime.TotalMilliseconds / 1800) % 4)
+        sprite.CurrentAnimation = null;
+        if (sprite.currentFrame != frame || sprite.SourceRect == Rectangle.Empty)
         {
-            case 0: sprite.AnimateDown(Game1.currentGameTime); break;
-            case 1: sprite.AnimateLeft(Game1.currentGameTime); break;
-            case 2: sprite.AnimateUp(Game1.currentGameTime); break;
-            default: sprite.AnimateRight(Game1.currentGameTime); break;
+            sprite.currentFrame = frame;
+            sprite.UpdateSourceRect();
+        }
+        Rectangle src = sprite.SourceRect;
+        if (src.Width <= 0 || src.Height <= 0 || src.X < 0 || src.Y < 0
+            || src.Right > texture.Width || src.Bottom > texture.Height)
+        {
+            offsetX = 0f;
+            SetStandingIdle(sprite);
+        }
+    }
+
+    private static void SetStandingIdle(AnimatedSprite? sprite)
+    {
+        if (sprite is null)
+            return;
+        sprite.CurrentAnimation = null;
+        if (sprite.currentFrame != 0)
+        {
+            sprite.currentFrame = 0;
+            sprite.UpdateSourceRect();
+        }
+        else if (sprite.SourceRect == Rectangle.Empty)
+        {
+            sprite.UpdateSourceRect();
         }
     }
 

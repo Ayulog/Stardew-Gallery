@@ -20,6 +20,10 @@
       "IsRequired": false
     },
     {
+      "UniqueID": "tlitookilakin.HDPortraits",
+      "IsRequired": false
+    },
+    {
       "UniqueID": "Arborsm.ScaleUpUnofficial",
       "IsRequired": false
     },

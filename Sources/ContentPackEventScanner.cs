@@ -169,8 +169,13 @@ internal sealed class ContentPackEventScanner
                 if (!Property(change, "Target", out JsonElement target) || target.ValueKind != JsonValueKind.String) continue;
                 if (!CouldContainEventTarget(target.GetString()!)) continue;
                 foreach (string asset in ExpandList(target.GetString()!, null, false, relativePath)
-                    .Select(EventAssetName.Normalize).Where(EventDefinitionIndex.IsEventAsset))
+                    .Select(EventAssetName.Normalize).Where(EventDefinitionIndex.IsIndexedAsset))
                 {
+                    if (EventDefinitionIndex.IsTriggerActionAsset(asset))
+                    {
+                        ReadTriggerActionChange(change, EventDefinitionIndex.TriggerActionAsset, isLoad, relativePath);
+                        continue;
+                    }
                     if (!isLoad && Property(change, "Entries", out JsonElement entries)) ReadEntries(entries, asset, relativePath);
                     if (Property(change, "FromFile", out JsonElement from) && from.ValueKind == JsonValueKind.String)
                         foreach (string dataFile in ExpandList(from.GetString()!, asset, false, relativePath))
@@ -191,6 +196,45 @@ internal sealed class ContentPackEventScanner
                         }
                 }
             }
+        }
+
+        private void ReadTriggerActionChange(JsonElement change, string asset, bool isLoad, string relativePath)
+        {
+            if (!isLoad) AddTriggerActions(problems => TriggerActionDeclarations.ReadEdit(change, problems), asset, relativePath);
+            if (!Property(change, "FromFile", out JsonElement from) || from.ValueKind != JsonValueKind.String) return;
+            bool scopedToSingleEntry = !isLoad && TriggerActionDeclarations.HasNonEmptyTargetField(change);
+            foreach (string dataFile in ExpandList(from.GetString()!, asset, false, relativePath))
+            {
+                if (!Path.GetExtension(dataFile).Equals(".json", StringComparison.OrdinalIgnoreCase))
+                { Issue(dataFile, "Binary trigger action data is not statically scanned"); continue; }
+                JsonDocument? data = ReadJson(dataFile);
+                if (data is null || scopedToSingleEntry) continue;
+                JsonElement values = data.RootElement;
+                AddTriggerActions(problems => isLoad ? TriggerActionDeclarations.ReadLoad(values, problems)
+                    : TriggerActionDeclarations.ReadEditFile(values, problems), asset, dataFile);
+            }
+        }
+
+        private void AddTriggerActions(Func<List<string>, IReadOnlyList<TriggerActionDeclaration>> read, string asset, string relativePath)
+        {
+            List<string> problems = [];
+            IReadOnlyList<TriggerActionDeclaration> declarations = read(problems);
+            // Parser problems are scan limitations, so a pack with an unreadable rule ID is marked incomplete.
+            foreach (string problem in problems) Issue(relativePath, problem);
+            foreach (TriggerActionDeclaration declaration in declarations)
+                foreach (string key in Expand(declaration.RawId, asset, true, relativePath))
+                {
+                    string id = EventDefinitionIndex.GetEntryId(asset, key);
+                    if (id.Length == 0) continue;
+                    // An unresolved declaration ID may hide an original provider; edits of existing entries cannot.
+                    if (id.Contains("{{", StringComparison.Ordinal))
+                    {
+                        if (!declaration.IsModification) Issue(relativePath, "Unresolved dynamic token in trigger action ID");
+                        continue;
+                    }
+                    candidates.Add(new(pack.Actor, asset, id, NormalizeRelative(relativePath), EventHashes.RootScript(declaration.Definition))
+                        { IsModification = declaration.IsModification });
+                }
         }
 
         private void ReadCompiledEntries(string relativePath, string asset)
@@ -240,8 +284,7 @@ internal sealed class ContentPackEventScanner
             if (string.IsNullOrWhiteSpace(script)) return;
             foreach (string key in Expand(rawKey, asset, true, relativePath))
             {
-                string id = EventDefinitionIndex.GetEventId(key);
-                if (id.Length == 0 || id.Contains("{{", StringComparison.Ordinal)) continue;
+                if (!EventDefinitionIndex.HasIndexableEventKey(key)) continue;
                 candidates.Add(new(pack.Actor, asset, key, NormalizeRelative(relativePath), EventHashes.RootScript(script)));
             }
         }
@@ -398,6 +441,9 @@ internal sealed class ContentPackEventScanner
                 string knownPrefix = tokenStart >= 0 ? target[..tokenStart] : target;
                 if (knownPrefix.StartsWith(eventPrefix, StringComparison.OrdinalIgnoreCase)
                     || (tokenStart >= 0 && eventPrefix.StartsWith(knownPrefix, StringComparison.OrdinalIgnoreCase))) return true;
+                const string triggerActions = EventDefinitionIndex.TriggerActionAsset;
+                if (tokenStart < 0 ? knownPrefix.Equals(triggerActions, StringComparison.OrdinalIgnoreCase)
+                    : triggerActions.StartsWith(knownPrefix, StringComparison.OrdinalIgnoreCase)) return true;
             }
             return false;
         }

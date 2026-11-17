@@ -12,6 +12,13 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 {
     private const int BackComponentId = 1000;
     private const int CardComponentBase = 2000;
+    private const int PageSize = GallerySpreadLayout.EventColumns * GallerySpreadLayout.EventVisibleRows;
+
+    private sealed record AlbumCardItem(EventIdentity Identity, GalleryEvent? Story, WeddingDateRecord? WeddingDate)
+    {
+        internal bool IsWedding => Story is null;
+    }
+
     private readonly GalleryViewContext context;
     private readonly GalleryPageState state;
     private readonly GalleryCharacter character;
@@ -19,20 +26,16 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     private readonly Texture2D background;
     private readonly Texture2D thumbnail;
     private readonly GalleryPhotos photos;
-    private readonly Texture2D replayGlyph;
-    private readonly Texture2D slotFrame;
-    private readonly Texture2D scrollbarTrackTexture;
     private readonly IReadOnlyList<GalleryEvent> events;
-    private readonly string[] eventTitles;
-    private readonly string[] eventLabels;
-    private readonly float eventLabelScale;
+    private readonly IReadOnlyList<AlbumCardItem> items;
+    private readonly string[] cardTitles;
+    private readonly string[] cardLabels;
+    private readonly float cardLabelScale;
     private readonly GalleryCharacterPanel leftPanel;
     private readonly int preferredComponentId;
-    private int scrollRow;
-    private bool dragging;
-    private int dragOffset;
-    private Rectangle scrollTrack;
-    private Rectangle scrollThumb;
+    private int currentPage;
+    private bool keyboardFocus;
+    private Point lastMouse;
     private Rectangle backBounds;
     private int viewportWidth;
     private int viewportHeight;
@@ -47,32 +50,47 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     {
         this.context = context;
         this.state = state;
-        character = context.Catalog.Characters.First(character => character.Name == state.CharacterName);
+        character = context.Catalog.Characters.First(c => c.Name == state.CharacterName);
         i18n = context.I18n;
         background = context.Textures.Album;
         thumbnail = context.Textures.Thumbnail;
         photos = context.Photos;
-        replayGlyph = context.Textures.Replay;
-        slotFrame = context.Textures.SlotFrame;
-        scrollbarTrackTexture = context.Textures.Scrollbar;
         events = context.Catalog.HeartEventsFor(character.Name);
-        Rectangle header = Bounds(GallerySpreadLayout.EventCardHeaderBounds(0));
-        eventTitles = events.Select(EventTitle).ToArray();
-        float titleHeight = eventTitles.Select(title => Game1.smallFont.MeasureString(title).Y)
+
+        List<AlbumCardItem> builtItems = [];
+        EventIdentity weddingId = WeddingMemento.IdentityFor(character.Name);
+        EventPhotoSet weddingPhotos = photos.Read(weddingId);
+        if (weddingPhotos.Photos.Count > 0 || weddingPhotos.WeddingDate is not null)
+            builtItems.Add(new AlbumCardItem(weddingId, null, weddingPhotos.WeddingDate));
+        foreach (GalleryEvent ev in events)
+            builtItems.Add(new AlbumCardItem(ev.Resolved.Identity, ev, null));
+        items = builtItems;
+
+        Rectangle plaqueText = new(0, 0, GallerySpreadLayout.EventCardBounds(0).Width - 24 - GalleryUiSkin.TitlePlaqueCap * 2, 24);
+        cardTitles = items.Select(FormatItemTitle).ToArray();
+        float titleHeight = cardTitles.Select(title => Game1.smallFont.MeasureString(title).Y)
             .Append(Game1.smallFont.LineSpacing).Max();
-        eventLabelScale = Math.Min(1f, header.Height / Math.Max(1f, titleHeight));
-        eventLabels = eventTitles.Select(title => GalleryTextFit.Ellipsize(title, header.Width / eventLabelScale,
+        cardLabelScale = Math.Min(0.86f, plaqueText.Height / Math.Max(1f, titleHeight));
+        cardLabels = cardTitles.Select(title => GalleryTextFit.Ellipsize(title, plaqueText.Width / Math.Max(0.4f, cardLabelScale),
             text => Game1.smallFont.MeasureString(text).X)).ToArray();
-        leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Textures.Scene, context.Appearance);
+
+        // Left panel uses only heart events so Wedding Memento never alters story-node denominators.
+        leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Textures.Scene, context.Appearance, context.Catalog);
         leftPanel.Prepare();
-        int focusIndex = EventCardFocus.TryFromComponentId(state.Focus, CardComponentBase, events.Count, out EventCardFocus restored)
+
+        int focusIndex = EventCardFocus.TryFromComponentId(state.Focus, CardComponentBase, items.Count, out EventCardFocus restored)
             ? restored.EventIndex : -1;
-        (scrollRow, _) = GalleryUiRules.ResolveReturnPosition(
-            focusIndex, state.Scroll, GalleryUiRules.EventColumns, GalleryUiRules.EventVisibleRows, events.Count);
-        bool replayAvailable = focusIndex >= 0 && IsReplayAvailable(events[focusIndex]);
-        preferredComponentId = state.Focus == BackComponentId ? BackComponentId : new EventCardFocus(Math.Max(0, focusIndex), replayAvailable && restored.Action == EventCardAction.Replay
-            ? EventCardAction.Replay : EventCardAction.Details)
-            .GetComponentId(CardComponentBase);
+        currentPage = focusIndex >= 0
+            ? GalleryPagination.PageForIndex(focusIndex, items.Count, PageSize)
+            : GalleryPagination.ClampPage(state.Scroll, items.Count, PageSize);
+
+        preferredComponentId = state.Focus is BackComponentId or GalleryBookChrome.PrevPageComponentId or GalleryBookChrome.NextPageComponentId
+            || state.Focus >= GalleryBookChrome.RibbonTabBaseId && state.Focus < GalleryBookChrome.RibbonTabBaseId + GallerySpreadLayout.RibbonTabCount
+            ? state.Focus
+            : items.Count > 0
+                ? new EventCardFocus(Math.Max(0, focusIndex), EventCardAction.Details).GetComponentId(CardComponentBase)
+                : BackComponentId;
+
         RecalculateLayout();
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == preferredComponentId)
             ?? currentlySnappedComponent;
@@ -84,6 +102,16 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     {
         base.gameWindowSizeChanged(oldBounds, newBounds);
         RecalculateLayout();
+    }
+
+    public override void performHoverAction(int x, int y)
+    {
+        if (lastMouse != new Point(x, y))
+        {
+            if (lastMouse != default) keyboardFocus = false;
+            lastMouse = new Point(x, y);
+        }
+        base.performHoverAction(x, y);
     }
 
     public override void update(GameTime time)
@@ -98,11 +126,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         SaveState();
     }
 
-    public override void receiveScrollWheelAction(int direction)
-    {
-        ScrollBy(direction < 0 ? 1 : -1);
-        Game1.playSound("shiny4");
-    }
+    public override void receiveScrollWheelAction(int direction) => TurnPage(direction < 0 ? 1 : -1);
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
@@ -113,58 +137,35 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             context.Navigation.Close();
             return;
         }
+        if (GalleryBookChrome.TryClickRibbonTab(x, y, GalleryBookTab.Villagers, context.Navigation, () => SaveState(), albumPage: true))
+            return;
         if (backBounds.Contains(x, y))
         {
             Return();
             return;
         }
-        if (scrollThumb.Contains(x, y) && MaxScroll > 0)
+        if (Bounds(GallerySpreadLayout.RightPagePrevBounds).Contains(x, y))
         {
-            dragging = true;
-            dragOffset = y - scrollThumb.Y;
+            TurnPage(-1);
             return;
         }
-        if (scrollTrack.Contains(x, y) && MaxScroll > 0)
+        if (Bounds(GallerySpreadLayout.RightPageNextBounds).Contains(x, y))
         {
-            ScrollBy(y < scrollThumb.Y ? -GalleryUiRules.EventVisibleRows : GalleryUiRules.EventVisibleRows);
+            TurnPage(1);
             return;
         }
 
-        int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
+        int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
         for (int slot = 0; slot < visible; slot++)
         {
-            GalleryEvent entry = events[first + slot];
-            if (DetailsBounds(slot).Contains(x, y))
+            // Any click on a card opens the story details (the wedding keepsake opens its photos).
+            if (CardHitBounds(slot).Contains(x, y))
             {
-                OpenEvent(first + slot, EventCardAction.Details);
-                return;
-            }
-            if (IsReplayAvailable(entry) && Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)).Contains(x, y))
-            {
-                OpenEvent(first + slot, EventCardAction.Replay);
+                OpenItem(first + slot, EventCardAction.Details);
                 return;
             }
         }
-    }
-
-    public override void leftClickHeld(int x, int y)
-    {
-        (x, y) = ToLogical(x, y);
-        if (!dragging || MaxScroll == 0)
-            return;
-        int travel = scrollTrack.Height - scrollThumb.Height;
-        scrollRow = (int)Math.Round(Math.Clamp(y - dragOffset - scrollTrack.Y, 0, travel) / (double)travel * MaxScroll);
-        UpdateScrollbar();
-        BuildClickableComponents();
-    }
-
-    public override void releaseLeftClick(int x, int y)
-    {
-        dragging = false;
-        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
-            SnapCurrent();
-        base.releaseLeftClick(x, y);
     }
 
     public override void receiveRightClick(int x, int y, bool playSound = true) => Return();
@@ -174,6 +175,24 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key))
         {
             Return();
+            return;
+        }
+        if (key is Keys.PageUp or Keys.PageDown)
+        {
+            keyboardFocus = true;
+            TurnPage(key == Keys.PageUp ? -1 : 1);
+            return;
+        }
+        if (key == Keys.Enter)
+        {
+            keyboardFocus = true;
+            ActivateComponent(currentlySnappedComponent?.myID ?? BackComponentId);
+            return;
+        }
+        if (key is Keys.Up or Keys.Down or Keys.Left or Keys.Right)
+        {
+            keyboardFocus = true;
+            applyMovementKey(key switch { Keys.Up => 0, Keys.Right => 1, Keys.Down => 2, _ => 3 });
             return;
         }
         base.receiveKeyPress(key);
@@ -186,61 +205,179 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             Return();
             return;
         }
-        if (button == Buttons.A && Game1.options.snappyMenus)
+        // A/X use Game1's native controller-to-mouse dispatch while areGamePadControlsImplemented is false;
+        // handling Buttons.A here as well would activate page arrows or cards twice in one frame.
+        if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
         {
-            int id = currentlySnappedComponent?.myID ?? -1;
-            if (id == BackComponentId)
-            {
-                Return();
-                return;
-            }
-            if (EventCardFocus.TryFromComponentId(id, CardComponentBase, events.Count, out EventCardFocus focus))
-            {
-                OpenEvent(focus.EventIndex, focus.Action);
-                return;
-            }
+            TurnPage(button == Buttons.LeftShoulder ? -1 : 1);
+            return;
         }
         base.receiveGamePadButton(button);
     }
 
-    // Native Snappy movement has one owner. Details/Replay transitions and scrolling
-    // are resolved together, so a lower-row Details press cannot be stolen by scroll.
+    private bool ActivateComponent(int id)
+    {
+        if (id == BackComponentId)
+        {
+            Return();
+            return true;
+        }
+        if (id == GalleryBookChrome.PrevPageComponentId)
+        {
+            TurnPage(-1);
+            return true;
+        }
+        if (id == GalleryBookChrome.NextPageComponentId)
+        {
+            TurnPage(1);
+            return true;
+        }
+        if (id >= GalleryBookChrome.RibbonTabBaseId && id < GalleryBookChrome.RibbonTabBaseId + GallerySpreadLayout.RibbonTabCount)
+        {
+            SaveState();
+            Game1.playSound("shwip");
+            context.Navigation.SwitchTab((GalleryBookTab)(id - GalleryBookChrome.RibbonTabBaseId));
+            return true;
+        }
+        if (EventCardFocus.TryFromComponentId(id, CardComponentBase, items.Count, out EventCardFocus focus))
+        {
+            OpenItem(focus.EventIndex, focus.Action);
+            return true;
+        }
+        return false;
+    }
+
     public override void applyMovementKey(int direction)
     {
         if (direction < 0 || direction > 3)
             return;
         int id = currentlySnappedComponent?.myID ?? BackComponentId;
-        if (!EventCardFocus.TryFromComponentId(id, CardComponentBase, events.Count, out EventCardFocus focus))
+
+        if (id >= GalleryBookChrome.RibbonTabBaseId && id < GalleryBookChrome.RibbonTabBaseId + GallerySpreadLayout.RibbonTabCount)
         {
-            if (events.Count > 0 && direction is 0 or 1)
-                FocusCard(lastCardFocus ?? new EventCardFocus(scrollRow * 2, EventCardAction.Details));
+            int tab = id - GalleryBookChrome.RibbonTabBaseId;
+            if (direction == 3 && tab > 0) FocusId(GalleryBookChrome.RibbonTabBaseId + tab - 1);
+            else if (direction == 1 && tab + 1 < GallerySpreadLayout.RibbonTabCount) FocusId(GalleryBookChrome.RibbonTabBaseId + tab + 1);
+            else if (direction == 1) FocusId(BackComponentId);
+            else if (direction == 0)
+            {
+                if (items.Count > 0)
+                    FocusPageSlot(0, EventCardAction.Details);
+                else
+                    FocusId(BackComponentId);
+            }
             return;
         }
-        if (direction == 3 && focus.EventIndex % GalleryUiRules.EventColumns == 0
-            || direction == 2 && focus.EventIndex + 2 >= events.Count
-                && (focus.Action == EventCardAction.Replay || !IsReplayAvailable(events[focus.EventIndex])))
+
+        if (id is BackComponentId or GalleryBookChrome.PrevPageComponentId or GalleryBookChrome.NextPageComponentId)
         {
-            lastCardFocus = focus;
-            currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == BackComponentId) ?? currentlySnappedComponent;
-            SnapCurrent();
+            int[] footer = [BackComponentId, GalleryBookChrome.PrevPageComponentId, GalleryBookChrome.NextPageComponentId];
+            int idx = Array.IndexOf(footer, id);
+            if (direction == 3)
+            {
+                if (idx > 0) FocusId(footer[idx - 1]);
+                else FocusId(GalleryBookChrome.RibbonTabBaseId + 2);
+            }
+            else if (direction == 1 && idx + 1 < footer.Length)
+                FocusId(footer[idx + 1]);
+            else if (direction == 0 && items.Count > 0)
+            {
+                int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+                int visible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
+                FocusCard(lastCardFocus is { } remembered && remembered.EventIndex >= first && remembered.EventIndex < first + visible
+                    ? remembered
+                    : new EventCardFocus(first + visible - 1, EventCardAction.Details));
+            }
             return;
         }
-        var next = focus.Navigate((EventCardDirection)direction, events.Count, index => IsReplayAvailable(events[index]), scrollRow);
-        if (next.Focus is EventCardFocus target)
-            FocusCard(target);
+
+        if (!EventCardFocus.TryFromComponentId(id, CardComponentBase, items.Count, out EventCardFocus focus))
+            return;
+
+        int pageStart = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        int pageVisible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
+        int localIndex = focus.EventIndex - pageStart;
+        if (localIndex < 0 || localIndex >= pageVisible)
+        {
+            FocusPageSlot(0, EventCardAction.Details);
+            return;
+        }
+
+        int columns = GalleryUiRules.EventColumns;
+        int col = localIndex % columns;
+        lastCardFocus = focus;
+        switch (direction)
+        {
+            case 3:
+                if (col > 0) FocusPageSlot(localIndex - 1, EventCardAction.Details);
+                else FocusId(GalleryBookChrome.RibbonTabBaseId + Math.Min(localIndex / columns, 2));
+                break;
+            case 1:
+                if (col + 1 < columns && localIndex + 1 < pageVisible) FocusPageSlot(localIndex + 1, EventCardAction.Details);
+                break;
+            case 0:
+                if (localIndex >= columns) FocusPageSlot(localIndex - columns, EventCardAction.Details);
+                break;
+            case 2:
+                if (localIndex + columns < pageVisible) FocusPageSlot(localIndex + columns, EventCardAction.Details);
+                else FocusId(col == 0 ? BackComponentId : GalleryBookChrome.PrevPageComponentId);
+                break;
+        }
+    }
+
+    private void FocusPageSlot(int slot, EventCardAction action)
+    {
+        int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
+        if (visible <= 0)
+        {
+            FocusId(BackComponentId);
+            return;
+        }
+        int clampedSlot = Math.Clamp(slot, 0, visible - 1);
+        FocusCard(new EventCardFocus(first + clampedSlot, action));
     }
 
     private void FocusCard(EventCardFocus focus)
     {
-        var normalized = focus.Normalize(events.Count, index => IsReplayAvailable(events[index]), scrollRow);
-        if (normalized.Focus is not EventCardFocus target)
+        if (items.Count == 0)
             return;
+        int index = Math.Clamp(focus.EventIndex, 0, items.Count - 1);
+        const EventCardAction action = EventCardAction.Details;
+        EventCardFocus target = new(index, action);
         lastCardFocus = target;
-        scrollRow = normalized.ScrollRow;
-        UpdateScrollbar();
+        currentPage = GalleryPagination.PageForIndex(index, items.Count, PageSize);
         BuildClickableComponents();
-        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target.GetComponentId(CardComponentBase));
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == target.GetComponentId(CardComponentBase))
+            ?? currentlySnappedComponent;
         SnapCurrent();
+    }
+
+    private void FocusId(int componentId)
+    {
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == componentId)
+            ?? currentlySnappedComponent;
+        SnapCurrent();
+    }
+
+    private void TurnPage(int delta)
+    {
+        var (nextPage, changed) = GalleryPagination.Turn(currentPage, delta, items.Count, PageSize);
+        if (!changed)
+            return;
+        currentPage = nextPage;
+        int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
+        if (lastCardFocus is { } prev && visible > 0)
+        {
+            int preservedSlot = Math.Clamp(prev.EventIndex % PageSize, 0, visible - 1);
+            int nextIndex = first + preservedSlot;
+            lastCardFocus = new EventCardFocus(nextIndex, EventCardAction.Details);
+            if (EventCardFocus.TryFromComponentId(currentlySnappedComponent?.myID ?? -1, CardComponentBase, items.Count, out _))
+                currentlySnappedComponent = null;
+        }
+        BuildClickableComponents();
+        Game1.playSound("shwip");
     }
 
     // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
@@ -249,7 +386,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     public override void snapToDefaultClickableComponent()
     {
         currentlySnappedComponent = allClickableComponents?.FirstOrDefault(component => component.myID == preferredComponentId)
-            ?? allClickableComponents?.FirstOrDefault(component => component.myID >= CardComponentBase)
+            ?? allClickableComponents?.FirstOrDefault(component => component.myID >= CardComponentBase && component.myID < GalleryBookChrome.RibbonTabBaseId)
             ?? allClickableComponents?.FirstOrDefault(component => component.myID == BackComponentId);
         SnapCurrent();
     }
@@ -258,92 +395,146 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
     {
         EnsureLayout();
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
+        (int mouseX, int mouseY) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
+        bool showFocus = Game1.options.snappyMenus && Game1.options.gamepadControls || keyboardFocus;
+        int focusedId = currentlySnappedComponent?.myID ?? -1;
+
         GalleryDrawing.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawPhoto(b);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
-        GalleryDrawing.DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
-        DrawAlbumSlots(b);
-        DrawPageTitle(b, i18n.Get("detail.title"), Bounds(GallerySpreadLayout.TitleBounds));
+        GalleryBookChrome.DrawRibbonTabs(b, GalleryBookTab.Villagers, focusedId, showFocus, new Point(mouseX, mouseY), i18n, out string? hoverTooltip, albumPage: true);
+        GalleryBookChrome.DrawPageTitle(b, i18n.Get("album.title", new { name = character.DisplayName }), menuScale, drawOffsetX, drawOffsetY);
         leftPanel.DrawInformation(b);
 
-        int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
-        for (int slot = 0; slot < visible; slot++)
-            DrawEvent(b, events[first + slot], slot, first + slot);
-        if (MaxScroll > 0)
-            GalleryDrawing.DrawScrollbar(b, scrollThumb);
-        GalleryDrawing.DrawButton(b, backBounds, i18n.Get("detail.back"));
-        upperRightCloseButton?.draw(b);
-        GalleryDrawing.EndScaled(b);
+        int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
         for (int slot = 0; slot < visible; slot++)
         {
             int index = first + slot;
-            if (eventLabels[index] == eventTitles[index]) continue;
-            bool hover = ToScreen(Bounds(GallerySpreadLayout.EventCardHeaderBounds(slot))).Contains(Game1.getMouseX(true), Game1.getMouseY(true));
-            bool focused = Game1.options.snappyMenus && Game1.options.gamepadControls
-                && EventCardFocus.TryFromComponentId(currentlySnappedComponent?.myID ?? -1, CardComponentBase, events.Count, out EventCardFocus focus)
-                && focus.EventIndex == index;
-            if (hover || focused)
+            bool cardHovered = CardHitBounds(slot).Contains(mouseX, mouseY);
+            bool cardFocused = showFocus
+                && EventCardFocus.TryFromComponentId(focusedId, CardComponentBase, items.Count, out EventCardFocus f)
+                && f.EventIndex == index;
+            DrawItem(b, items[index], slot, index, cardHovered || cardFocused);
+            if (cardHovered || cardFocused)
             {
-                drawHoverText(b, Game1.parseText(eventTitles[index], Game1.smallFont, Math.Min(620, Math.Max(200, Game1.uiViewport.Width - 80))), Game1.smallFont);
-                break;
+                string? cardTip = BuildCardTooltip(items[index], index);
+                if (cardTip is not null)
+                    hoverTooltip = cardTip;
             }
+        }
+
+        bool backHot = backBounds.Contains(mouseX, mouseY) || showFocus && focusedId == BackComponentId;
+        GalleryDrawing.DrawButton(b, backBounds, i18n.Get("nav.back"), backHot);
+
+        GalleryBookChrome.DrawPager(
+            b,
+            GallerySpreadLayout.RightPagePrevBounds,
+            GallerySpreadLayout.RightPageIndicatorBounds,
+            GallerySpreadLayout.RightPageNextBounds,
+            currentPage,
+            items.Count,
+            PageSize,
+            focusedId,
+            showFocus,
+            new Point(mouseX, mouseY));
+
+        upperRightCloseButton?.draw(b);
+        GalleryDrawing.EndScaled(b);
+
+        if (hoverTooltip is not null)
+        {
+            drawHoverText(b,
+                Game1.parseText(hoverTooltip, Game1.smallFont, Math.Min(620, Math.Max(200, Game1.uiViewport.Width - 80))),
+                Game1.smallFont);
         }
         drawMouse(b);
     }
 
-    private void DrawAlbumSlots(SpriteBatch b)
+    private string FormatItemTitle(AlbumCardItem item)
     {
-        int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
-        for (int slot = 0; slot < visible; slot++)
+        if (item.IsWedding)
         {
-            GalleryPhotos.DrawCover(b, photos.Cover(events[first + slot].Resolved.Identity) ?? thumbnail,
-                Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot)),
-                IsReplayAvailable(events[first + slot]) ? Color.White : new Color(185, 180, 167));
-            b.Draw(slotFrame, Bounds(GallerySpreadLayout.EventCardBounds(slot)), Color.White);
+            if (item.WeddingDate is { } date)
+            {
+                string seasonKey = "season." + (WeddingDateRecord.NormalizeSeason(date.Season) ?? "spring");
+                return i18n.Get("wedding.album-card-dated", new { year = date.Year, season = i18n.Get(seasonKey), day = date.DayOfMonth });
+            }
+            return i18n.Get("wedding.album-card");
         }
+        return context.CardTitle(item.Story!, character.Name);
     }
 
-    private string EventTitle(GalleryEvent entry)
+    private string? BuildCardTooltip(AlbumCardItem item, int index)
     {
-        if (context.Names?.Get(entry.Resolved.Identity) is string name) return name + GalleryDrawing.TextSeparator + $"ID {entry.EventId}";
-        EventOwner owner = entry.Ownership.Owners.First(value => value.Name == character.Name);
-        string hearts = owner.FriendshipPoints is int points
-            ? i18n.Get("event.hearts", new { hearts = (int)Math.Ceiling(points / 250d) })
-            : i18n.Get("event.unspecified");
-        return hearts + GalleryDrawing.TextSeparator + $"ID {entry.EventId}";
-    }
-
-    private void DrawEvent(SpriteBatch b, GalleryEvent entry, int slot, int index)
-    {
-        Rectangle header = Bounds(GallerySpreadLayout.EventCardHeaderBounds(slot));
-        Vector2 size = Game1.smallFont.MeasureString(eventLabels[index]);
-        b.DrawString(Game1.smallFont, eventLabels[index], new Vector2(header.X, header.Center.Y - size.Y * eventLabelScale / 2),
-            Game1.textColor, 0f, Vector2.Zero, eventLabelScale, SpriteEffects.None, 0f);
-        Rectangle detailWell = Bounds(GallerySpreadLayout.EventCardDetailsBounds(slot));
-        string label = i18n.Get("event.details-short");
-        Vector2 labelSize = Game1.smallFont.MeasureString(label);
-        float labelScale = Math.Min(1f, Math.Min((detailWell.Width - 8) / Math.Max(1, labelSize.X), (detailWell.Height - 8) / Math.Max(1, labelSize.Y)));
-        bool detailsFocused = Highlighted(DetailsBounds(slot), new EventCardFocus(index, EventCardAction.Details).GetComponentId(CardComponentBase));
-        Vector2 labelPosition = new(detailWell.Right - 4 - labelSize.X * labelScale, detailWell.Center.Y - labelSize.Y * labelScale / 2);
-        b.DrawString(Game1.smallFont, label, labelPosition, detailsFocused ? new Color(155, 99, 32) : GallerySpreadDrawing.Ink,
-            0, Vector2.Zero, labelScale, SpriteEffects.None, 0);
-        if (detailsFocused)
-            b.Draw(Game1.staminaRect, new Rectangle((int)labelPosition.X, (int)(labelPosition.Y + labelSize.Y * labelScale), (int)(labelSize.X * labelScale), 2), GallerySpreadDrawing.LightInk);
-
-        Rectangle image = Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot));
-        bool unlocked = IsReplayAvailable(entry);
-        bool replayFocused = unlocked && Highlighted(image, new EventCardFocus(index, EventCardAction.Replay).GetComponentId(CardComponentBase));
-        if (unlocked)
-            b.Draw(replayGlyph, new Rectangle(image.Right - 52, image.Bottom - 52, 48, 48), replayFocused ? Color.White : Color.White * .8f);
-        if (replayFocused)
+        List<string> lines = [cardTitles[index]];
+        if (item.IsWedding)
         {
-            Color ink = GallerySpreadDrawing.LightInk;
-            foreach (Point corner in new[] { new Point(image.X, image.Y), new Point(image.Right - 12, image.Y), new Point(image.X, image.Bottom - 2), new Point(image.Right - 12, image.Bottom - 2) })
-                b.Draw(Game1.staminaRect, new Rectangle(corner.X, corner.Y, 12, 2), ink);
+            lines.Add(i18n.Get("wedding.card-hint"));
+            return string.Join("\n", lines);
         }
+
+        GalleryEvent entry = item.Story!;
+        EncounterClue clue = context.EventClue(entry);
+        if (clue == EncounterClue.AvailableToday)
+            lines.Add(i18n.Get("clue.available-today") + ": " + i18n.Get("clue.available-today-hint"));
+        else if (clue == EncounterClue.ReadyForTiming)
+            lines.Add(i18n.Get("clue.ready-for-timing") + ": " + i18n.Get("clue.ready-for-timing-hint"));
+
+        // Anti-spoiler invariant: StoryQuote strictly returns null unless seen, Unlock All, or opened parallel If-route.
+        if (context.StoryQuote(entry) is { Length: > 0 } quote)
+            lines.Add(i18n.Get("event-detail.quote", new { quote }));
+
+        return lines.Count == 1 && cardLabels[index] == cardTitles[index] ? null : string.Join("\n", lines);
     }
+
+    /// <summary>Card = diamond title plaque above a framed 16:9 photo (or sealed envelope), status pill and favourite ribbon.</summary>
+    private void DrawItem(SpriteBatch b, AlbumCardItem item, int slot, int index, bool hot)
+    {
+        Rectangle card = Bounds(GallerySpreadLayout.EventCardBounds(slot));
+        Rectangle photo = Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot));
+        Texture2D? cover = photos.Cover(item.Identity);
+        GalleryEvent? entry = item.Story;
+        bool unlocked = entry is null || context.IsStoryUnlocked(entry);
+        bool parallel = entry is not null && context.IsParallelBranch(entry);
+        bool seen = entry is not null && Game1.player?.eventsSeen.Contains(entry.EventId) == true;
+
+        if (cover is not null)
+            GalleryPhotos.DrawCover(b, cover, photo, unlocked ? Color.White : new Color(215, 210, 198));
+        else if (!seen && entry is not null)
+            GalleryBookChrome.DrawLockedStoryEnvelope(b, photo, context.CardPrimaryLead(entry, character.Name), context.Locations.Get(entry.LocationName), parallel && unlocked);
+        else
+            GalleryPhotos.DrawCover(b, thumbnail, photo, Color.White);
+
+        GalleryUiSkin.DrawCardFrame(b, photo, hot);
+        GalleryUiSkin.DrawTitlePlaque(b, new Rectangle(card.X + 12, card.Y + 4, card.Width - 24, 30), cardLabels[index], hot);
+
+        // Status pill on the photo's top-left corner.
+        Point pillAt = new(photo.X + 8, photo.Y + 8);
+        if (item.IsWedding)
+            GalleryUiSkin.DrawPill(b, pillAt, 26, i18n.Get("pill.wedding"), UiPill.Amber, UiBadge.Rings, maxWidth: 180);
+        else if (entry is not null)
+        {
+            EncounterClue clue = context.EventClue(entry);
+            if (clue == EncounterClue.AvailableToday)
+                GalleryUiSkin.DrawPill(b, pillAt, 26, i18n.Get("clue.available-today"), UiPill.Amber, maxWidth: 180);
+            else if (clue == EncounterClue.ReadyForTiming)
+                GalleryUiSkin.DrawPill(b, pillAt, 26, i18n.Get("clue.ready-for-timing"), UiPill.Wood, UiBadge.ClueReady, maxWidth: 180);
+            else if (parallel)
+                GalleryUiSkin.DrawPill(b, pillAt, 26, i18n.Get("pill.parallel"), UiPill.Amber, UiBadge.Branch, maxWidth: 180);
+            else if (!unlocked)
+                GalleryUiSkin.DrawPill(b, pillAt, 26, i18n.Get("pill.locked"), UiPill.Wood, maxWidth: 180);
+            else if (!seen)
+                GalleryUiSkin.DrawPill(b, pillAt, 26, i18n.Get("pill.unseen"), UiPill.Wood, maxWidth: 180);
+        }
+
+        if (!item.IsWedding && context.IsFavorite(item.Identity))
+            GalleryUiSkin.DrawFavoriteRibbon(b, photo);
+    }
+
+    /// <summary>Clickable area of a whole album card (title plaque + framed photo).</summary>
+    private static Rectangle CardHitBounds(int slot)
+        => Bounds(GallerySpreadLayout.EventCardBounds(slot));
 
     private void RecalculateLayout()
     {
@@ -356,9 +547,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         viewportWidth = Game1.uiViewport.Width;
         viewportHeight = Game1.uiViewport.Height;
         initializeUpperRightCloseButton();
-        scrollTrack = Bounds(GallerySpreadLayout.AlbumScrollTrackBounds);
-        backBounds = Bounds(GallerySpreadLayout.BackButtonBounds);
-        UpdateScrollbar();
+        GalleryBookChrome.PositionCloseButton(upperRightCloseButton, menuScale, drawOffsetX, drawOffsetY, viewportWidth, viewportHeight);
+        backBounds = Bounds(GallerySpreadLayout.AlbumBackBounds);
         BuildClickableComponents();
     }
 
@@ -368,109 +558,88 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
             RecalculateLayout();
     }
 
-    private int MaxScroll => Math.Max(0, (events.Count + GalleryUiRules.EventColumns - 1) / GalleryUiRules.EventColumns - GalleryUiRules.EventVisibleRows);
-
-    private void ScrollBy(int rows)
-    {
-        scrollRow = Math.Clamp(scrollRow + rows, 0, MaxScroll);
-        UpdateScrollbar();
-        BuildClickableComponents();
-    }
-
-    private void UpdateScrollbar()
-    {
-        scrollRow = Math.Clamp(scrollRow, 0, MaxScroll);
-        const int thumbHeight = 40;
-        int travel = scrollTrack.Height - thumbHeight;
-        int y = MaxScroll == 0 ? scrollTrack.Y : scrollTrack.Y + (int)Math.Round(travel * scrollRow / (double)MaxScroll);
-        scrollThumb = new Rectangle(scrollTrack.X, y, scrollTrack.Width, thumbHeight);
-    }
-
     private void BuildClickableComponents()
     {
         int previousId = currentlySnappedComponent?.myID ?? -1;
+        currentPage = GalleryPagination.ClampPage(currentPage, items.Count, PageSize);
+        int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, items.Count, PageSize);
+
         allClickableComponents = [new ClickableComponent(ToScreen(backBounds), "back") { myID = BackComponentId }];
-        int first = scrollRow * GalleryUiRules.EventColumns;
-        int visible = GalleryUiRules.VisibleEventCount(events.Count, first);
+        GalleryBookChrome.AddRibbonTabComponents(allClickableComponents, ToScreen, BackComponentId, albumPage: true,
+            upNeighborId: visible > 0 ? new EventCardFocus(first, EventCardAction.Details).GetComponentId(CardComponentBase) : BackComponentId);
+
+        allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.RightPagePrevBounds)), "prev-page")
+        {
+            myID = GalleryBookChrome.PrevPageComponentId
+        });
+        allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.RightPageNextBounds)), "next-page")
+        {
+            myID = GalleryBookChrome.NextPageComponentId
+        });
+
         for (int slot = 0; slot < visible; slot++)
         {
             int index = first + slot;
-            allClickableComponents.Add(new ClickableComponent(ToScreen(DetailsBounds(slot)), $"details-{index}")
+            allClickableComponents.Add(new ClickableComponent(ToScreen(CardHitBounds(slot)), $"card-{index}")
             {
                 myID = new EventCardFocus(index, EventCardAction.Details).GetComponentId(CardComponentBase)
             });
-            if (!IsReplayAvailable(events[index]))
-                continue;
-            allClickableComponents.Add(new ClickableComponent(ToScreen(Bounds(GallerySpreadLayout.EventCardThumbnailBounds(slot))), $"replay-{index}")
-            {
-                myID = new EventCardFocus(index, EventCardAction.Replay).GetComponentId(CardComponentBase)
-            });
         }
+
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previousId)
-            ?? VisibleFocusFallback(previousId, visible)
+            ?? VisibleFocusFallback(visible)
             ?? allClickableComponents[0];
-        if (EventCardFocus.TryFromComponentId(currentlySnappedComponent.myID, CardComponentBase, events.Count, out EventCardFocus current))
+        if (EventCardFocus.TryFromComponentId(currentlySnappedComponent.myID, CardComponentBase, items.Count, out EventCardFocus current))
             lastCardFocus = current;
-        else if (lastCardFocus is EventCardFocus remembered)
-            lastCardFocus = remembered.ClampToViewport(events.Count, index => IsReplayAvailable(events[index]), scrollRow);
-        SaveState();
-        if (!dragging && Game1.options.snappyMenus && Game1.options.gamepadControls)
-            SnapCurrent();
+        SnapCurrent();
     }
 
-    private ClickableComponent? VisibleFocusFallback(int previousId, int visible)
+    private ClickableComponent? VisibleFocusFallback(int visible)
     {
         if (visible <= 0)
             return null;
-        EventCardFocus.TryFromComponentId(previousId, CardComponentBase, events.Count, out EventCardFocus previous);
-        EventCardFocus? target = previous.ClampToViewport(events.Count, index => IsReplayAvailable(events[index]), scrollRow);
-        return target is EventCardFocus focus
-            ? allClickableComponents.FirstOrDefault(component => component.myID == focus.GetComponentId(CardComponentBase)) : null;
+        int first = GalleryPagination.FirstIndex(currentPage, items.Count, PageSize);
+        EventCardFocus target = lastCardFocus is { } remembered && remembered.EventIndex >= first && remembered.EventIndex < first + visible
+            ? remembered
+            : new EventCardFocus(first, EventCardAction.Details);
+        return allClickableComponents.FirstOrDefault(component => component.myID == target.GetComponentId(CardComponentBase));
     }
 
-    private bool IsReplayAvailable(GalleryEvent entry) => context.ReplayAccess(entry).Allowed;
+    private bool IsReplayAvailable(AlbumCardItem item)
+        => !item.IsWedding && item.Story is { } entry && context.ReplayAccess(entry).Allowed;
 
     private void SaveState(int? focus = null)
     {
-        state.Scroll = scrollRow;
+        state.Scroll = currentPage;
         state.Focus = focus ?? currentlySnappedComponent?.myID ?? -1;
     }
 
     private void SnapCurrent()
     {
         SaveState();
-        snapCursorToCurrentSnappedComponent();
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
     }
 
-    private void OpenEvent(int index, EventCardAction action)
+    private void OpenItem(int index, EventCardAction action)
     {
-        GalleryEvent entry = events[index];
+        AlbumCardItem item = items[index];
         SaveState(new EventCardFocus(index, action).GetComponentId(CardComponentBase));
+        if (item.IsWedding)
+        {
+            context.Navigation.OpenPhotos(item.Identity);
+            return;
+        }
+        GalleryEvent entry = item.Story!;
         if (action == EventCardAction.Details)
             context.Navigation.OpenEvent(entry.Resolved.Identity);
-        else if (IsReplayAvailable(entry))
+        else if (IsReplayAvailable(item))
             context.Navigation.Replay(entry.Resolved.Identity);
-    }
-
-    private Rectangle DetailsBounds(int slot)
-    {
-        Rectangle well = Bounds(GallerySpreadLayout.EventCardDetailsBounds(slot));
-        Vector2 size = Game1.smallFont.MeasureString(i18n.Get("event.details-short"));
-        float scale = Math.Min(1f, Math.Min((well.Width - 8) / Math.Max(1, size.X), (well.Height - 8) / Math.Max(1, size.Y)));
-        int width = (int)Math.Ceiling(size.X * scale) + 8;
-        int height = (int)Math.Ceiling(size.Y * scale) + 8;
-        return new Rectangle(well.Right - width, well.Center.Y - height / 2, width, height);
     }
 
     private static Rectangle Bounds((int X, int Y, int Width, int Height) bounds)
         => new(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-
-    private bool Highlighted(Rectangle bounds, int componentId)
-    {
-        (int x, int y) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
-        return bounds.Contains(x, y) || (Game1.options.snappyMenus && Game1.options.gamepadControls
-            && currentlySnappedComponent?.myID == componentId);
-    }
 
     private void Return()
     {
@@ -487,23 +656,4 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
     private Rectangle ToScreen(Rectangle bounds) => GalleryDrawing.ScaleRectangle(bounds, menuScale, drawOffsetX, drawOffsetY);
     private (int X, int Y) ToLogical(int x, int y) => ((int)Math.Round((x - drawOffsetX) / menuScale), (int)Math.Round((y - drawOffsetY) / menuScale));
-
-    private static void DrawPageTitle(SpriteBatch b, string title, Rectangle bounds)
-    {
-        int y = bounds.Center.Y - SpriteText.getHeightOfString(title) / 2;
-        if (LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.zh && title.Length <= 8)
-        {
-            const int gap = 12;
-            int textWidth = title.Sum(character => SpriteText.getWidthOfString(character.ToString())) + gap * (title.Length - 1);
-            int x = bounds.Center.X - textWidth / 2;
-            foreach (char character in title)
-            {
-                string glyph = character.ToString();
-                SpriteText.drawString(b, glyph, x, y);
-                x += SpriteText.getWidthOfString(glyph) + gap;
-            }
-            return;
-        }
-        SpriteText.drawStringHorizontallyCenteredAt(b, title, bounds.Center.X, y, maxWidth: bounds.Width);
-    }
 }

@@ -1,0 +1,30 @@
+{
+  // Read-only fixture: a compatibility pack (depends on Fixture.Rules) that replaces and edits rules.
+  "Format": "2.0.0",
+  "Changes": [
+    {
+      "Action": "EditData",
+      "Target": "Data/TriggerActions",
+      "Entries": {
+        "Fixture.Rules_SetMarker": { "Id": "Fixture.Rules_SetMarker", "Trigger": "DayStarted", "Actions": [ "MarkEventSeen Current 900001" ] },
+        "FromFile_MapRule": { "Id": "FromFile_MapRule", "Trigger": "DayStarted", "Action": "AddMail Current OverrideMapMail" },
+        "FromFile_ListRule": { "Id": "FromFile_ListRule", "Trigger": "DayStarted", "Actions": [ "MarkEventSeen Current 900003" ] }
+      },
+      "TextOperations": [
+        { "Operation": "Append", "Target": [ "Fields", "Fixture.Rules_SetMarker", "Condition" ], "Value": "TRUE", "Delimiter": ", " }
+      ]
+    },
+    {
+      "Action": "EditData",
+      "Target": "Data/TriggerActions",
+      "TargetField": [ "Shared_Rule", "Actions" ],
+      "Entries": { "#0": "AddMail Current OverrideMail" }
+    },
+    {
+      "Action": "EditData",
+      "Target": "Data/TriggerActions",
+      "TargetField": [ "Shared_Rule", "CustomFields" ],
+      "FromFile": "data/subfields.json"
+    }
+  ]
+}

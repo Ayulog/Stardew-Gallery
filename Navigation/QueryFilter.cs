@@ -10,6 +10,7 @@ internal sealed record QueryFilter
     internal string? Location { get; init; }
     internal string? Source { get; init; }
     internal QueryCompletion Completion { get; init; }
+    internal bool EncounterOnly { get; init; }
 }
 
 /// <summary>A confirmed original provider, or an explicit unresolved category; candidate mods are never treated as confirmed.</summary>

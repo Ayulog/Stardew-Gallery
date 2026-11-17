@@ -56,7 +56,7 @@ internal sealed class ConditionParser(Func<string, string[]> splitPreconditions,
     internal ConditionExpression ParseSegment(string rawSegment)
     {
         string segment = rawSegment.Trim();
-        if (segment.Length == 0 || segment.Count(c => c == '"') % 2 != 0)
+        if (segment.Length == 0 || GameQuerySplit.HasUnclosedQuote(segment, ' '))
             return Malformed(rawSegment, segment.StartsWith('!'));
         string[] tokens = splitArguments(segment);
         if (tokens.Length == 0)

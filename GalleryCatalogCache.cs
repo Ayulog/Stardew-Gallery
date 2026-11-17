@@ -23,14 +23,15 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
         (key, script) => GameLocation.IsValidLocationEvent(key, script),
         raw => Event.ParseCommands(raw),
         command => ArgUtility.SplitBySpaceQuoteAware(command),
-        translationKey => Game1.content.LoadStringReturnNullIfNotFound(translationKey)
+        translationKey => SafeTranslationLoader.TryLoad(Game1.content, translationKey)
     );
     private readonly GalleryCatalogBuilder galleryBuilder = new(
         key => Event.SplitPreconditions(key),
         raw => Event.ParseCommands(raw),
         command => ArgUtility.SplitBySpaceQuoteAware(command),
         positions => ArgUtility.SplitBySpace(positions),
-        () => Game1.player.spouse
+        () => Game1.player.spouse,
+        translationKey => SafeTranslationLoader.TryLoad(Game1.content, translationKey)
     );
     private ResolvedEventCandidateCache? eventCandidates;
     private bool? candidatesForUpgradedTrailer;
@@ -40,6 +41,48 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
     {
         eventCandidates?.Invalidate();
         latest = null;
+    }
+
+    /// <summary>
+    /// Resolves a natural-play <see cref="Event"/> to its capturable story identity without triggering full catalog
+    /// scans, content-pack disk walks, or scan summary logging. Reuses <c>latest</c> when already built (ignoring
+    /// live friendship/spouse fluctuations that never change <see cref="StoryKind.Internal"/> vs story identity).
+    /// </summary>
+    internal EventIdentity? ResolveCapturableStoryIdentity(
+        string? fromAssetName,
+        string? currentLocationName,
+        string? eventId)
+    {
+        bool upgraded = EventAssetCatalog.PamHouseUpgraded;
+        if (latest is { } cached && candidatesForUpgradedTrailer == upgraded)
+            return AutoMementoRules.ResolveLiveStoryIdentity(cached.Catalog, fromAssetName, currentLocationName, eventId);
+
+        return AutoMementoRules.ResolveSingleAssetStoryIdentity(
+            fromAssetName,
+            currentLocationName,
+            eventId,
+            upgraded,
+            LoadSingleEventAsset,
+            (key, script) => GameLocation.IsValidLocationEvent(key, script),
+            galleryBuilder.IsInternalFlow,
+            raw => Event.ParseCommands(raw),
+            command => ArgUtility.SplitBySpaceQuoteAware(command),
+            translationKey => SafeTranslationLoader.TryLoad(Game1.content, translationKey));
+    }
+
+    private static IReadOnlyDictionary<string, string>? LoadSingleEventAsset(string assetName)
+    {
+        if (string.IsNullOrWhiteSpace(assetName))
+            return null;
+        if (Game1.content is not null && Game1.content.DoesAssetExist<Dictionary<string, string>>(assetName))
+            return Game1.content.Load<Dictionary<string, string>>(assetName);
+        if (Game1.currentLocation is { } currentLoc
+            && currentLoc.TryGetLocationEvents(out string locAsset, out Dictionary<string, string> locEvents)
+            && locAsset.Replace('\\', '/').Equals(assetName.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+        {
+            return locEvents;
+        }
+        return null;
     }
 
     internal GalleryCatalog Get()
@@ -66,6 +109,13 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
         };
         IReadOnlyList<GalleryEvent> events = built.AllEntries.ToArray();
         GalleryCatalog catalog = built with { Prerequisites = PrerequisiteAssetReader.Read(built, monitor) };
+        // Rule providers come from the same static index; like event origins they never affect permissions.
+        catalog = catalog with
+        {
+            RuleOrigins = catalog.Prerequisites.SelectMany(entry => entry.Sources).Select(source => source.RuleId)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(id => id,
+                    id => originFor(new EventIdentity(EventDefinitionIndex.TriggerActionAsset, id)), StringComparer.OrdinalIgnoreCase)
+        };
         List<IdentityConflict> conflicts = index.Groups
             .Where(group => group.Candidates.Count > 1)
             .Select(group => new IdentityConflict(

@@ -63,7 +63,8 @@ internal static class PrerequisiteCatalog
         foreach (var clause in clausesById[entry.EventId])
         {
             if (clause.Name is "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" or "PLAYER_NPC_RELATIONSHIP"
-                && !clause.Arguments[1].Equals("Any", StringComparison.OrdinalIgnoreCase)) npcs[entry.EventId].Add(clause.Arguments[1]);
+                && !clause.Arguments[1].Equals("Any", StringComparison.OrdinalIgnoreCase)
+                && !clause.Arguments[1].Equals("AnyDateable", StringComparison.OrdinalIgnoreCase)) npcs[entry.EventId].Add(clause.Arguments[1]);
             if (clause.Name == "PLAYER_HAS_SEEN_EVENT" && !clause.Negated)
                 foreach (var story in catalog.StoryEntries.Where(story => clause.Arguments.Skip(1).Contains(story.EventId, StringComparer.Ordinal)))
                     npcs[entry.EventId].UnionWith(story.RelatedNpcNames);

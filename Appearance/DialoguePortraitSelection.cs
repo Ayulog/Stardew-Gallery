@@ -4,10 +4,10 @@ internal sealed record DialoguePortraitEntry(string? CopyFrom, bool Disabled, Po
 
 internal static class DialoguePortraitSelection
 {
-    internal static PortraitFrame? Resolve(IReadOnlyDictionary<string, DialoguePortraitEntry> data, IEnumerable<string> keys)
+    internal static PortraitFrame? Resolve(IReadOnlyDictionary<string, DialoguePortraitEntry> data, IEnumerable<string> keys, bool includeDefault = true)
     {
         DialoguePortraitEntry? entry = null;
-        foreach (string key in keys.Append("default"))
+        foreach (string key in includeDefault ? keys.Append("default") : keys)
         {
             if (!data.TryGetValue(key, out var candidate) || candidate.Disabled) continue;
             // Conditional entries were added after the supported DDFC 0.7 API.

@@ -13,7 +13,7 @@ internal sealed class DialoguePortraits(IGameContentHelper content, IModRegistry
 
     internal void Invalidate() => entries = null;
 
-    internal PortraitFrame? Get(NPC? npc, string name, Texture2D texture)
+    internal PortraitFrame? Get(NPC? npc, string name, Texture2D texture, bool includeDefault = true)
     {
         if (!registry.IsLoaded(ModId)) return null;
         if (entries is null)
@@ -46,6 +46,6 @@ internal sealed class DialoguePortraits(IGameContentHelper content, IModRegistry
             || npc?.GetData()?.Appearance?.Any(a => a.Id == npc.LastAppearanceId && a.IsIslandAttire) == true)
             keys.Add(name + "_Beach");
         keys.Add(name);
-        return DialoguePortraitSelection.Resolve(entries, keys);
+        return DialoguePortraitSelection.Resolve(entries, keys, includeDefault);
     }
 }

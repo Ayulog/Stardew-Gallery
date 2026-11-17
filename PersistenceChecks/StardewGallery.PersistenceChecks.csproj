@@ -15,6 +15,8 @@
     <Compile Include="..\GallerySearchInput.cs" Link="GallerySearchInput.cs" />
     <Compile Include="..\Screenshots\EventPhotoStore.cs" Link="Screenshots\EventPhotoStore.cs" />
     <Compile Include="..\Screenshots\PhotoImageLayout.cs" Link="Screenshots\PhotoImageLayout.cs" />
+    <Compile Include="..\Persistence\IStorageFileSystem.cs" Link="Persistence\IStorageFileSystem.cs" />
+    <Compile Include="..\Domain\WeddingMemento.cs" Link="Domain\WeddingMemento.cs" />
     <Compile Include="..\Domain\EventIdentity.cs" Link="Domain\EventIdentity.cs" />
     <Compile Include="..\Domain\EventHashes.cs" Link="Domain\EventHashes.cs" />
     <Compile Include="..\Persistence\SaveProfileKey.cs" Link="Persistence\SaveProfileKey.cs" />

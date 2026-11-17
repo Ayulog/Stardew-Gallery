@@ -39,6 +39,15 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
         return index!.Match(assetName, eventId);
     }
 
+    internal EventOriginMatch ReadExactKey(string assetName, string rawKey)
+    {
+        EnsureScanned();
+        ReadGameDefinitions(assetName);
+        if (EventAssetName.Normalize(assetName).Equals("Data/Events/Trailer_Big", StringComparison.OrdinalIgnoreCase))
+            ReadGameDefinitions("Data/Events/Trailer");
+        return index!.MatchExactKey(assetName, rawKey);
+    }
+
     internal void EnsureScanned()
     {
         if (index is not null) return;
@@ -144,26 +153,55 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
     private void ReadGameDefinitions(string assetName)
     {
         string normalized = EventAssetName.Normalize(assetName);
+        if (EventDefinitionIndex.IsTriggerActionAsset(normalized))
+        {
+            ReadGameTriggerActions();
+            return;
+        }
         if (!normalized.StartsWith("Data/Events/", StringComparison.OrdinalIgnoreCase)
-            || normalized.Split('/').Any(part => part is ".." or ".") || !gameAssets.Add(normalized)) return;
+            || normalized.Split('/').Any(part => part is ".." or ".") || gameAssets.Contains(normalized)) return;
+        // Resolve the actual on-disk casing (e.g. "Data/Events/beach" -> "Data/Events/Beach" on Linux/Steam Deck)
+        // and never record a missing lookup in gameAssets, so a wrong-case miss can't block the real vanilla asset.
+        if (PackFiles.ResolveContentAsset(Constants.ContentPath, normalized) is not { } actualAsset
+            || !gameAssets.Add(actualAsset)) return;
         // Use MonoGame's plain reader, not Game1.content/SMAPI, so an edited cache is never
         // mistaken for the original game definition. Store identities/hashes, not scripts.
-        string path = Path.GetFullPath(Path.Combine(Constants.ContentPath, normalized + ".xnb"));
-        string root = Path.GetFullPath(Constants.ContentPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return;
         try
         {
             using var content = new ContentManager(Game1.content.ServiceProvider, Constants.ContentPath);
-            Dictionary<string, string> definitions = content.Load<Dictionary<string, string>>(normalized);
+            Dictionary<string, string> definitions = content.Load<Dictionary<string, string>>(actualAsset);
             foreach (var definition in definitions)
-                index!.Add(new EventDefinitionCandidate(EventSourceActor.GameBase, normalized, definition.Key,
-                    normalized + ".xnb", EventHashes.RootScript(definition.Value)));
+                index!.Add(new EventDefinitionCandidate(EventSourceActor.GameBase, actualAsset, definition.Key,
+                    actualAsset + ".xnb", EventHashes.RootScript(definition.Value)));
         }
         catch (Exception error)
         {
             // Allow a later attempt if the game content reader wasn't available yet.
-            gameAssets.Remove(normalized);
-            monitor.Log($"Vanilla event definitions unavailable for {normalized}: {error.Message}", LogLevel.Debug);
+            gameAssets.Remove(actualAsset);
+            monitor.Log($"Vanilla event definitions unavailable for {actualAsset}: {error.Message}", LogLevel.Debug);
+        }
+    }
+
+    /// <summary>Index the original game's Data/TriggerActions rule IDs, read with the plain MonoGame reader like events.</summary>
+    private void ReadGameTriggerActions()
+    {
+        const string asset = EventDefinitionIndex.TriggerActionAsset;
+        if (gameAssets.Contains(asset)
+            || PackFiles.ResolveContentAsset(Constants.ContentPath, asset) is not { } actualAsset
+            || !gameAssets.Add(actualAsset)) return;
+        try
+        {
+            using var content = new ContentManager(Game1.content.ServiceProvider, Constants.ContentPath);
+            List<StardewValley.GameData.TriggerActionData> rules = content.Load<List<StardewValley.GameData.TriggerActionData>>(actualAsset);
+            foreach (var rule in rules.Where(rule => !string.IsNullOrWhiteSpace(rule.Id)))
+                index!.Add(new EventDefinitionCandidate(EventSourceActor.GameBase, asset, rule.Id, actualAsset + ".xnb",
+                    EventHashes.RootScript(string.Join("\0", new[] { rule.Trigger, rule.Condition, rule.Action }
+                        .Concat(rule.Actions ?? []).Select(value => value ?? string.Empty)))));
+        }
+        catch (Exception error)
+        {
+            gameAssets.Remove(actualAsset);
+            monitor.Log($"Vanilla trigger action definitions unavailable: {error.Message}", LogLevel.Debug);
         }
     }
 }

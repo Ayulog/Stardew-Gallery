@@ -58,17 +58,20 @@ internal static class ConditionStateReader
                     case TileCondition:
                         state = state with { EntryTile = EntryTile(location, player) }; break;
                     case NativeQueryCondition query when SafeGameQuery.TryParse(query.Query, out var clauses):
-                        foreach (SafeQueryClause clause in clauses)
+                        foreach (SafeQueryClause clause in SafeGameQuery.FlattenLeaves(clauses))
                         {
-                            queryFacts[SafeGameQuery.FactKey(clause)] = SafeQueryStateReader.Read(clause, location);
                             if (clause.Name == "IS_PASSIVE_FESTIVAL_TODAY")
                                 state = state with { PassiveFestivals = Game1.netWorldState.Value.ActivePassiveFestivals.ToHashSet(StringComparer.Ordinal) };
+                            else if (clause.Name == "DAY_OF_WEEK")
+                                state = state with { Weekday = Game1.Date.DayOfWeek };
                             else if (clause.Name == "PLAYER_STAT")
                             {
                                 string selector = clause.Arguments[0], stat = clause.Arguments[1];
                                 Farmer[]? farmers = SelectPlayers(selector);
                                 if (farmers is not null) stats[SafeGameQuery.StatKey(selector, stat)] = farmers.Select(farmer => farmer.stats.Get(stat)).ToArray();
                             }
+                            else if (!SafeGameQuery.UsesSnapshot(clause.Name))
+                                queryFacts[SafeGameQuery.FactKey(clause)] = SafeQueryStateReader.Read(clause, location);
                         }
                         break;
                 }

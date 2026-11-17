@@ -42,4 +42,79 @@ internal static class AppearanceGeometry
         }
         return (left, top, scale, w, h);
     }
+
+    /// <summary>
+    /// Deterministic meadow stroll for the album scenic window: gentle walk right (frames 4..7) -> front-facing
+    /// idle pause (frame 0) -> gentle walk left (frames 12..15) -> front-facing idle pause (frame 0).
+    /// Enabled only on standard 4-column x >=4-row sheets; any other layout safely stays at frame 0 with 0 offset.
+    /// </summary>
+    internal static (int Frame, float OffsetX) ScenicStroll(
+        string? name,
+        double totalMilliseconds,
+        int textureWidth,
+        int textureHeight,
+        int frameWidth,
+        int frameHeight,
+        float maxOffset = 28f)
+    {
+        if (frameWidth <= 0 || frameHeight <= 0
+            || textureWidth != frameWidth * 4
+            || textureHeight < frameHeight * 4
+            || !double.IsFinite(totalMilliseconds)
+            || maxOffset <= 0f)
+            return (0, 0f);
+
+        const double cycleMs = 14400.0;
+        const double stepMs = 200.0;
+        double phase = ((totalMilliseconds + StablePhaseMs(name, (int)cycleMs)) % cycleMs + cycleMs) % cycleMs;
+
+        // 0..2200ms: center front-facing pause
+        if (phase < 2200.0)
+            return (0, 0f);
+        // 2200..3800ms (1.6s): walk right 0 -> +maxOffset (row 1: frames 4..7)
+        if (phase < 3800.0)
+        {
+            double elapsed = phase - 2200.0;
+            int frame = 4 + ((int)(elapsed / stepMs) % 4);
+            float x = (float)(elapsed / 1600.0) * maxOffset;
+            return (frame, x);
+        }
+        // 3800..6200ms (2.4s): right front-facing pause
+        if (phase < 6200.0)
+            return (0, maxOffset);
+        // 6200..9400ms (3.2s): walk left +maxOffset -> -maxOffset (row 3: frames 12..15)
+        if (phase < 9400.0)
+        {
+            double elapsed = phase - 6200.0;
+            int frame = 12 + ((int)(elapsed / stepMs) % 4);
+            float x = maxOffset - (float)(elapsed / 3200.0) * (maxOffset * 2f);
+            return (frame, x);
+        }
+        // 9400..11800ms (2.4s): left front-facing pause
+        if (phase < 11800.0)
+            return (0, -maxOffset);
+        // 11800..13400ms (1.6s): walk right -maxOffset -> 0 (row 1: frames 4..7)
+        if (phase < 13400.0)
+        {
+            double elapsed = phase - 11800.0;
+            int frame = 4 + ((int)(elapsed / stepMs) % 4);
+            float x = -maxOffset + (float)(elapsed / 1600.0) * maxOffset;
+            return (frame, x);
+        }
+        // 13400..14400ms: center front-facing pause (joins seamlessly with 0..2200ms)
+        return (0, 0f);
+    }
+
+    private static int StablePhaseMs(string? name, int modulo)
+    {
+        if (string.IsNullOrEmpty(name) || modulo <= 0)
+            return 0;
+        uint hash = 2166136261u;
+        foreach (char ch in name)
+        {
+            hash ^= ch;
+            hash *= 16777619u;
+        }
+        return (int)(hash % (uint)modulo);
+    }
 }

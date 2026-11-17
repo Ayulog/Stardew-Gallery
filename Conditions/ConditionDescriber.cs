@@ -13,6 +13,8 @@ internal sealed record ListTextValue(IReadOnlyList<ConditionTextValue> Values) :
 internal sealed record FriendshipRequirementsTextValue(IReadOnlyList<FriendshipRequirement> Values) : ConditionTextValue;
 internal sealed record ShippedRequirementsTextValue(IReadOnlyList<ShippedRequirement> Values) : ConditionTextValue;
 internal sealed record CalendarDateTextValue(string Season, int Day) : ConditionTextValue;
+/// <summary>An inclusive count range; a missing or int.MaxValue maximum means "at least".</summary>
+internal sealed record RangeTextValue(long Min, long? Max) : ConditionTextValue;
 internal sealed record NestedConditionTextValue(ConditionTextSpec Spec) : ConditionTextValue;
 internal sealed record ConditionTextSpec(string LocalizationKey, IReadOnlyDictionary<string, ConditionTextValue> Arguments, string RawFallback, bool Negated, string? NaturalNegativeKey = null);
 
@@ -55,7 +57,7 @@ internal static class ConditionDescriber
         YearCondition x => Named(x, x.DesiredYear == 1 ? "condition.year-one" : "condition.year", ("year", Num(x.DesiredYear))),
         GenderCondition x => Named(x, "condition.gender", ("gender", Term("gender", x.Gender))),
         HasItemCondition x => Named(x, "condition.has-item", ("item", new ItemTextValue(x.ItemId))),
-        TileCondition x => Named(x, "condition.designated-area"),
+        TileCondition x => Named(x, "condition.tile", ("positions", List(x.Positions.Select(p => Text($"({p.X}, {p.Y})"))))),
         ActiveDialogueEventCondition x => NamedNegative(x, "condition.dialogue-event", "condition.dialogue-event-not", ("id", Id(x.Id))),
         DayOfMonthCondition x => Named(x, "condition.day", ("day", List(x.Days.Select(d => Num(d))))),
         UpcomingFestivalCondition x => NamedNegative(x, "condition.upcoming-festival", "condition.no-upcoming-festival", ("days", Num(x.Days))),
@@ -67,44 +69,139 @@ internal static class ConditionDescriber
     };
 
     private static ConditionTextSpec DescribeQuery(NativeQueryCondition condition)
+        => SafeGameQuery.TryParse(condition.Query, out var clauses)
+            ? DescribeClauses(clauses, condition)
+            : Named(condition, "condition.native-query", ("query", Text(condition.Query)));
+
+    private static ConditionTextSpec DescribeClauses(IReadOnlyList<SafeQueryClause> clauses, ConditionExpression source)
     {
-        if (!SafeGameQuery.TryParse(condition.Query, out var clauses))
-            return Named(condition, "condition.native-query", ("query", Text(condition.Query)));
         List<ConditionTextSpec> specs = [];
         foreach (SafeQueryClause clause in clauses)
-        {
-            string[] a = clause.Arguments;
-            ConditionExpression source = condition with { Negated = clause.Negated };
-            specs.Add(clause.Name switch
-            {
-                "TRUE" => Named(source, "condition.always"),
-                "FALSE" => Named(source, "condition.never"),
-                "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" => a.Length == 3 ? Named(source,
-                    clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts" : "condition.query-points",
-                    ("player", Term("player", a[0])), ("npc", Npc(a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))))
-                    : Named(source, clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts-range" : "condition.query-points-range",
-                    ("player", Term("player", a[0])), ("npc", Npc(a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))), ("max", Num(SafeGameQuery.ParseInt(a[3])))),
-                "PLAYER_NPC_RELATIONSHIP" => Named(source, "condition.query-relationship", ("player", Term("player", a[0])),
-                    ("npc", Npc(a[1])), ("states", List(a.Skip(2).Select(value => Term("relationship", value))))),
-                "PLAYER_HAS_SEEN_EVENT" => Named(source, "condition.query-seen", ("player", Term("player", a[0])), ("ids", List(a.Skip(1).Select(Id)))),
-                "PLAYER_HAS_CONVERSATION_TOPIC" => Named(source, "condition.query-topic", ("player", Term("player", a[0])), ("ids", List(a.Skip(1).Select(Id)))),
-                "PLAYER_HAS_RUN_TRIGGER_ACTION" => Named(source, "condition.query-run", ("player", Term("player", a[0])), ("ids", List(a.Skip(1).Select(Id)))),
-                "PLAYER_HAS_MAIL" => Named(source, "condition.query-mail", ("player", Term("player", a[0])), ("id", Id(a[1])),
-                    ("state", Term("mail-state", a.Length > 2 ? a[2] : "any"))),
-                "WEATHER" => Named(source, "condition.query-weather", ("location", Term("location", a[0])),
-                    ("weather", List(a.Skip(1).Select(value => Term("weather", NormalizeWeather(value)))))),
-                "IS_PASSIVE_FESTIVAL_TODAY" => Named(source, "condition.passive-festival", ("festival", Term("festival", a[0]))),
-                "SEASON_DAY" => Named(source, "condition.season-dates", ("dates", List(Enumerable.Range(0, a.Length / 2)
-                    .Select(index => new CalendarDateTextValue(a[index * 2], SafeGameQuery.ParseInt(a[index * 2 + 1])))))),
-                _ => a.Length == 3
-                    ? Named(source, "condition.player-stat-min", ("player", Term("player", a[0])), ("stat", Term("stat", a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))))
-                    : Named(source, "condition.player-stat-range", ("player", Term("player", a[0])), ("stat", Term("stat", a[1])),
-                        ("min", Num(SafeGameQuery.ParseInt(a[2]))), ("max", Num(SafeGameQuery.ParseInt(a[3]))))
-            });
-        }
-        return specs.Count == 1 ? specs[0] with { Negated = specs[0].Negated ^ condition.Negated }
-            : Named(condition, "condition.query-all", ("conditions", List(specs.Select(spec => new NestedConditionTextValue(spec)))));
+            specs.Add(DescribeClause(clause, source with { Negated = clause.Negated }));
+        return specs.Count == 1 ? specs[0] with { Negated = specs[0].Negated ^ source.Negated }
+            : Named(source, "condition.query-all", ("conditions", List(specs.Select(spec => new NestedConditionTextValue(spec)))));
     }
+
+    private static ConditionTextSpec DescribeClause(SafeQueryClause clause, ConditionExpression source)
+    {
+        if (clause.Name == "ANY" && clause.SubQueries is { } subQueries)
+            return NamedNegative(source, "condition.query-any", "condition.query-none",
+                ("conditions", List(subQueries.Select(sub => new NestedConditionTextValue(DescribeClauses(sub, source with { Negated = false }))))));
+        string[] a = clause.Arguments;
+        if (SafeGameQuery.SkillQueries.TryGetValue(clause.Name, out var skill))
+            return Named(source, skill.Base ? "condition.query-skill-base" : "condition.query-skill",
+                ("player", Player(a[0])), ("skill", Term("skill", skill.Skill)), ("range", Range(a, 1)));
+        return clause.Name switch
+        {
+            "TRUE" => Named(source, "condition.always"),
+            "FALSE" => Named(source, "condition.never"),
+            "IS_COMMUNITY_CENTER_COMPLETE" => Named(source, "condition.query-cc-complete"),
+            "IS_JOJA_MART_COMPLETE" => Named(source, "condition.joja-complete"),
+            "IS_ISLAND_NORTH_BRIDGE_FIXED" => Named(source, "condition.query-island-bridge"),
+            "FOUND_ALL_LOST_BOOKS" => Named(source, "condition.query-all-lost-books"),
+            "IS_MULTIPLAYER" => NamedNegative(source, "condition.query-multiplayer", "condition.query-singleplayer"),
+            "IS_HOST" => Named(source, "condition.is-host"),
+            "IS_VISITING_ISLAND" => Named(source, "condition.query-visiting-island", ("npc", Npc(a[0]))),
+            "MUSEUM_DONATIONS" => DescribeMuseumDonations(a, source),
+            "MINE_LOWEST_LEVEL_REACHED" => Named(source, "condition.query-mine-level", ("range", Range(a, 0))),
+            "SEASON" => NamedNegative(source, "condition.season", "condition.season-not", ("seasons", List(a.Select(value => Term("season", value.ToLowerInvariant()))))),
+            "LOCATION_SEASON" => Named(source, "condition.query-location-season", ("location", QueryLocation(a[0])),
+                ("seasons", List(a.Skip(1).Select(value => Term("season", value.ToLowerInvariant()))))),
+            "SEASON_DAY" => Named(source, "condition.season-dates", ("dates", List(Enumerable.Range(0, a.Length / 2)
+                .Select(index => new CalendarDateTextValue(a[index * 2].ToLowerInvariant(), SafeGameQuery.ParseInt(a[index * 2 + 1])))))),
+            "YEAR" => a.Length == 1
+                ? Named(source, "condition.year", ("year", Num(SafeGameQuery.ParseInt(a[0]))))
+                : Named(source, "condition.query-year-range", ("min", Num(SafeGameQuery.ParseInt(a[0]))), ("max", Num(SafeGameQuery.ParseInt(a[1])))),
+            "TIME" => a.Length == 1
+                ? Named(source, "condition.query-time-from", ("from", new TimeTextValue(SafeGameQuery.ParseInt(a[0]))))
+                : NamedNegative(source, "condition.time", "condition.time-not", ("from", new TimeTextValue(SafeGameQuery.ParseInt(a[0]))),
+                    ("to", new TimeTextValue(SafeGameQuery.ParseInt(a[1])))),
+            "DAYS_PLAYED" => a.Length == 1
+                ? Named(source, "condition.daysplayed", ("min", Num(SafeGameQuery.ParseInt(a[0]))))
+                : Named(source, "condition.query-days-played-range", ("min", Num(SafeGameQuery.ParseInt(a[0]))), ("max", Num(SafeGameQuery.ParseInt(a[1])))),
+            "DAY_OF_MONTH" => Named(source, "condition.day", ("day", List(a.Select(value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int day)
+                ? (ConditionTextValue)Num(day) : Term("day", value.ToLowerInvariant()))))),
+            "DAY_OF_WEEK" => NamedNegative(source, "condition.weekday", "condition.weekday-not", ("days", List(a.Select(value =>
+                SafeGameQuery.TryGetDayOfWeek(value, out DayOfWeek day) && Enum.IsDefined(day) ? (ConditionTextValue)Term("weekday", day.ToString()) : Text(value))))),
+            "WEATHER" => Named(source, "condition.query-weather", ("location", QueryLocation(a[0])),
+                ("weather", List(a.Skip(1).Select(value => Term("weather", NormalizeWeather(value)))))),
+            "IS_GREEN_RAIN_DAY" => Named(source, "condition.query-green-rain"),
+            "IS_FESTIVAL_DAY" => a.Length == 0 || a.Length == 1 && a[0].Equals("any", StringComparison.OrdinalIgnoreCase)
+                    || a.Length == 2 && a[0].Equals("any", StringComparison.OrdinalIgnoreCase) && SafeGameQuery.ParseInt(a[1]) == 0
+                ? Named(source, "condition.festival-day", negative: "condition.not-festival-day")
+                : Named(source, "condition.query-festival", ("context", a[0].Equals("any", StringComparison.OrdinalIgnoreCase) ? Term("location-key", "all")
+                    : QueryLocation(a[0])), ("days", Num(a.Length > 1 ? SafeGameQuery.ParseInt(a[1]) : 0))),
+            "IS_PASSIVE_FESTIVAL_TODAY" => Named(source, "condition.passive-festival", ("festival", Term("festival", a[0]))),
+            "WORLD_STATE_ID" => NamedNegative(source, "condition.world-state", "condition.world-state-not", ("id", List(a.Select(Id)))),
+            "BUILDINGS_CONSTRUCTED" => Named(source, a.Length > 4 && bool.Parse(a[4]) ? "condition.query-buildings-pending" : "condition.query-buildings",
+                ("location", a[0].Equals("All", StringComparison.OrdinalIgnoreCase) ? Term("location-key", "all") : QueryLocation(a[0])),
+                ("building", a.Length < 2 || a[1].Equals("All", StringComparison.OrdinalIgnoreCase) ? Term("building", "all") : Text(a[1])),
+                ("count", a.Length > 2 ? Range(a, 2) : new RangeTextValue(1, null))),
+            "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" => a.Length == 3 ? Named(source,
+                clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts" : "condition.query-points",
+                ("player", Player(a[0])), ("npc", QueryNpc(a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))))
+                : Named(source, clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts-range" : "condition.query-points-range",
+                ("player", Player(a[0])), ("npc", QueryNpc(a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))), ("max", Num(SafeGameQuery.ParseInt(a[3])))),
+            "PLAYER_NPC_RELATIONSHIP" => Named(source, "condition.query-relationship", ("player", Player(a[0])),
+                ("npc", QueryNpc(a[1])), ("states", List(a.Skip(2).Select(value => Term("relationship", value))))),
+            "PLAYER_HAS_SEEN_EVENT" => Named(source, "condition.query-seen", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_HAS_CONVERSATION_TOPIC" => Named(source, "condition.query-topic", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_HAS_RUN_TRIGGER_ACTION" => Named(source, "condition.query-run", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_HAS_DIALOGUE_ANSWER" => Named(source, "condition.query-dialogue-answer", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_VISITED_LOCATION" => Named(source, "condition.query-visited", ("player", Player(a[0])), ("locations", List(a.Skip(1).Select(QueryLocation)))),
+            "PLAYER_HAS_MAIL" => Named(source, "condition.query-mail", ("player", Player(a[0])), ("id", Id(a[1])),
+                ("state", Term("mail-state", a.Length > 2 ? a[2] : "any"))),
+            "PLAYER_HAS_ITEM" => Named(source, "condition.query-item", ("player", Player(a[0])), ("item", new ItemTextValue(a[1])),
+                ("count", a.Length > 2 ? Range(a, 2) : new RangeTextValue(1, null))),
+            "PLAYER_HAS_CRAFTING_RECIPE" => Named(source, "condition.query-crafting-recipe", ("player", Player(a[0])), ("recipe", Text(string.Join(' ', a.Skip(1))))),
+            "PLAYER_HAS_COOKING_RECIPE" => Named(source, "condition.query-cooking-recipe", ("player", Player(a[0])), ("recipe", Text(string.Join(' ', a.Skip(1))))),
+            "PLAYER_HAS_ACHIEVEMENT" => Named(source, "condition.query-achievement", ("player", Player(a[0])), ("id", Num(SafeGameQuery.ParseInt(a[1])))),
+            "PLAYER_HAS_SECRET_NOTE" => Named(source, "condition.query-secret-note", ("player", Player(a[0])), ("id", Num(SafeGameQuery.ParseInt(a[1])))),
+            "PLAYER_GENDER" => Named(source, "condition.query-gender", ("player", Player(a[0])),
+                ("gender", Term("gender", a[1].Equals("Male", StringComparison.OrdinalIgnoreCase) ? "male" : "female"))),
+            "PLAYER_CURRENT_MONEY" => Named(source, "condition.query-money", ("player", Player(a[0])), ("range", Range(a, 1))),
+            "PLAYER_MONEY_EARNED" => Named(source, "condition.query-money-earned", ("player", Player(a[0])), ("range", Range(a, 1))),
+            "PLAYER_FARMHOUSE_UPGRADE" => Named(source, "condition.query-farmhouse-upgrade", ("player", Player(a[0])), ("range", Range(a, 1))),
+            "PLAYER_HAS_MET" => Named(source, "condition.query-met", ("player", Player(a[0])), ("npcs", List(a.Skip(1).Select(Npc)))),
+            "PLAYER_HAS_PET" => Named(source, "condition.query-has-pet", ("player", Player(a[0]))),
+            "PLAYER_HAS_CHILDREN" => Named(source, "condition.query-children", ("player", Player(a[0])),
+                ("count", a.Length > 1 ? Range(a, 1) : new RangeTextValue(1, null))),
+            "PLAYER_HAS_TOWN_KEY" => Named(source, "condition.query-town-key", ("player", Player(a[0]))),
+            "PLAYER_SPECIAL_ORDER_COMPLETE" => Named(source, "condition.query-special-order-complete", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_SPECIAL_ORDER_ACTIVE" => Named(source, "condition.query-special-order-active", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_HAS_HEARD_SONG" => Named(source, "condition.query-heard-song", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
+            "PLAYER_KILLED_MONSTERS" => DescribeKilledMonsters(a, source),
+            _ => a.Length == 3
+                ? Named(source, "condition.player-stat-min", ("player", Player(a[0])), ("stat", Term("stat", a[1])), ("min", Num(SafeGameQuery.ParseInt(a[2]))))
+                : Named(source, "condition.player-stat-range", ("player", Player(a[0])), ("stat", Term("stat", a[1])),
+                    ("min", Num(SafeGameQuery.ParseInt(a[2]))), ("max", Num(SafeGameQuery.ParseInt(a[3]))))
+        };
+    }
+
+    private static ConditionTextSpec DescribeMuseumDonations(string[] a, ConditionExpression source)
+    {
+        bool hasMax = a.Length >= 2 && SafeGameQuery.IsInt(a[1]);
+        RangeTextValue count = new(SafeGameQuery.ParseInt(a[0]), hasMax ? SafeGameQuery.ParseInt(a[1]) : null);
+        int typeStart = hasMax ? 2 : 1;
+        return typeStart >= a.Length
+            ? Named(source, "condition.query-museum-donations", ("count", count))
+            : Named(source, "condition.query-museum-donations-type",
+                ("types", List(a.Skip(typeStart).Select(Text))), ("count", count));
+    }
+
+    private static ConditionTextSpec DescribeKilledMonsters(string[] a, ConditionExpression source)
+    {
+        string[] monsters = a.Skip(1).TakeWhile(value => !SafeGameQuery.IsInt(value)).ToArray();
+        int countIndex = 1 + monsters.Length;
+        RangeTextValue count = countIndex < a.Length ? Range(a, countIndex) : new RangeTextValue(1, null);
+        return Named(source, "condition.query-killed-monsters",
+            ("player", Player(a[0])), ("monsters", List(monsters.Select(Text))), ("count", count));
+    }
+
+    private static TermTextValue Player(string value) => Term("player", value);
+    private static ConditionTextValue QueryNpc(string value) => value.ToUpperInvariant() is "ANY" or "ANYDATEABLE" ? Term("npc-key", value.ToLowerInvariant()) : Npc(value);
+    private static ConditionTextValue QueryLocation(string value) => SafeGameQuery.IsContextLocation(value) ? Term("location-key", value.ToLowerInvariant()) : Term("location", value);
+    private static RangeTextValue Range(string[] a, int index) => new(SafeGameQuery.ParseInt(a[index]), a.Length > index + 1 ? SafeGameQuery.ParseInt(a[index + 1]) : null);
 
     private static ConditionTextSpec DescribeWeekday(DayOfWeekCondition condition)
     {
@@ -213,6 +310,11 @@ internal static class ConditionTextFormatter
             ["season"] = resolver.Term("season", x.Season), ["day"] = x.Day.ToString(CultureInfo.CurrentCulture)
         }),
         NestedConditionTextValue x => Format(x.Spec, translate, resolver),
+        RangeTextValue x => x.Max is not long max || max == int.MaxValue
+            ? translate("condition.range-min", new Dictionary<string, string> { ["min"] = x.Min.ToString(CultureInfo.CurrentCulture) })
+            : max == x.Min ? translate("condition.range-exact", new Dictionary<string, string> { ["value"] = max.ToString(CultureInfo.CurrentCulture) })
+            : translate("condition.range-between", new Dictionary<string, string>
+                { ["min"] = x.Min.ToString(CultureInfo.CurrentCulture), ["max"] = max.ToString(CultureInfo.CurrentCulture) }),
         ListTextValue x => string.Join(", ", x.Values.Select(item => FormatValue(item, resolver, translate))),
         FriendshipRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Npc(item.Npc)} ≥ {FormatFriendship(item.Points, translate)}")),
         ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{ResolveItem(item.ItemId, resolver)} × {item.Count}")),

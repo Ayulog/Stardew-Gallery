@@ -1,28 +1,56 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace StardewGallery;
 
 internal sealed record EventPhoto(string Id, DateTimeOffset CapturedAt, int Width, int Height);
-internal sealed record EventPhotoSet(IReadOnlyList<EventPhoto> Photos, string? CoverId, bool ReadOnly = false);
+internal sealed record EventPhotoSet(IReadOnlyList<EventPhoto> Photos, string? CoverId, bool ReadOnly = false, WeddingDateRecord? WeddingDate = null);
 
-internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Action<string> warn)
+internal sealed class EventPhotoStore
 {
     /// <summary>Earlier catalogs kept per event in <c>archive/</c>; removed photos there are never deleted.</summary>
     internal const int MaxIndexBackups = 5;
-    private readonly string directory = Path.Combine(Path.GetFullPath(root),
-        profile.FarmUniqueId.ToString("X16", CultureInfo.InvariantCulture) + "-" + profile.PlayerUniqueId.ToString("X16", CultureInfo.InvariantCulture));
+
+    private readonly string rootPath;
+    private readonly string profileFolderName;
+    private readonly string directory;
+    private readonly Action<string> warn;
+    private readonly IStorageFileSystem fs;
     private readonly Dictionary<EventIdentity, EventPhotoSet> sets = [];
     private readonly Dictionary<EventIdentity, string> directories = [];
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private List<EventIdentity>? scannedWeddings;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    internal EventPhotoStore(string root, SaveProfileKey profile, Action<string> warn)
+        : this(root, profile, warn, PhysicalStorageFileSystem.Instance) { }
+
+    internal EventPhotoStore(string root, SaveProfileKey profile, Action<string> warn, IStorageFileSystem fileSystem)
+    {
+        rootPath = Path.GetFullPath(root);
+        profileFolderName = profile.FarmUniqueId.ToString("X16", CultureInfo.InvariantCulture) + "-" + profile.PlayerUniqueId.ToString("X16", CultureInfo.InvariantCulture);
+        directory = Path.Combine(rootPath, profileFolderName);
+        this.warn = warn;
+        fs = fileSystem;
+    }
+
+    internal string RootDirectory => rootPath;
+    internal string ProfileDirectory => directory;
+
+    internal string RelativeSubdirectory(EventIdentity identity)
+        => "event-photos/" + profileFolderName + "/" + EventFolderHash(identity);
 
     internal EventPhotoSet Read(EventIdentity identity)
     {
         if (sets.TryGetValue(identity, out EventPhotoSet? value))
             return value;
         string path = Path.Combine(EventDirectory(identity), "index.json");
-        if (!File.Exists(path))
+        if (!fs.FileExists(path))
             return sets[identity] = new([], null);
         try { return sets[identity] = ReadDocument(path, identity); }
         catch (NotSupportedException error)
@@ -34,8 +62,8 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         {
             warn($"Photo index unreadable: {error.Message}");
             string archive = Path.Combine(EventDirectory(identity), "archive");
-            if (Directory.Exists(archive))
-                foreach (string backup in Directory.EnumerateFiles(archive, "index-*.json").OrderByDescending(Path.GetFileName))
+            if (fs.DirectoryExists(archive))
+                foreach (string backup in fs.EnumerateFiles(archive, "index-*.json").OrderByDescending(Path.GetFileName))
                 {
                     try { return sets[identity] = ReadDocument(backup, identity); }
                     catch (Exception backupError) when (backupError is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or NotSupportedException) { }
@@ -45,26 +73,68 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         }
     }
 
+    internal IReadOnlyList<(EventIdentity Identity, EventPhotoSet Photos)> ReadWeddingMemories()
+    {
+        if (scannedWeddings is null)
+        {
+            HashSet<EventIdentity> found = [];
+            foreach ((EventIdentity key, EventPhotoSet cached) in sets)
+            {
+                if (WeddingMemento.IsWeddingIdentity(key) && (cached.Photos.Count > 0 || cached.WeddingDate is not null))
+                    found.Add(key);
+            }
+            if (fs.DirectoryExists(directory))
+            {
+                foreach (string subDir in fs.EnumerateDirectories(directory))
+                {
+                    if (TryDiscoverWeddingIdentity(subDir, out EventIdentity weddingId))
+                    {
+                        EventPhotoSet loaded = Read(weddingId);
+                        if (loaded.Photos.Count > 0 || loaded.WeddingDate is not null)
+                            found.Add(weddingId);
+                    }
+                }
+            }
+            scannedWeddings = found
+                .OrderBy(id => id.StorageEventId, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        return scannedWeddings
+            .Select(id => (id, Read(id)))
+            .Where(pair => pair.Item2.Photos.Count > 0 || pair.Item2.WeddingDate is not null)
+            .ToArray();
+    }
+
     internal EventPhoto Add(EventIdentity identity, byte[] image, byte[] thumbnail)
+        => Add(identity, image, thumbnail, weddingDate: null);
+
+    internal EventPhoto Add(EventIdentity identity, byte[] image, byte[] thumbnail, WeddingDateRecord? weddingDate)
     {
         EventPhotoSet old = Writable(identity);
+        WeddingDateRecord? effectiveWedding = weddingDate?.Normalized() ?? old.WeddingDate;
+        if (effectiveWedding is { IsValid: false })
+            throw new ArgumentException("Wedding date metadata is invalid.", nameof(weddingDate));
+
         var dimensions = PngSize(image);
         PngSize(thumbnail);
         string id = Guid.NewGuid().ToString("N");
         EventPhoto photo = new(id, DateTimeOffset.UtcNow, dimensions.Width, dimensions.Height);
-        Directory.CreateDirectory(EventDirectory(identity));
+        fs.CreateDirectory(EventDirectory(identity));
         string imagePath = ImagePath(identity, id), thumbnailPath = ImagePath(identity, id, thumbnail: true);
         try
         {
-            WriteNew(imagePath, image);
-            WriteNew(thumbnailPath, thumbnail);
-            Commit(identity, new(old.Photos.Append(photo).ToArray(), old.Photos.Count == 0 ? id : old.CoverId));
+            fs.WriteNewFlushed(imagePath, image);
+            fs.WriteNewFlushed(thumbnailPath, thumbnail);
+            Commit(identity, new(old.Photos.Append(photo).ToArray(), old.Photos.Count == 0 ? id : old.CoverId, WeddingDate: effectiveWedding));
+            if (WeddingMemento.IsWeddingIdentity(identity) && scannedWeddings is not null && !scannedWeddings.Contains(identity))
+                scannedWeddings.Add(identity);
         }
         catch
         {
             // An uncommitted photo has no catalog entry; don't leave its new files behind.
             foreach (string path in new[] { imagePath, thumbnailPath })
-                try { if (File.Exists(path)) File.Delete(path); } catch { }
+                try { if (fs.FileExists(path)) fs.DeleteFile(path); } catch { }
             throw;
         }
         return photo;
@@ -77,7 +147,7 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
             throw new ArgumentException("Photo isn't in this event.", nameof(id));
         if (id is not null)
         {
-            using FileStream image = File.OpenRead(ImagePath(identity, id));
+            using Stream image = fs.OpenRead(ImagePath(identity, id));
             ValidatePng(image);
         }
         Commit(identity, old with { CoverId = id });
@@ -89,14 +159,18 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         if (!old.Photos.Any(photo => photo.Id == id))
             throw new ArgumentException("Photo isn't in this event.", nameof(id));
         // Commit the new catalog first. A failed move can only leave an unreferenced image, never a broken selected cover.
-        Commit(identity, new(old.Photos.Where(photo => photo.Id != id).ToArray(), old.CoverId == id ? null : old.CoverId));
+        Commit(identity, old with
+        {
+            Photos = old.Photos.Where(photo => photo.Id != id).ToArray(),
+            CoverId = old.CoverId == id ? null : old.CoverId
+        });
         string archive = Path.Combine(EventDirectory(identity), "archive", id + "-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(archive);
+        fs.CreateDirectory(archive);
         foreach (bool thumbnail in new[] { false, true })
         {
             string image = ImagePath(identity, id, thumbnail);
-            if (File.Exists(image))
-                File.Move(image, Path.Combine(archive, Path.GetFileName(image)));
+            if (fs.FileExists(image))
+                fs.MoveFile(image, Path.Combine(archive, Path.GetFileName(image)));
         }
     }
 
@@ -108,7 +182,7 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
     internal bool Adopt(EventIdentity current, EventIdentity former)
     {
         string formerIndex = Path.Combine(EventDirectory(former), "index.json");
-        if (current == former || !File.Exists(formerIndex))
+        if (current == former || !fs.FileExists(formerIndex))
             return false;
         EventPhotoSet source = Read(former), target = Read(current);
         if (source.ReadOnly || target.ReadOnly)
@@ -119,29 +193,29 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
             List<string> copied = [];
             try
             {
-                Directory.CreateDirectory(EventDirectory(current));
+                fs.CreateDirectory(EventDirectory(current));
                 foreach (EventPhoto photo in added)
                 foreach (bool thumbnail in new[] { false, true })
                 {
                     string from = ImagePath(former, photo.Id, thumbnail), to = ImagePath(current, photo.Id, thumbnail);
-                    if (!File.Exists(from) || File.Exists(to))
+                    if (!fs.FileExists(from) || fs.FileExists(to))
                         continue;
-                    File.Copy(from, to);
+                    fs.CopyFile(from, to);
                     copied.Add(to);
                 }
-                Commit(current, new(target.Photos.Concat(added).ToArray(), target.CoverId ?? source.CoverId));
+                Commit(current, new(target.Photos.Concat(added).ToArray(), target.CoverId ?? source.CoverId, WeddingDate: target.WeddingDate ?? source.WeddingDate));
             }
             catch
             {
                 foreach (string path in copied)
-                    try { File.Delete(path); } catch { }
+                    try { fs.DeleteFile(path); } catch { }
                 throw;
             }
         }
         // Retire the old catalog so photos archived later don't return from it.
         string archive = Path.Combine(EventDirectory(former), "archive");
-        Directory.CreateDirectory(archive);
-        File.Move(formerIndex, Path.Combine(archive, $"index-adopted-{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.json"));
+        fs.CreateDirectory(archive);
+        fs.MoveFile(formerIndex, Path.Combine(archive, $"index-adopted-{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.json"));
         sets.Remove(former);
         return true;
     }
@@ -157,9 +231,12 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
     internal string EventDirectory(EventIdentity identity)
     {
         if (!directories.TryGetValue(identity, out string? path))
-            directories[identity] = path = Path.Combine(directory, EventHashes.RootScript(JsonSerializer.Serialize(new[] { identity.AssetName.ToUpperInvariant(), identity.StorageEventId })));
+            directories[identity] = path = Path.Combine(directory, EventFolderHash(identity));
         return path;
     }
+
+    private static string EventFolderHash(EventIdentity identity)
+        => EventHashes.RootScript(JsonSerializer.Serialize(new[] { identity.AssetName.ToUpperInvariant(), identity.StorageEventId }));
 
     internal static (int Width, int Height) ValidatePng(Stream image)
     {
@@ -201,20 +278,24 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
     {
         string folder = EventDirectory(identity);
         string archive = Path.Combine(folder, "archive");
-        Directory.CreateDirectory(archive);
+        fs.CreateDirectory(archive);
         string path = Path.Combine(folder, "index.json");
         string temporary = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".tmp");
-        WriteNew(temporary, JsonSerializer.SerializeToUtf8Bytes(new PhotoDocument
+        fs.WriteNewFlushed(temporary, JsonSerializer.SerializeToUtf8Bytes(new PhotoDocument
         {
-            AssetName = identity.AssetName, EventId = identity.StorageEventId, CoverId = set.CoverId, Photos = set.Photos.ToList()
+            AssetName = identity.AssetName,
+            EventId = identity.StorageEventId,
+            CoverId = set.CoverId,
+            WeddingDate = set.WeddingDate,
+            Photos = set.Photos.ToList()
         }, JsonOptions));
-        if (File.Exists(path))
+        if (fs.FileExists(path))
         {
-            File.Replace(temporary, path, Path.Combine(archive, $"index-{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.json"));
+            fs.ReplaceFile(temporary, path, Path.Combine(archive, $"index-{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.json"));
             TrimIndexBackups(archive);
         }
         else
-            File.Move(temporary, path);
+            fs.MoveFile(temporary, path);
         sets[identity] = set;
     }
 
@@ -223,34 +304,75 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         try
         {
             // Timestamped names sort by age; a catalog retired by adoption is kept.
-            foreach (string old in Directory.EnumerateFiles(archive, "index-*.json")
+            foreach (string old in fs.EnumerateFiles(archive, "index-*.json")
                 .Where(path => !Path.GetFileName(path).StartsWith("index-adopted-", StringComparison.Ordinal))
                 .OrderByDescending(Path.GetFileName, StringComparer.Ordinal).Skip(MaxIndexBackups))
-                File.Delete(old);
+                fs.DeleteFile(old);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { warn("Old photo catalog backups could not be removed: " + error.Message); }
     }
 
-    private static void WriteNew(string path, byte[] bytes)
+    private EventPhotoSet ReadDocument(string path, EventIdentity identity)
     {
-        using FileStream file = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        file.Write(bytes);
-        file.Flush(flushToDisk: true);
-    }
-
-    private static EventPhotoSet ReadDocument(string path, EventIdentity identity)
-    {
-        if (new FileInfo(path).Length > 4 * 1024 * 1024)
+        if (fs.GetFileLength(path) > 4 * 1024 * 1024)
             throw new InvalidDataException("Photo catalog is too large.");
-        PhotoDocument document = JsonSerializer.Deserialize<PhotoDocument>(File.ReadAllText(path)) ?? throw new InvalidDataException("Empty photo catalog.");
+        PhotoDocument document = JsonSerializer.Deserialize<PhotoDocument>(fs.ReadAllText(path)) ?? throw new InvalidDataException("Empty photo catalog.");
         if (document.Version != 1)
             throw new NotSupportedException($"Unsupported photo catalog version {document.Version}; left untouched.");
         if (new EventIdentity(document.AssetName, document.EventId) != identity || document.Photos is null
             || document.Photos.Any(photo => photo is null || !Guid.TryParseExact(photo.Id, "N", out _) || photo.Width <= 0 || photo.Height <= 0)
             || document.Photos.Select(photo => photo.Id).Distinct().Count() != document.Photos.Count
-            || document.CoverId is not null && !document.Photos.Any(photo => photo.Id == document.CoverId))
+            || document.CoverId is not null && !document.Photos.Any(photo => photo.Id == document.CoverId)
+            || document.WeddingDate is { IsValid: false })
             throw new InvalidDataException("Photo catalog identity or entries are invalid.");
-        return new(document.Photos, document.CoverId);
+        return new(document.Photos, document.CoverId, WeddingDate: document.WeddingDate?.Normalized());
+    }
+
+    private bool TryDiscoverWeddingIdentity(string subDir, out EventIdentity identity)
+    {
+        string indexPath = Path.Combine(subDir, "index.json");
+        if (fs.FileExists(indexPath))
+        {
+            try
+            {
+                if (TryPeekWeddingIdentity(indexPath, out identity))
+                    return true;
+                return false;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
+            {
+                string archive = Path.Combine(subDir, "archive");
+                if (fs.DirectoryExists(archive))
+                {
+                    foreach (string backup in fs.EnumerateFiles(archive, "index-*.json").OrderByDescending(Path.GetFileName))
+                    {
+                        try
+                        {
+                            if (TryPeekWeddingIdentity(backup, out identity))
+                                return true;
+                        }
+                        catch { }
+                    }
+                }
+            }
+        }
+        identity = default;
+        return false;
+    }
+
+    private bool TryPeekWeddingIdentity(string path, out EventIdentity identity)
+    {
+        identity = default;
+        if (fs.GetFileLength(path) > 4 * 1024 * 1024)
+            return false;
+        PhotoDocument? document = JsonSerializer.Deserialize<PhotoDocument>(fs.ReadAllText(path));
+        if (document is null || document.Version != 1)
+            return false;
+        EventIdentity candidate = new(document.AssetName, document.EventId);
+        if (!WeddingMemento.IsWeddingIdentity(candidate))
+            return false;
+        identity = candidate;
+        return true;
     }
 
     private sealed class PhotoDocument
@@ -259,6 +381,7 @@ internal sealed class EventPhotoStore(string root, SaveProfileKey profile, Actio
         public string AssetName { get; set; } = "";
         public string EventId { get; set; } = "";
         public string? CoverId { get; set; }
+        public WeddingDateRecord? WeddingDate { get; set; }
         public List<EventPhoto> Photos { get; set; } = [];
     }
 }

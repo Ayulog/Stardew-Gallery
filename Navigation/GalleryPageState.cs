@@ -1,10 +1,18 @@
 namespace StardewGallery;
 
-internal enum GalleryPage { Home, Album, Query, Detail, Photos, Prerequisite, Rename, Filters }
+internal enum GalleryBookTab
+{
+    Villagers = 0,
+    StoryIndex = 1,
+    Moments = 2
+}
+
+internal enum GalleryPage { Home, Album, Query, Moments, Detail, Photos, Prerequisite, Rename, Filters }
 
 internal sealed class GalleryPageState(GalleryPage page)
 {
     internal GalleryPage Page { get; } = page;
+    internal GalleryBookTab OriginTab { get; init; }
     internal string? CharacterName { get; init; }
     internal EventIdentity? Event { get; init; }
     internal string SearchText { get; set; } = "";
@@ -12,6 +20,7 @@ internal sealed class GalleryPageState(GalleryPage page)
     internal bool SourceExpanded { get; set; }
     internal int ConditionScroll { get; set; }
     internal int SourceScroll { get; set; }
+    internal int ForkOptionIndex { get; set; }
     internal int Focus { get; set; } = -1;
     internal string? LocationFilter { get; set; }
     internal StoryKind? KindFilter { get; set; }
@@ -30,6 +39,39 @@ internal sealed class GalleryPageHistory
     internal GalleryPageState? Current => pages.LastOrDefault();
     internal int Count => pages.Count;
     internal void Reset() { pages.Clear(); pages.Add(new(GalleryPage.Home)); }
+    internal void ResetTo(GalleryPageState root) { pages.Clear(); pages.Add(root); }
+
+    internal void SwitchTab(GalleryBookTab tab)
+    {
+        if (tab == GalleryBookTab.Villagers)
+        {
+            if (pages.Count > 0 && pages[0].Page == GalleryPage.Home)
+            {
+                if (pages.Count > 1)
+                    pages.RemoveRange(1, pages.Count - 1);
+                return;
+            }
+            pages.Clear();
+            pages.Add(new GalleryPageState(GalleryPage.Home) { OriginTab = GalleryBookTab.Villagers });
+            return;
+        }
+
+        GalleryPage target = tab == GalleryBookTab.StoryIndex ? GalleryPage.Query : GalleryPage.Moments;
+        if (pages.Count >= 2 && pages[0].Page == GalleryPage.Home && pages[1].Page == target)
+        {
+            if (pages.Count > 2)
+                pages.RemoveRange(2, pages.Count - 2);
+            return;
+        }
+
+        GalleryPageState home = pages.Count > 0 && pages[0].Page == GalleryPage.Home
+            ? pages[0]
+            : new GalleryPageState(GalleryPage.Home) { OriginTab = GalleryBookTab.Villagers };
+        pages.Clear();
+        pages.Add(home);
+        pages.Add(new GalleryPageState(target) { OriginTab = tab });
+    }
+
     internal void Open(GalleryPageState target)
     {
         int previous = target.Event is not null ? pages.FindIndex(page => page.Page == target.Page && page.Event == target.Event)

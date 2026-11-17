@@ -21,6 +21,8 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
     protected int OffsetX, OffsetY;
     private int viewportWidth, viewportHeight, scroll, contentHeight;
     private bool dragging;
+    private bool keyboardFocus;
+    private Point lastMouse;
     private int dragOffset;
     private Rectangle thumb;
     protected virtual Rectangle ContentBounds => new(52, 148, 1050, 588);
@@ -138,9 +140,20 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
         }
         else base.receiveGamePadButton(button);
     }
+    public override void performHoverAction(int x, int y)
+    {
+        if (lastMouse != new Point(x, y))
+        {
+            if (lastMouse != default) keyboardFocus = false;
+            lastMouse = new Point(x, y);
+        }
+        base.performHoverAction(x, y);
+    }
     public override void receiveKeyPress(Keys key)
     {
         if (IsSearchSelected) { if (key == Keys.Escape) DeselectSearch(); return; }
+        if (key is Keys.Enter or Keys.Up or Keys.Down or Keys.Left or Keys.Right or Keys.PageUp or Keys.PageDown)
+            keyboardFocus = true;
         // Controller Y/Start arrive as the menu key; like Escape they go back one page instead of closing the gallery.
         if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key)) HandleControllerBack();
         else if (key == Keys.Enter) Activate(FocusId);
@@ -201,12 +214,19 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
         b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, null, null,
             Matrix.CreateScale(Scale) * Matrix.CreateTranslation(OffsetX, OffsetY, 0));
         if (MaxScroll > 0) { GalleryDrawing.DrawScrollbarTrack(b, Context.Textures.Scrollbar, Track); GalleryDrawing.DrawScrollbar(b, thumb); }
-        GalleryDrawing.DrawButton(b, BackBounds, Context.I18n.Get("nav.back"));
-        if (ApplyLabel is not null) GalleryDrawing.DrawButton(b, ApplyBounds, ApplyLabel);
-        if (ExtraLabel is not null) GalleryDrawing.DrawButton(b, ExtraBounds, ExtraLabel);
-        foreach (int id in new[] { 0, 1, 2 })
-            if (id == FocusId) { var r = id == 0 ? BackBounds : id == 1 ? ApplyBounds : ExtraBounds; b.Draw(Game1.staminaRect, new Rectangle(r.X + 16, r.Bottom - 8, r.Width - 32, 3), new Color(66, 112, 76)); }
+        bool showFocus = Game1.options.snappyMenus && Game1.options.gamepadControls || keyboardFocus;
+        DrawFooterWoodButton(b, 0, BackBounds, Context.I18n.Get("nav.back"), mx, my, showFocus);
+        if (ApplyLabel is not null) DrawFooterWoodButton(b, 1, ApplyBounds, ApplyLabel, mx, my, showFocus);
+        if (ExtraLabel is not null) DrawFooterWoodButton(b, 2, ExtraBounds, ExtraLabel, mx, my, showFocus);
         upperRightCloseButton.draw(b); GalleryDrawing.EndScaled(b); drawMouse(b);
+    }
+    private void DrawFooterWoodButton(SpriteBatch b, int id, Rectangle bounds, string label, int mx, int my, bool showFocus)
+    {
+        bool focused = showFocus && FocusId == id;
+        bool hot = focused || bounds.Contains(mx, my);
+        GalleryDrawing.DrawButton(b, bounds, label, hot);
+        if (focused)
+            GalleryUiSkin.DrawFocusCorners(b, GalleryDrawing.Inset(bounds, -4, -4), 10);
     }
     protected override void cleanupBeforeExit() { DeselectSearch(); base.cleanupBeforeExit(); }
 }

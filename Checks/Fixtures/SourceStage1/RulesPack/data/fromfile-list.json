@@ -1,0 +1,7 @@
+[
+  {
+    "Id": "FromFile_ListRule",
+    "Trigger": "DayStarted",
+    "Actions": [ "MarkEventSeen Current 900003" ]
+  }
+]

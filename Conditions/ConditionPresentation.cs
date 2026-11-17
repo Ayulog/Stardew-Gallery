@@ -45,6 +45,9 @@ internal static class ConditionRowPresentation
         : item.Expression is LegacySendMailCondition ? "event-detail.unknown.action"
         : item.Expression is TileCondition && item.Evaluation.Knowledge == ConditionKnowledge.MissingData ? "event-detail.unknown.entry"
         : item.Expression is SkillCondition && item.Evaluation.Knowledge == ConditionKnowledge.Unsupported ? "event-detail.unknown.skill"
+        // Random, third-party and unlisted queries are never run; say which kind it is.
+        : item.Expression is NativeQueryCondition query && item.Evaluation.Knowledge == ConditionKnowledge.Unsupported
+            && SafeGameQuery.UnknownReasonKey(query.Query) is { } queryReason ? queryReason
         : item.Evaluation.Knowledge switch
         {
             ConditionKnowledge.MissingData => "event-detail.unknown.missing-data",

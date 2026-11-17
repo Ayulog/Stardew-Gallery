@@ -39,11 +39,33 @@ internal sealed record GalleryCatalog(
 )
 {
     internal IReadOnlyDictionary<EventIdentity, EventOriginMatch> Origins { get; init; } = new Dictionary<EventIdentity, EventOriginMatch>();
+    /// <summary>Static Data/TriggerActions providers by rule ID, for prerequisite display and source queries only.</summary>
+    internal IReadOnlyDictionary<string, EventOriginMatch> RuleOrigins { get; init; } = new Dictionary<string, EventOriginMatch>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Maps each event in a mutually exclusive parallel heart-event group (size &gt;= 2) to its deterministic group ID.</summary>
+    internal IReadOnlyDictionary<EventIdentity, string> ParallelGroups { get; init; } = new Dictionary<EventIdentity, string>();
     internal IReadOnlyList<PrerequisiteEvent> Prerequisites { get; init; } = [];
     internal PrerequisiteEvent? FindPrerequisite(string id) => Prerequisites.FirstOrDefault(entry => entry.EventId == id);
     internal IEnumerable<GalleryEvent> AllEntries => Events.Concat(ExcludedEvents);
     internal IEnumerable<GalleryEvent> StoryEntries => AllEntries.Where(entry => entry.Kind != StoryKind.Internal);
     internal GalleryEvent? Find(EventIdentity identity) => AllEntries.FirstOrDefault(entry => entry.Resolved.Identity == identity);
+    internal IReadOnlyList<GalleryEvent> ParallelPeers(EventIdentity identity)
+        => ParallelGroups.TryGetValue(identity, out string? groupId)
+            ? Events.Where(entry => entry.Resolved.Identity != identity
+                && ParallelGroups.TryGetValue(entry.Resolved.Identity, out string? candidate) && candidate == groupId).ToArray()
+            : [];
+    internal bool IsParallelBranchUnlocked(GalleryEvent entry, IEnumerable<string>? eventsSeen)
+    {
+        if (entry.Kind != StoryKind.Heart || eventsSeen is null)
+            return false;
+        Func<string, bool> isSeen = eventsSeen switch
+        {
+            ISet<string> set => set.Contains,
+            IReadOnlySet<string> readOnlySet => readOnlySet.Contains,
+            ICollection<string> collection => collection.Contains,
+            _ => eventsSeen.ToHashSet(StringComparer.Ordinal).Contains
+        };
+        return !isSeen(entry.EventId) && ParallelPeers(entry.Resolved.Identity).Any(peer => isSeen(peer.EventId));
+    }
     internal IReadOnlyList<GalleryEvent> HeartEventsFor(string name) => Events.Where(entry => entry.Kind == StoryKind.Heart
         && entry.Ownership.Owners.Any(owner => owner.Name == name)).OrderBy(entry => entry.Ownership.Owners.First(owner => owner.Name == name).FriendshipPoints ?? int.MaxValue)
         .ThenBy(entry => entry.EventId, StringComparer.Ordinal).ToArray();

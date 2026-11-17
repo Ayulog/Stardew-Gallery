@@ -13,7 +13,12 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
     private readonly Dictionary<string, CachedTexture> thumbnails = [];
     private readonly Dictionary<string, CachedTexture> previews = [];
     private long cacheClock;
-    private sealed record CaptureRequest(EventPhotoStore Store, EventIdentity Identity, Event Event);
+    private sealed record CaptureRequest(EventPhotoStore Store, EventIdentity Identity, Event Event,
+        bool Silent = false, WeddingDateRecord? WeddingDate = null)
+    {
+        internal CaptureRequest(EventPhotoStore store, EventIdentity identity, Event playing)
+            : this(store, identity, playing, false, null) { }
+    }
     private sealed class CachedTexture(Texture2D? texture, long used)
     {
         internal Texture2D? Texture { get; } = texture;
@@ -22,6 +27,10 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
 
     internal bool Pending => request is not null;
     internal bool Ready => store is not null;
+    internal string RootDirectory => store?.RootDirectory ?? Path.Combine(helper.DirectoryPath, "event-photos");
+    internal string? ProfileDirectory => store?.ProfileDirectory;
+    internal string? EventDirectory(EventIdentity identity) => store?.EventDirectory(identity);
+    internal string DisplaySubdirectory(EventIdentity identity) => store?.RelativeSubdirectory(identity) ?? "event-photos";
 
     internal void Load(SaveProfileKey profile)
     {
@@ -31,6 +40,9 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
 
     internal EventPhotoSet Read(EventIdentity identity) => store?.Read(identity) ?? new([], null, ReadOnly: true);
 
+    internal IReadOnlyList<(EventIdentity Identity, EventPhotoSet Photos)> ReadWeddingMemories()
+        => store?.ReadWeddingMemories() ?? [];
+
     internal void Adopt(EventIdentity current, EventIdentity former)
     {
         if (store?.Adopt(current, former) == true)
@@ -39,8 +51,18 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
 
     internal void Request(EventIdentity identity, Event playing)
     {
-        if (store is not null && request is null)
+        if (store is null)
+            return;
+        if (request is null)
             request = new(store, identity, playing);
+        else if (request.Silent && ReferenceEquals(request.Event, playing) && request.Identity == identity)
+            request = request with { Silent = false };
+    }
+
+    internal void RequestSilent(EventIdentity identity, Event playing, WeddingDateRecord? weddingDate = null)
+    {
+        if (store is not null && request is null)
+            request = new(store, identity, playing, Silent: true, WeddingDate: weddingDate);
     }
 
     internal void Update(Event? playing)
@@ -79,9 +101,16 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
     private void CaptureWorld(SpriteBatch batch, Event? playing, CaptureRequest capture)
     {
         if (!ReferenceEquals(capture.Event, playing) || !ReferenceEquals(capture.Store, store)
-            || Game1.locationRequest is not null || Game1.fadeToBlackAlpha > 0 || Game1.globalFade)
+            || !AutoMementoRules.IsTransitionClear(
+                Game1.locationRequest is not null,
+                Game1.isWarping,
+                Game1.fadeToBlackAlpha,
+                Game1.globalFade,
+                Game1.fadeToBlack,
+                Game1.nonWarpFade))
         {
-            notify("photo.unavailable", true);
+            if (!capture.Silent)
+                notify("photo.unavailable", true);
             return;
         }
         try
@@ -99,15 +128,23 @@ internal sealed class GalleryPhotos(IModHelper helper, IMonitor monitor, Action<
             using Texture2D original = new(batch.GraphicsDevice, target.Width, target.Height);
             original.SetData(pixels);
             using Texture2D thumbnail = Reduced(batch.GraphicsDevice, pixels, target.Width, target.Height, 512, 288);
-            capture.Store.Add(capture.Identity, Encode(original), Encode(thumbnail));
+            capture.Store.Add(capture.Identity, Encode(original), Encode(thumbnail), capture.WeddingDate);
             ClearTextures();
-            notify("photo.captured", false);
-            Game1.playSound("cameraNoise");
+            if (!capture.Silent)
+            {
+                notify("photo.captured", false);
+                Game1.playSound("cameraNoise");
+            }
         }
         catch (Exception error)
         {
-            monitor.Log($"Event screenshot failed: {error}", LogLevel.Error);
-            notify("photo.failed", true);
+            if (capture.Silent)
+                monitor.LogOnce($"Auto-memento capture skipped for {capture.Identity}: {error.Message}", LogLevel.Warn);
+            else
+            {
+                monitor.Log($"Event screenshot failed: {error}", LogLevel.Error);
+                notify("photo.failed", true);
+            }
         }
     }
 

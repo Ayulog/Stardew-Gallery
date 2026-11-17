@@ -7,7 +7,7 @@ internal static class ConditionEventReferences
     {
         SawEventCondition seen => Ids(seen.EventIds),
         ConditionSet set => set.Conditions.SelectMany(Read).Distinct(StringComparer.Ordinal).ToArray(),
-        NativeQueryCondition query when SafeGameQuery.TryParse(query.Query, out var clauses) => Ids(SeenEventIds(clauses)),
+        NativeQueryCondition query when SafeGameQuery.TryParse(query.Query, out var clauses) => Ids(SeenEventIds(SafeGameQuery.FlattenLeaves(clauses))),
         _ => []
     };
 
@@ -16,15 +16,50 @@ internal static class ConditionEventReferences
     {
         SawEventCondition { Negated: false } seen => Ids(seen.EventIds),
         ConditionSet set => set.Conditions.SelectMany(Required).Distinct(StringComparer.Ordinal).ToArray(),
-        // A negated query requires its clauses only when it is a single negated clause ("!G !PLAYER_HAS_SEEN_EVENT ...").
-        NativeQueryCondition query when SafeGameQuery.TryParse(query.Query, out var clauses) => Ids(SeenEventIds(query.Negated
-            ? clauses.Count == 1 && clauses[0].Negated ? clauses : []
-            : clauses.Where(clause => !clause.Negated))),
+        // A negated query requires its clauses only when it is a single negated clause ("!G !PLAYER_HAS_SEEN_EVENT ...") or negates ANY.
+        NativeQueryCondition query when SafeGameQuery.TryParse(query.Query, out var clauses) => Ids(PositiveSeenEventIds(clauses, query.Negated)),
         _ => []
     };
 
     private static IEnumerable<string> SeenEventIds(IEnumerable<SafeQueryClause> clauses)
         => clauses.Where(clause => clause.Name == "PLAYER_HAS_SEEN_EVENT").SelectMany(clause => clause.Arguments.Skip(1));
+
+    private static IEnumerable<string> PositiveSeenEventIds(IReadOnlyList<SafeQueryClause> clauses, bool outerNegated)
+    {
+        if (outerNegated)
+        {
+            if (clauses.Count != 1)
+                yield break;
+            SafeQueryClause single = clauses[0];
+            if (single.Name == "ANY" && single.SubQueries is { } subQueries)
+            {
+                foreach (IReadOnlyList<SafeQueryClause> sub in subQueries)
+                    foreach (string id in PositiveSeenEventIds(sub, !single.Negated))
+                        yield return id;
+            }
+            else if (single.Negated && single.Name == "PLAYER_HAS_SEEN_EVENT")
+            {
+                foreach (string id in single.Arguments.Skip(1))
+                    yield return id;
+            }
+            yield break;
+        }
+
+        foreach (SafeQueryClause clause in clauses)
+        {
+            if (clause.Name == "ANY" && clause.SubQueries is { } subQueries)
+            {
+                foreach (IReadOnlyList<SafeQueryClause> sub in subQueries)
+                    foreach (string id in PositiveSeenEventIds(sub, clause.Negated))
+                        yield return id;
+            }
+            else if (!clause.Negated && clause.Name == "PLAYER_HAS_SEEN_EVENT")
+            {
+                foreach (string id in clause.Arguments.Skip(1))
+                    yield return id;
+            }
+        }
+    }
 
     private static string[] Ids(IEnumerable<string> ids) => ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToArray();
 }

@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
+using StardewValley.BellsAndWhistles;
 using StardewValley.Menus;
 
 namespace StardewGallery;
@@ -31,11 +32,52 @@ internal static class GalleryDrawing
         b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
     }
 
-    internal static void DrawButton(SpriteBatch b, Rectangle bounds, string text)
+    /// <summary>
+    /// Draws a single-line <see cref="SpriteText"/> title centered inside <paramref name="bounds"/> without hitting
+    /// <see cref="SpriteText.drawString"/>'s <c>x + width &gt; Viewport.Width</c> forced line-wrap bug on right-page
+    /// plaques at high UI zoom: translates the <see cref="SpriteBatch"/> matrix to the title origin and renders at
+    /// <c>(x: 0, y: 0, width: 999999)</c>, then restores the caller's <see cref="BeginScaled"/> transform.
+    /// </summary>
+    internal static void DrawBookTitle(
+        SpriteBatch b,
+        string title,
+        Rectangle bounds,
+        float menuScale,
+        int offsetX,
+        int offsetY,
+        Color? color = null)
     {
-        IClickableMenu.drawTextureBox(b, bounds.X, bounds.Y, bounds.Width, bounds.Height, Color.White);
-        DrawCentered(b, text, Inset(bounds, 20, 8));
+        if (string.IsNullOrWhiteSpace(title))
+            return;
+
+        int maxDeviceWidth = Math.Max(640, (Game1.graphics?.GraphicsDevice?.Viewport.Width ?? 1920) - 32);
+        string text = SpriteText.getWidthOfString(title, 999999) <= maxDeviceWidth
+            ? title
+            : GalleryTextFit.Ellipsize(title, maxDeviceWidth, s => SpriteText.getWidthOfString(s, 999999));
+
+        int rawWidth = Math.Max(1, SpriteText.getWidthOfString(text, 999999));
+        int rawHeight = Math.Max(1, SpriteText.getHeightOfString(text, 999999));
+        float availW = Math.Max(24f, bounds.Width - 16f);
+        float availH = Math.Max(16f, bounds.Height - 4f);
+        float titleScale = Math.Min(1f, Math.Min(availW / rawWidth, availH / rawHeight));
+        float logicalX = bounds.X + (bounds.Width - rawWidth * titleScale) / 2f;
+        float logicalY = bounds.Y + (bounds.Height - rawHeight * titleScale) / 2f;
+
+        b.End();
+        Matrix titleMatrix = Matrix.CreateScale(titleScale)
+            * Matrix.CreateTranslation(logicalX, logicalY, 0f)
+            * Matrix.CreateScale(menuScale)
+            * Matrix.CreateTranslation(offsetX, offsetY, 0f);
+        b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, null, null, titleMatrix);
+        SpriteText.drawString(b, text, 0, 0, width: 999999, color: color);
+        BeginScaled(b, menuScale, offsetX, offsetY);
     }
+
+    internal static void DrawButton(SpriteBatch b, Rectangle bounds, string text, float opacity = 1f)
+        => GalleryUiSkin.DrawWoodButton(b, bounds, text, UiButtonState.Normal, opacity);
+
+    internal static void DrawButton(SpriteBatch b, Rectangle bounds, string text, bool hot, bool enabled = true, float opacity = 1f)
+        => GalleryUiSkin.DrawWoodButton(b, bounds, text, !enabled ? UiButtonState.Disabled : hot ? UiButtonState.Hover : UiButtonState.Normal, opacity);
 
     internal static void DrawScrollbar(SpriteBatch b, Rectangle thumb)
         => b.Draw(Game1.mouseCursors, thumb, new Rectangle(435, 463, 6, 10), Color.White);

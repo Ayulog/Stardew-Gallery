@@ -40,6 +40,7 @@ internal static class AppearanceChecks
         Check(DialoguePortraitSelection.Resolve(entries, ["Leah"]) == large, "CopyFrom shared portrait");
         Check(DialoguePortraitSelection.Resolve(entries, ["Leah_Summer", "Leah"])?.Width == 512, "Current appearance precedes base");
         Check(DialoguePortraitSelection.Resolve(entries, ["Missing"])?.Width == 64, "Missing NPC uses default");
+        Check(DialoguePortraitSelection.Resolve(entries, ["Missing"], includeDefault: false) is null, "Missing NPC skips default when explicit-only");
         Check(DialoguePortraitSelection.Resolve(entries, ["LoopA"]) is null, "CopyFrom cycle terminates");
         entries["Leah"] = new("Haley", false, new(null, Width: 128, Height: 256));
         Check(DialoguePortraitSelection.Resolve(entries, ["Leah"])?.Width == 128, "Portrait override is whole-component");
@@ -59,6 +60,29 @@ internal static class AppearanceChecks
         }
         var normal = AppearanceGeometry.SpritePlacement(240, 120, 380, 270, 16, 32, null);
         Check(normal.Scale == 4 && normal.X == 398 && normal.Y == 197, "Preserve native panel placement");
+
+        var hdDefault64 = new HdPortraitEntry(64, 64);
+        Check(!hdDefault64.IsConfigured, "Unconfigured 64px HD Portraits default is ignored");
+        var hdStatic256 = new HdPortraitEntry(256, 256, "Mods/HDPortraits/Abigail");
+        Check(hdStatic256.IsConfigured && !hdStatic256.IsAnimated, "Static 256px HD Portrait is configured");
+        Check(hdStatic256.SelectFrame(0) == new PortraitFrame("Mods/HDPortraits/Abigail", 0, 0, 256, 256), "Static HD Portrait selects top-left 256px region");
+        var hdAnim = new HdPortraitEntry(128, 128, null, new HdPortraitAnimation(2, 2, [100, 150, 200, 250]));
+        Check(hdAnim.IsConfigured && hdAnim.IsAnimated, "2x2 animated HD Portrait is configured");
+        Check(hdAnim.SelectFrame(50, 256, 256) == new PortraitFrame(null, 0, 0, 128, 128), "Animated HD Portrait frame 0");
+        Check(hdAnim.SelectFrame(120, 256, 256) == new PortraitFrame(null, 128, 0, 128, 128), "Animated HD Portrait frame 1");
+        Check(hdAnim.SelectFrame(260, 256, 256) == new PortraitFrame(null, 0, 128, 128, 128), "Animated HD Portrait frame 2");
+        Check(hdAnim.SelectFrame(500, 256, 256) == new PortraitFrame(null, 128, 128, 128, 128), "Animated HD Portrait frame 3");
+        Check(hdAnim.SelectFrame(750, 256, 256) == new PortraitFrame(null, 0, 0, 128, 128), "Animated HD Portrait wraps to frame 0 after 700ms cycle");
+        Check(hdAnim.SelectFrame(820, 256, 256) == new PortraitFrame(null, 128, 0, 128, 128), "Animated HD Portrait wraps to frame 1 at 820ms");
+        Check(hdAnim.SelectFrame(500, 128, 128) == new PortraitFrame(null, 0, 0, 128, 128), "Animated HD Portrait clamps to frame 0 when sheet holds single frame");
+        Check(new HdPortraitEntry(0, 256).SelectFrame(0) is null && new HdPortraitEntry(9000, 256).SelectFrame(0) is null, "Reject out-of-range HD Portrait sizes");
+        Dictionary<string, HdPortraitEntry?> hdMap = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Abigail_Winter"] = hdDefault64,
+            ["Abigail"] = hdStatic256
+        };
+        Check(HdPortraitSelection.Resolve(hdMap, ["Abigail_Winter", "Abigail"]) == hdStatic256, "Default 64px seasonal placeholder falls through to base HD Portrait");
+
         Console.WriteLine($"Appearance checks passed: {checks}");
     }
 }

@@ -21,6 +21,22 @@ internal static class GalleryConditionPresentation
             locationName ?? Location(entry, i18n));
     }
 
+    internal static EncounterClue Clue(GalleryEvent entry, GalleryCatalog catalog, CurrentStateSnapshot? sharedState = null)
+    {
+        if (entry.Kind == StoryKind.Internal)
+            return EncounterClue.None;
+        CurrentStateSnapshot shared = sharedState ?? RuntimeStateReader.Capture();
+        if (catalog.IsParallelBranchUnlocked(entry, shared.EventsSeen))
+            return EncounterClue.None;
+        ConditionParser parser = ConditionProduction.CreateParser(Event.SplitPreconditions, ArgUtility.SplitBySpaceQuoteAware);
+        ConditionSet parsed = parser.ParseRawKey(entry.EventKey);
+        GameLocation? location = Game1.getLocationFromName(entry.LocationName);
+        CurrentStateSnapshot current = RuntimeStateReader.ForLocation(shared, location)
+            with { Details = ConditionStateReader.Capture(parsed, location) };
+        return EncounterClueClassifier.Classify(entry, parsed, current, ConditionProduction.CreateEvaluator(null),
+            parallelBranchUnlocked: false, locationAvailable: location is not null);
+    }
+
     internal static string Location(GalleryEvent entry, ITranslationHelper i18n)
         => new GalleryLocationNames(i18n).Get(entry.LocationName);
 

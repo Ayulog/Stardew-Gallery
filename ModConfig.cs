@@ -5,6 +5,12 @@ namespace StardewGallery;
 
 internal sealed class ModConfig
 {
+    public bool AutoCaptureMemories { get; set; } = true;
+
+    public bool ShowMorningEncounterHint { get; set; } = true;
+
+    public bool ShowSocialPageClueBadges { get; set; } = true;
+
     public bool AutoAdvanceDialogue { get; set; }
 
     public bool ShowRollbackWarning { get; set; } = true;
@@ -18,4 +24,6 @@ internal sealed class ModConfig
     public KeybindList ReplaySpeedKeys { get; set; } = new(SButton.RightShoulder);
 
     public KeybindList ScreenshotKeys { get; set; } = KeybindList.Parse("F8, LeftShoulder");
+
+    public KeybindList PauseSceneKeys { get; set; } = KeybindList.Parse("H, RightStick");
 }

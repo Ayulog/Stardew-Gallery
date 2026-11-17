@@ -123,11 +123,19 @@ internal static class ControllerInputChecks
         Press(menu, Buttons.A); menu.receiveGamePadButton(Buttons.B);
         Check(Get(state, "FilterPicker") is null, snappy, "B still returns from picker to filters");
         menu.receiveGamePadButton(Buttons.RightShoulder);
-        Check(menu.currentlySnappedComponent.myID == 104, snappy, "shoulder navigation still reaches the final filter row");
+        Check(menu.currentlySnappedComponent.myID == 105, snappy, "shoulder navigation still reaches the final filter row");
+        menu.applyMovementKey(1);
+        Check(Equals(Get(Get(menu, "draft")!, "EncounterOnly"), true) && Get(state, "FilterPicker") is null,
+            snappy, "right directional input adjusts encounter filter inline without opening a picker");
+        cursor = menu.currentlySnappedComponent.bounds.Center;
+        Press(menu, Buttons.A);
+        Check(Equals(Get(state, "FilterPicker"), "encounter"), snappy, "one A opens the encounter picker without selecting a row");
+        menu.receiveGamePadButton(Buttons.B);
+        Check(Get(state, "FilterPicker") is null, snappy, "B returns from the encounter picker to filters");
         // Game1.CheckGamepadMode repopulates components by reflection when input switches to a controller.
         int components = menu.allClickableComponents.Count;
         menu.populateClickableComponentList();
-        Check(menu.allClickableComponents.Count == components && menu.allClickableComponents.Any(component => component.myID == 104),
+        Check(menu.allClickableComponents.Count == components && menu.allClickableComponents.Any(component => component.myID == 105),
             snappy, "switching to a controller keeps the filter page's own rows");
         Game1.options.menuButton = [new InputButton(Keys.E)];
         int before = backs; Press(menu, Buttons.Y);
@@ -311,42 +319,41 @@ internal static class ControllerInputChecks
 
     private static void Photos(bool snappy)
     {
-        string root = Path.Combine(Path.GetTempPath(), "GalleryControllerChecks-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            object profile = New("SaveProfileKey", 123UL, 456L);
-            Action<string> warn = message => throw new InvalidOperationException(message);
-            object store = New("EventPhotoStore", root, profile, warn);
-            object identity = New("EventIdentity", "Data/Events/Town", "controller-fixture");
-            byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9d8AAAAASUVORK5CYII=");
-            object[] photos = Enumerable.Range(0, 3).Select(_ => Call(store, "Add", identity, png, png)!).ToArray();
-            object manager = New("GalleryPhotos", DispatchProxy.Create<IModHelper, FakeProxy>(), DispatchProxy.Create<IMonitor, FakeProxy>(), (Action<string, bool>)((message, _) => throw new InvalidOperationException(message)));
-            Set(manager, "store", store);
-            object state = Page("Photos"); Set(state, "Event", identity);
-            object view = View(); Set(view, "Photos", manager);
-            var menu = (IClickableMenu)FormatterServices.GetUninitializedObject(Type("GalleryPhotoMenu"));
-            Set(menu, "context", view); Set(menu, "state", state); Set(menu, "photos", manager);
-            Set(menu, "identity", identity); Set(menu, "i18n", Get(view, "I18n")); Set(menu, "scale", 1f);
-            Set(menu, "set", Call(store, "Read", identity)); Call(menu, "BuildComponents"); Call(menu, "Focus", snappy ? 103 : 100);
-            cursor = menu.allClickableComponents.Single(component => component.myID == 103).bounds.Center;
-            Press(menu, Buttons.A);
-            object persisted = Call(New("EventPhotoStore", root, profile, warn), "Read", identity)!;
-            Check(((IEnumerable)Get(persisted, "Photos")!).Cast<object>().Count() == 2, snappy, "one A archives exactly one of three photos in the real store");
-            string first = (string)Call(store, "ImagePath", identity, Get(photos[0], "Id"), false)!;
-            string second = (string)Call(store, "ImagePath", identity, Get(photos[1], "Id"), false)!;
-            Check(!File.Exists(first) && File.Exists(second) && Directory.EnumerateFiles(root, Path.GetFileName(first), SearchOption.AllDirectories).Count() == 1,
-                snappy, "first photo is archived and next original remains untouched");
-            Call(menu, "Focus", 101); cursor = menu.currentlySnappedComponent.bounds.Center;
-            int before = backs; Press(menu, Buttons.A);
-            persisted = Call(New("EventPhotoStore", root, profile, warn), "Read", identity)!;
-            Check(Equals(Get(persisted, "CoverId"), Get(photos[1], "Id")) && backs == before && ReferenceEquals(active, menu), snappy,
-                "one A sets the cover without following changed focus to Back");
-            Press(menu, Buttons.X);
-            Check(backs == before + 1, snappy, "native X still returns from photos");
-            before = backs; menu.receiveGamePadButton(Buttons.B);
-            Check(backs == before + 1, snappy, "B still returns from photos");
-        }
-        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        string root = Path.Combine(Path.GetTempPath(), "InMemGalleryControllerChecks-" + Guid.NewGuid().ToString("N"));
+        object fs = New("InMemoryStorageFileSystem");
+        object profile = New("SaveProfileKey", 123UL, 456L);
+        Action<string> warn = message => throw new InvalidOperationException(message);
+        object store = New("EventPhotoStore", root, profile, warn, fs);
+        object identity = New("EventIdentity", "Data/Events/Town", "controller-fixture");
+        byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9d8AAAAASUVORK5CYII=");
+        object[] photos = Enumerable.Range(0, 3).Select(_ => Call(store, "Add", identity, png, png)!).ToArray();
+        object manager = New("GalleryPhotos", DispatchProxy.Create<IModHelper, FakeProxy>(), DispatchProxy.Create<IMonitor, FakeProxy>(), (Action<string, bool>)((message, _) => throw new InvalidOperationException(message)));
+        Set(manager, "store", store);
+        object state = Page("Photos"); Set(state, "Event", identity);
+        object view = View(); Set(view, "Photos", manager);
+        var menu = (IClickableMenu)FormatterServices.GetUninitializedObject(Type("GalleryPhotoMenu"));
+        Set(menu, "context", view); Set(menu, "state", state); Set(menu, "photos", manager);
+        Set(menu, "identity", identity); Set(menu, "i18n", Get(view, "I18n")); Set(menu, "scale", 1f);
+        Set(menu, "set", Call(store, "Read", identity)); Call(menu, "BuildComponents"); Call(menu, "Focus", snappy ? 103 : 100);
+        cursor = menu.allClickableComponents.Single(component => component.myID == 103).bounds.Center;
+        Press(menu, Buttons.A);
+        object persisted = Call(New("EventPhotoStore", root, profile, warn, fs), "Read", identity)!;
+        Check(((IEnumerable)Get(persisted, "Photos")!).Cast<object>().Count() == 2, snappy, "one A archives exactly one of three photos in the real store");
+        string first = (string)Call(store, "ImagePath", identity, Get(photos[0], "Id"), false)!;
+        string second = (string)Call(store, "ImagePath", identity, Get(photos[1], "Id"), false)!;
+        var allInMemoryFiles = ((IDictionary)Get(fs, "files")!).Keys.Cast<string>().ToArray();
+        Check(!(bool)Call(fs, "FileExists", first)! && (bool)Call(fs, "FileExists", second)!
+            && allInMemoryFiles.Count(path => Path.GetFileName(path) == Path.GetFileName(first)) == 1,
+            snappy, "first photo is archived and next original remains untouched");
+        Call(menu, "Focus", 101); cursor = menu.currentlySnappedComponent.bounds.Center;
+        int before = backs; Press(menu, Buttons.A);
+        persisted = Call(New("EventPhotoStore", root, profile, warn, fs), "Read", identity)!;
+        Check(Equals(Get(persisted, "CoverId"), Get(photos[1], "Id")) && backs == before && ReferenceEquals(active, menu), snappy,
+            "one A sets the cover without following changed focus to Back");
+        Press(menu, Buttons.X);
+        Check(backs == before + 1, snappy, "native X still returns from photos");
+        before = backs; menu.receiveGamePadButton(Buttons.B);
+        Check(backs == before + 1, snappy, "B still returns from photos");
     }
 
     // Reproduce the fresh-button branches of Game1.updateActiveMenu (game 1.6.15.24356):

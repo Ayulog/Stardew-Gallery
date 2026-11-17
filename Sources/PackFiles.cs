@@ -58,6 +58,43 @@ internal sealed class PackFiles(string directory, bool ignoreCase)
     internal static bool IsReadFailure(Exception error) => error is IOException or UnauthorizedAccessException
         or ArgumentException or NotSupportedException or System.Security.SecurityException;
 
+    /// <summary>
+    /// Resolve a Content-relative asset (such as "Data/Events/beach" from a lowercase changeLocation command) to its
+    /// actual on-disk relative asset name ("Data/Events/Beach") regardless of OS case sensitivity, or null when missing.
+    /// </summary>
+    internal static string? ResolveContentAsset(string contentRoot, string assetName, string extension = ".xnb")
+    {
+        try
+        {
+            string normalized = EventAssetName.Normalize(assetName);
+            string[] parts = normalized.Split('/');
+            if (parts.Length == 0 || parts.Any(part => string.IsNullOrWhiteSpace(part) || part is "." or ".."))
+                return null;
+            string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(contentRoot));
+            if (!Directory.Exists(root)) return null;
+            string current = root;
+            List<string> actual = new(parts.Length);
+            for (int index = 0; index < parts.Length - 1; index++)
+            {
+                string? folder = Directory.EnumerateDirectories(current).Select(Path.GetFileName)
+                    .FirstOrDefault(name => string.Equals(name, parts[index], StringComparison.OrdinalIgnoreCase));
+                if (folder is null) return null;
+                actual.Add(folder);
+                current = Path.Combine(current, folder);
+            }
+            string wanted = parts[^1] + extension;
+            string? file = Directory.EnumerateFiles(current).Select(Path.GetFileName)
+                .FirstOrDefault(name => string.Equals(name, wanted, StringComparison.OrdinalIgnoreCase));
+            if (file is null) return null;
+            string fullPath = Path.GetFullPath(Path.Combine(current, file));
+            if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, PathComparison) || !File.Exists(fullPath))
+                return null;
+            actual.Add(file[..^extension.Length]);
+            return string.Join('/', actual);
+        }
+        catch (Exception error) when (IsReadFailure(error)) { return null; }
+    }
+
     private Dictionary<string, string?> Index()
     {
         if (index is not null) return index;

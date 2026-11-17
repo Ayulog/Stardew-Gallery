@@ -1,0 +1,7 @@
+{
+  "Subfield_NotARootRule": {
+    "Id": "Subfield_NotARootRule",
+    "Trigger": "DayStarted",
+    "Action": "Null"
+  }
+}

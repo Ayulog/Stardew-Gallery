@@ -3,7 +3,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewValley;
-using StardewValley.BellsAndWhistles;
 using StardewValley.Menus;
 using static StardewGallery.GalleryDrawing;
 using StardewGallery.Appearance;
@@ -14,33 +13,28 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
 {
     private const int Columns = 6;
     private const int VisibleRows = 3;
+    private const int PageSize = Columns * VisibleRows;
     private const int SearchComponentId = 1000;
     private const int UnlockComponentId = 1001;
     private const int YesComponentId = 1002;
     private const int NoComponentId = 1003;
-    private const int QueryComponentId = 1004;
     private readonly GalleryViewContext context;
     private readonly GalleryPageState state;
     private readonly GalleryCatalog catalog;
     private readonly ITranslationHelper i18n;
     private readonly Texture2D background;
-    private readonly Texture2D scrollbarTrackTexture;
     private readonly Func<bool> isUnlocked;
     private readonly TextBox search;
     private readonly GallerySearchFilter searchFilter = new();
-    private readonly Dictionary<string, int> heartCounts;
     private string validatedSearchText = "";
     private List<GalleryCharacter> filtered = [];
     private int ResultCount => filtered.Count;
-    private int scrollRow;
-    private bool dragging;
-    private int dragOffset;
+    private int currentPage;
     private bool confirming;
+    private bool keyboardFocus;
+    private Point lastMouse;
     private Rectangle searchBounds;
     private Rectangle unlockBounds;
-    private Rectangle queryBounds;
-    private Rectangle scrollTrack;
-    private Rectangle scrollThumb;
     private Rectangle yesBounds;
     private Rectangle noBounds;
     private int viewportWidth;
@@ -60,20 +54,23 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
     {
         this.context = context;
         this.state = state;
-        heartCounts = context.Catalog.Events.Where(entry => entry.Kind == StoryKind.Heart).SelectMany(entry => entry.Ownership.Owners.Select(owner => owner.Name))
-            .GroupBy(name => name, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-        catalog = new GalleryCatalog(context.Catalog.Characters.Where(character => heartCounts.GetValueOrDefault(character.Name) > 0).ToArray(),
-            context.Catalog.Events.Where(entry => entry.Kind == StoryKind.Heart).ToArray(), []);
+        HashSet<string> heartOwners = context.Catalog.Events
+            .Where(entry => entry.Kind == StoryKind.Heart)
+            .SelectMany(entry => entry.Ownership.Owners.Select(owner => owner.Name))
+            .ToHashSet(StringComparer.Ordinal);
+        catalog = new GalleryCatalog(
+            context.Catalog.Characters.Where(character => heartOwners.Contains(character.Name)).ToArray(),
+            context.Catalog.Events.Where(entry => entry.Kind == StoryKind.Heart).ToArray(),
+            []);
         i18n = context.I18n;
         background = context.Textures.Home;
-        scrollbarTrackTexture = context.Textures.Scrollbar;
         isUnlocked = context.IsUnlocked;
-        search = new GalleryTextBox();
+        search = new GalleryTextBox { DrawFrame = GalleryUiSkin.Get(GalleryUiSkin.SearchBoxAsset) is null };
         search.OnEnterPressed += _ => FinishSearch();
         search.Text = state.SearchText;
         RecalculateLayout();
         RefreshFilter();
-        scrollRow = Math.Clamp(state.Scroll, 0, MaxScroll);
+        currentPage = GalleryPagination.ClampPage(state.Scroll, ResultCount, PageSize);
         PreparePortraits();
         BuildClickableComponents();
         currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == state.Focus)
@@ -86,6 +83,16 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
     {
         base.gameWindowSizeChanged(oldBounds, newBounds);
         RecalculateLayout();
+    }
+
+    public override void performHoverAction(int x, int y)
+    {
+        if (lastMouse != new Point(x, y))
+        {
+            if (lastMouse != default) keyboardFocus = false;
+            lastMouse = new Point(x, y);
+        }
+        base.performHoverAction(x, y);
     }
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
@@ -119,11 +126,12 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
             return;
         }
 
-        if (queryBounds.Contains(x, y))
+        if (GalleryBookChrome.TryClickRibbonTab(x, y, GalleryBookTab.Villagers, context.Navigation, () =>
+            {
+                SaveState();
+                DeselectSearch();
+            }))
         {
-            SaveState(QueryComponentId);
-            DeselectSearch();
-            context.Navigation.OpenQuery();
             return;
         }
 
@@ -143,8 +151,20 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         }
         DeselectSearch();
 
-        int first = scrollRow * Columns;
-        for (int slot = 0; slot < Columns * VisibleRows && first + slot < ResultCount; slot++)
+        if (GalleryBookChrome.ToRect(GallerySpreadLayout.SpreadPrevBounds).Contains(x, y))
+        {
+            TurnPage(-1);
+            return;
+        }
+        if (GalleryBookChrome.ToRect(GallerySpreadLayout.SpreadNextBounds).Contains(x, y))
+        {
+            TurnPage(1);
+            return;
+        }
+
+        int first = GalleryPagination.FirstIndex(currentPage, ResultCount, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, ResultCount, PageSize);
+        for (int slot = 0; slot < visible; slot++)
         {
             if (!Card(slot).Contains(x, y))
                 continue;
@@ -156,44 +176,9 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
             context.Navigation.OpenCharacter(character.Name);
             return;
         }
-
-        if (scrollThumb.Contains(x, y))
-        {
-            dragging = true;
-            dragOffset = y - scrollThumb.Y;
-        }
-        else if (scrollTrack.Contains(x, y))
-        {
-            scrollRow += y < scrollThumb.Y ? -VisibleRows : VisibleRows;
-            UpdateScrollbar();
-            BuildClickableComponents();
-        }
     }
 
-    public override void leftClickHeld(int x, int y)
-    {
-        (x, y) = ToLogical(x, y);
-        if (!dragging || MaxScroll == 0)
-            return;
-        int travel = scrollTrack.Height - scrollThumb.Height;
-        scrollRow = (int)Math.Round(Math.Clamp(y - dragOffset - scrollTrack.Y, 0, travel) / (double)travel * MaxScroll);
-        UpdateScrollbar();
-        BuildClickableComponents();
-    }
-
-    public override void releaseLeftClick(int x, int y)
-    {
-        dragging = false;
-        base.releaseLeftClick(x, y);
-    }
-
-    public override void receiveScrollWheelAction(int direction)
-    {
-        scrollRow = Math.Clamp(scrollRow + (direction < 0 ? 1 : -1), 0, MaxScroll);
-        UpdateScrollbar();
-        BuildClickableComponents();
-        Game1.playSound("shiny4");
-    }
+    public override void receiveScrollWheelAction(int direction) => TurnPage(direction < 0 ? 1 : -1);
 
     public override void receiveKeyPress(Keys key)
     {
@@ -208,10 +193,28 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
             HandleControllerBack();
             return;
         }
+        if (key is Keys.PageUp or Keys.PageDown)
+        {
+            keyboardFocus = true;
+            TurnPage(key == Keys.PageUp ? -1 : 1);
+            return;
+        }
+        if (key is Keys.Up or Keys.Right or Keys.Down or Keys.Left)
+        {
+            keyboardFocus = true;
+            applyMovementKey(key switch { Keys.Up => 0, Keys.Right => 1, Keys.Down => 2, _ => 3 });
+            RefreshFilter();
+            return;
+        }
+        if (key == Keys.Enter)
+        {
+            keyboardFocus = true;
+            RefreshFilter();
+            ActivateFocused();
+            return;
+        }
         base.receiveKeyPress(key);
         RefreshFilter();
-        if (key == Keys.Enter)
-            OpenFocused();
     }
 
     public void HandleControllerBack()
@@ -247,12 +250,28 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void receiveGamePadButton(Buttons button)
     {
-        if (button == Buttons.B) HandleControllerBack();
-        else base.receiveGamePadButton(button);
+        if (button == Buttons.B)
+        {
+            HandleControllerBack();
+            return;
+        }
+        if (!confirming && button is Buttons.LeftShoulder or Buttons.RightShoulder)
+        {
+            DeselectSearch();
+            TurnPage(button == Buttons.LeftShoulder ? -1 : 1);
+            return;
+        }
+        base.receiveGamePadButton(button);
     }
 
     // Game1 repopulates components by reflection when input switches to a controller; rebuild the gallery's own instead.
     public override void populateClickableComponentList() => BuildClickableComponents();
+
+    public override void snapCursorToCurrentSnappedComponent()
+    {
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            base.snapCursorToCurrentSnappedComponent();
+    }
 
     public override void snapToDefaultClickableComponent()
     {
@@ -268,29 +287,61 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .45f);
         if (confirming)
             b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * .7f);
+
+        (int mouseX, int mouseY) = ToLogical(Game1.getMouseX(true), Game1.getMouseY(true));
+        bool showFocus = Game1.options.snappyMenus && Game1.options.gamepadControls || keyboardFocus;
+        int focusedId = currentlySnappedComponent?.myID ?? -1;
+
         BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
-        b.Draw(background, new Rectangle(xPositionOnScreen, yPositionOnScreen, width, height), Color.White);
-        DrawScrollbarTrack(b, scrollbarTrackTexture, scrollTrack);
-        SpriteText.drawStringHorizontallyCenteredAt(b, i18n.Get("home.title"), xPositionOnScreen + width / 2, yPositionOnScreen + 40, maxWidth: 430);
-        DrawButton(b, unlockBounds, i18n.Get(isUnlocked() ? "menu.restore-locks" : "menu.unlock-all"));
-        DrawButton(b, queryBounds, i18n.Get("query.open"));
+        GalleryBookChrome.DrawCleanHomeSpread(b, background, width, height);
+        GalleryBookChrome.DrawRibbonTabs(b, GalleryBookTab.Villagers, focusedId, showFocus && !confirming, new Point(mouseX, mouseY), i18n, out string? hoverTooltip);
+        GalleryBookChrome.DrawSpreadTitle(b, i18n.Get("home.title"), menuScale, drawOffsetX, drawOffsetY);
+
+        bool unlockHot = !confirming && (unlockBounds.Contains(mouseX, mouseY) || showFocus && focusedId == UnlockComponentId);
+        DrawButton(b, unlockBounds, i18n.Get(isUnlocked() ? "menu.restore-locks" : "menu.unlock-all"), unlockHot);
+
+        bool searchHot = search.Selected || searchBounds.Contains(mouseX, mouseY) || showFocus && !confirming && focusedId == SearchComponentId;
+        GalleryUiSkin.DrawSearchBox(b, searchBounds, searchHot);
         search.Draw(b);
         if (search.Text.Length == 0 && !search.Selected)
-            DrawLeftFitted(b, i18n.Get("home.search"),
-                new Rectangle(searchBounds.X + 12, searchBounds.Y + 8, searchBounds.Width - 24, searchBounds.Height - 16));
+            DrawLeftFitted(b, i18n.Get("home.search"), GalleryDrawing.Inset(GalleryUiSkin.SearchTextBounds(searchBounds), 4, 10), GallerySpreadDrawing.LightInk);
 
-        int first = scrollRow * Columns;
-        for (int slot = 0; slot < Columns * VisibleRows && first + slot < ResultCount; slot++)
-            DrawCharacter(b, Card(slot), filtered[first + slot]);
+        int first = GalleryPagination.FirstIndex(currentPage, ResultCount, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, ResultCount, PageSize);
+        for (int slot = 0; slot < visible; slot++)
+        {
+            Rectangle card = Card(slot);
+            GalleryCharacter character = filtered[first + slot];
+            bool hot = !confirming && (card.Contains(mouseX, mouseY) || showFocus && focusedId == slot);
+            DrawCharacter(b, slot, character, hot);
+            if (hot)
+            {
+                string? cardTip = CharacterTooltip(character);
+                if (cardTip is not null)
+                    hoverTooltip = cardTip;
+            }
+        }
         if (ResultCount == 0 && search.Text.Trim().Length > 0)
-            DrawCentered(b, Game1.parseText(i18n.Get("query.home-empty"), Game1.smallFont, 540), R(200, 290, 540, 180));
-        UpdateScrollbar();
-        if (MaxScroll > 0)
-            DrawScrollbar(b, scrollThumb);
+            DrawCentered(b, Game1.parseText(i18n.Get("query.home-empty"), Game1.smallFont, 540), R(185, 290, 480, 180));
+
+        GalleryBookChrome.DrawPager(
+            b,
+            GallerySpreadLayout.SpreadPrevBounds,
+            GallerySpreadLayout.SpreadIndicatorBounds,
+            GallerySpreadLayout.SpreadNextBounds,
+            currentPage,
+            ResultCount,
+            PageSize,
+            focusedId,
+            showFocus && !confirming,
+            confirming ? null : new Point(mouseX, mouseY));
+
         upperRightCloseButton?.draw(b);
         if (confirming)
-            DrawConfirmation(b);
+            DrawConfirmation(b, mouseX, mouseY, showFocus, focusedId);
         EndScaled(b);
+        if (!confirming && hoverTooltip is not null)
+            drawHoverText(b, Game1.parseText(hoverTooltip, Game1.smallFont, Math.Max(200, Math.Min(520, viewportWidth - 80))), Game1.smallFont);
         drawMouse(b);
     }
 
@@ -298,6 +349,19 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
     {
         DeselectSearch();
         base.cleanupBeforeExit();
+    }
+
+    private void TurnPage(int delta)
+    {
+        var (nextPage, changed) = GalleryPagination.Turn(currentPage, delta, ResultCount, PageSize);
+        if (!changed)
+            return;
+        currentPage = nextPage;
+        PreparePortraits();
+        BuildClickableComponents();
+        if (Game1.options.snappyMenus && Game1.options.gamepadControls)
+            snapCursorToCurrentSnappedComponent();
+        Game1.playSound("shwip");
     }
 
     private void RecalculateLayout()
@@ -311,47 +375,84 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         drawOffsetY = (int)Math.Round((Game1.uiViewport.Height - height * menuScale) / 2f);
         viewportWidth = Game1.uiViewport.Width;
         viewportHeight = Game1.uiViewport.Height;
-        var footerButton = GallerySpreadLayout.BackButtonBounds;
-        searchBounds = R(268, 136, footerButton.Width, 48);
-        search.X = searchBounds.X;
+        searchBounds = GalleryBookChrome.ToRect(GallerySpreadLayout.HomeSearchBounds);
+        Rectangle textArea = GalleryUiSkin.SearchTextBounds(searchBounds);
+        search.X = textArea.X - 12;
         search.Y = searchBounds.Y;
-        search.Width = searchBounds.Width;
+        search.Width = textArea.Width + 12;
         search.Height = searchBounds.Height;
-        queryBounds = R(938, 818, 260, 58);
-        unlockBounds = R(1220, 818, queryBounds.Width, queryBounds.Height);
-        scrollTrack = R(1534, 146, 24, 640);
+        unlockBounds = GalleryBookChrome.ToRect(GallerySpreadLayout.HomeUnlockBounds);
         yesBounds = R(650, 540, 160, 56);
         noBounds = R(860, 540, 160, 56);
         initializeUpperRightCloseButton();
-        UpdateScrollbar();
+        GalleryBookChrome.PositionCloseButton(upperRightCloseButton, menuScale, drawOffsetX, drawOffsetY, viewportWidth, viewportHeight);
         BuildClickableComponents();
     }
 
-    private Rectangle Card(int slot)
-    {
-        int col = slot % Columns;
-        int row = slot / Columns;
-        int x = col < 3 ? 192 + col * 190 : 938 + (col - 3) * 190;
-        return R(x, 230 + row * 190, 140, 165);
-    }
+    private static Rectangle Card(int slot) => GalleryBookChrome.ToRect(GallerySpreadLayout.HomeCardBounds(slot));
 
-    private void DrawCharacter(SpriteBatch b, Rectangle card, GalleryCharacter character)
+    /// <summary>Grid position of a page slot: columns 0-2 on the left page, 3-5 on the right page.</summary>
+    private static (int Column, int Row) GridOf(int slot) => slot < 9 ? (slot % 3, slot / 3) : (3 + (slot - 9) % 3, (slot - 9) / 3);
+
+    private static int SlotAt(int column, int row) => column < 3 ? row * 3 + column : 9 + row * 3 + column - 3;
+
+    private void DrawCharacter(SpriteBatch b, int slot, GalleryCharacter character, bool hot)
     {
         bool known = character.IsMet || isUnlocked();
+        Rectangle portraitBounds = GalleryBookChrome.ToRect(GallerySpreadLayout.HomePortraitBounds(slot));
+        Rectangle card = Card(slot);
+
         context.Appearance.Draw(b, character.Name, CharacterVisual.Portrait,
-            new Rectangle(card.Center.X - 48, card.Y, 96, 96), known ? Color.White : Color.Black * .82f);
-        DrawCentered(b, GalleryUiRules.DisplayName(character.DisplayName, character.IsMet, isUnlocked()), new Rectangle(card.X, card.Y + 100, card.Width, 32));
-        string count = heartCounts.GetValueOrDefault(character.Name).ToString();
-        float countWidth = Math.Min(90, Game1.smallFont.MeasureString(count).X);
-        int left = card.Center.X - (int)(countWidth + 30) / 2;
-        b.Draw(Game1.mouseCursors, new Rectangle(left, card.Y + 135, 24, 21), new Rectangle(211, 428, 7, 6), Color.White);
-        DrawLeftFitted(b, count, new Rectangle(left + 30, card.Y + 132, (int)Math.Ceiling(countWidth), 28));
+            portraitBounds, known ? Color.White : new Color(92, 60, 36) * 0.92f);
+        if (hot)
+            GalleryUiSkin.DrawFocusCorners(b, GalleryDrawing.Inset(portraitBounds, -8, -8), 16);
+        string name = known ? character.DisplayName : i18n.Get("home.unmet").ToString();
+        DrawCentered(b, name, new Rectangle(card.X, portraitBounds.Bottom + 4, card.Width, 28), known ? Game1.textColor : GallerySpreadDrawing.LightInk);
+
+        if (!known)
+            return;
+
+        StoryNodeProgress progress = context.CharacterProgress(character.Name);
+        string progressLabel = $"{progress.CollectedNodes} / {progress.TotalNodes}";
+        Rectangle progressBounds = new(card.X + 20, portraitBounds.Bottom + 32, card.Width - 40, 24);
+        DrawCentered(b, progressLabel, progressBounds, GallerySpreadDrawing.Ink);
+        if (progress.IsFullyCollected)
+        {
+            Vector2 size = Game1.smallFont.MeasureString(progressLabel);
+            float scale = GalleryTextFit.Scale(size.X, size.Y, progressBounds.Width, progressBounds.Height);
+            int textLeft = progressBounds.Center.X - (int)(size.X * scale / 2);
+            GalleryBookChrome.DrawGoldStarBadge(b, new Rectangle(textLeft - 26, progressBounds.Center.Y - 11, 22, 22));
+        }
+
+        EncounterClue clue = context.CharacterClue(character.Name);
+        if (GalleryUiSkin.ClueBadge(clue) is { } badge)
+            GalleryUiSkin.DrawBadge(b, badge, new Rectangle(portraitBounds.Right - 12, portraitBounds.Y - 12, 30, 30));
+    }
+
+    private string? CharacterTooltip(GalleryCharacter character)
+    {
+        if (!character.IsMet && !isUnlocked())
+            return null;
+
+        List<string> lines = [];
+        StoryNodeProgress progress = context.CharacterProgress(character.Name);
+        if (progress.IsFullyCollected)
+            lines.Add(i18n.Get("home.full-collection", new { name = character.DisplayName }));
+
+        EncounterClue clue = context.CharacterClue(character.Name);
+        if (clue == EncounterClue.AvailableToday)
+            lines.Add(i18n.Get("clue.available-today-hint"));
+        else if (clue == EncounterClue.ReadyForTiming)
+            lines.Add(i18n.Get("clue.ready-for-timing-hint"));
+
+        return lines.Count > 0 ? string.Join("\n", lines) : null;
     }
 
     private void PreparePortraits()
     {
-        int first = scrollRow * Columns;
-        for (int i = first; i < Math.Min(ResultCount, first + Columns * VisibleRows); i++)
+        int first = GalleryPagination.FirstIndex(currentPage, ResultCount, PageSize);
+        int visible = GalleryPagination.VisibleCount(currentPage, ResultCount, PageSize);
+        for (int i = first; i < first + visible; i++)
             context.Appearance.Prepare(filtered[i].Name, CharacterVisual.Portrait);
     }
 
@@ -367,8 +468,8 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         filtered = searchFilter.Results;
         if (!changed)
             return;
-        scrollRow = 0;
-        UpdateScrollbar();
+        currentPage = 0;
+        PreparePortraits();
         BuildClickableComponents();
     }
 
@@ -382,13 +483,57 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
             snapCursorToCurrentSnappedComponent();
     }
 
-    /// <summary>Enter outside the search box opens the focused character, or the first one when nothing is focused.</summary>
-    private void OpenFocused()
+    private void ActivateFocused()
     {
-        int slot = currentlySnappedComponent is { myID: >= 0 and < Columns * VisibleRows } focused ? focused.myID : 0;
-        if (scrollRow * Columns + slot >= ResultCount)
+        int id = currentlySnappedComponent?.myID ?? -1;
+        if (confirming)
+        {
+            if (id == YesComponentId)
+            {
+                SaveState();
+                context.Navigation.ToggleUnlock();
+                confirming = false;
+                BuildClickableComponents();
+                Game1.playSound("coin");
+            }
+            else if (id == NoComponentId)
+            {
+                confirming = false;
+                BuildClickableComponents();
+                Game1.playSound("bigDeSelect");
+            }
             return;
-        GalleryCharacter character = filtered[scrollRow * Columns + slot];
+        }
+
+        if (id >= GalleryBookChrome.RibbonTabBaseId && id < GalleryBookChrome.RibbonTabBaseId + GallerySpreadLayout.RibbonTabCount)
+        {
+            SaveState();
+            DeselectSearch();
+            Game1.playSound("shwip");
+            context.Navigation.SwitchTab((GalleryBookTab)(id - GalleryBookChrome.RibbonTabBaseId));
+            return;
+        }
+        if (id == GalleryBookChrome.PrevPageComponentId) { TurnPage(-1); return; }
+        if (id == GalleryBookChrome.NextPageComponentId) { TurnPage(1); return; }
+        if (id == UnlockComponentId)
+        {
+            confirming = true;
+            DeselectSearch();
+            BuildClickableComponents();
+            Game1.playSound("smallSelect");
+            return;
+        }
+        if (id == SearchComponentId)
+        {
+            GalleryTextBox.SelectForInput(search);
+            return;
+        }
+
+        int slot = id is >= 0 and < PageSize ? id : 0;
+        int index = GalleryPagination.FirstIndex(currentPage, ResultCount, PageSize) + slot;
+        if (index >= ResultCount)
+            return;
+        GalleryCharacter character = filtered[index];
         if (!character.IsMet && !isUnlocked())
             return;
         SaveState(slot);
@@ -396,22 +541,11 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         context.Navigation.OpenCharacter(character.Name);
     }
 
-    private int MaxScroll => Math.Max(0, (ResultCount + Columns - 1) / Columns - VisibleRows);
-
     private void SaveState(int? focus = null)
     {
         state.SearchText = search.Text;
-        state.Scroll = scrollRow;
+        state.Scroll = currentPage;
         state.Focus = focus ?? currentlySnappedComponent?.myID ?? -1;
-    }
-
-    private void UpdateScrollbar()
-    {
-        scrollRow = Math.Clamp(scrollRow, 0, MaxScroll);
-        int height = 40;
-        int travel = scrollTrack.Height - height;
-        int y = MaxScroll == 0 ? scrollTrack.Y : scrollTrack.Y + (int)Math.Round(travel * scrollRow / (double)MaxScroll);
-        scrollThumb = new Rectangle(scrollTrack.X, y, scrollTrack.Width, height);
     }
 
     private void BuildClickableComponents()
@@ -421,48 +555,91 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         cardComponents.Clear();
         if (confirming)
         {
-            ClickableComponent yes = new(ToScreen(yesBounds), "yes") { myID = YesComponentId, rightNeighborID = NoComponentId };
-            ClickableComponent no = new(ToScreen(noBounds), "no") { myID = NoComponentId, leftNeighborID = YesComponentId };
+            ClickableComponent yes = new(ToScreen(yesBounds), "yes") { myID = YesComponentId, rightNeighborID = NoComponentId, fullyImmutable = true };
+            ClickableComponent no = new(ToScreen(noBounds), "no") { myID = NoComponentId, leftNeighborID = YesComponentId, fullyImmutable = true };
             allClickableComponents.Add(yes);
             allClickableComponents.Add(no);
         }
         else
         {
-            int visible = Math.Min(Columns * VisibleRows, Math.Max(0, ResultCount - scrollRow * Columns));
-            int LastVisibleInColumn(int column) => visible == 0 ? SearchComponentId
-                : column >= visible ? visible - 1 : column + (visible - 1 - column) / Columns * Columns;
+            currentPage = GalleryPagination.ClampPage(currentPage, ResultCount, PageSize);
+            int visible = GalleryPagination.VisibleCount(currentPage, ResultCount, PageSize);
+            int SlotOrNone(int column, int row)
+            {
+                if (column < 0 || column > 5 || row < 0 || row > 2) return -1;
+                int s = SlotAt(column, row);
+                return s < visible ? s : -1;
+            }
+            // Lowest visible card in a column, used when moving up from the ribbons, pager or unlock button.
+            int LowestIn(int column)
+            {
+                for (int row = 2; row >= 0; row--)
+                    if (SlotOrNone(column, row) is >= 0 and var s) return s;
+                return visible > 0 ? (column < 3 ? 0 : Math.Min(9, visible - 1)) : SearchComponentId;
+            }
+
+            GalleryBookChrome.AddRibbonTabComponents(allClickableComponents, ToScreen, GalleryBookChrome.PrevPageComponentId,
+                upNeighborId: LowestIn(0));
+            foreach (ClickableComponent ribbon in allClickableComponents)
+                ribbon.upNeighborID = LowestIn(ribbon.myID - GalleryBookChrome.RibbonTabBaseId);
+
             searchComponent = new ClickableComponent(ToScreen(searchBounds), "search")
             {
                 myID = SearchComponentId,
-                rightNeighborID = upperRightCloseButton?.myID ?? -1,
-                downNeighborID = visible > 0 ? 0 : QueryComponentId
+                rightNeighborID = visible > 9 ? 9 : upperRightCloseButton?.myID ?? -1,
+                downNeighborID = visible > 0 ? 0 : GalleryBookChrome.RibbonTabBaseId,
+                fullyImmutable = true
             };
             unlockComponent = new ClickableComponent(ToScreen(unlockBounds), "unlock")
             {
                 myID = UnlockComponentId,
-                leftNeighborID = QueryComponentId,
-                rightNeighborID = upperRightCloseButton?.myID ?? -1,
-                upNeighborID = LastVisibleInColumn(5),
-                downNeighborID = -1
+                leftNeighborID = GalleryBookChrome.NextPageComponentId,
+                rightNeighborID = -1,
+                upNeighborID = LowestIn(5),
+                downNeighborID = -1,
+                fullyImmutable = true
             };
             allClickableComponents.Add(searchComponent);
             allClickableComponents.Add(unlockComponent);
-            allClickableComponents.Add(new ClickableComponent(ToScreen(queryBounds), "query")
+            allClickableComponents.Add(new ClickableComponent(ToScreen(GalleryBookChrome.ToRect(GallerySpreadLayout.SpreadPrevBounds)), "prev-page")
             {
-                myID = QueryComponentId, upNeighborID = LastVisibleInColumn(3),
-                leftNeighborID = SearchComponentId, rightNeighborID = UnlockComponentId
+                myID = GalleryBookChrome.PrevPageComponentId,
+                upNeighborID = LowestIn(3),
+                leftNeighborID = GalleryBookChrome.RibbonTabBaseId + 2,
+                rightNeighborID = GalleryBookChrome.NextPageComponentId,
+                fullyImmutable = true
             });
+            allClickableComponents.Add(new ClickableComponent(ToScreen(GalleryBookChrome.ToRect(GallerySpreadLayout.SpreadNextBounds)), "next-page")
+            {
+                myID = GalleryBookChrome.NextPageComponentId,
+                upNeighborID = LowestIn(4),
+                leftNeighborID = GalleryBookChrome.PrevPageComponentId,
+                rightNeighborID = UnlockComponentId,
+                fullyImmutable = true
+            });
+
             for (int slot = 0; slot < visible; slot++)
             {
-                int col = slot % Columns;
-                int row = slot / Columns;
+                (int col, int row) = GridOf(slot);
+                int left = SlotOrNone(col - 1, row);
+                if (left < 0 && col == 3) left = SlotOrNone(2, row) is >= 0 and var l ? l : LowestIn(2);
+                int right = SlotOrNone(col + 1, row);
+                if (right < 0 && col == 2) right = SlotOrNone(3, row) is >= 0 and var r ? r : (visible > 9 ? 9 : -1);
+                int down = SlotOrNone(col, row + 1);
+                if (down < 0)
+                    down = col < 3 ? GalleryBookChrome.RibbonTabBaseId + col : col == 3 ? GalleryBookChrome.PrevPageComponentId
+                        : col == 4 ? GalleryBookChrome.NextPageComponentId : UnlockComponentId;
+                int up = SlotOrNone(col, row - 1);
+                if (up < 0)
+                    up = SearchComponentId;
                 ClickableComponent card = new(ToScreen(Card(slot)), $"character-{slot}")
                 {
                     myID = slot,
-                    leftNeighborID = col > 0 ? slot - 1 : -1,
-                    rightNeighborID = col < Columns - 1 && slot + 1 < visible ? slot + 1 : -1,
-                    upNeighborID = row > 0 ? slot - Columns : SearchComponentId,
-                    downNeighborID = slot + Columns < visible ? slot + Columns : col >= 4 ? UnlockComponentId : QueryComponentId
+                    leftNeighborID = left,
+                    rightNeighborID = right,
+                    upNeighborID = up,
+                    downNeighborID = down,
+                    fullyImmutable = true
                 };
                 cardComponents.Add(card);
                 allClickableComponents.Add(card);
@@ -471,15 +648,18 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
         if (upperRightCloseButton is not null)
         {
             upperRightCloseButton.leftNeighborID = confirming ? YesComponentId : SearchComponentId;
-            upperRightCloseButton.downNeighborID = confirming ? YesComponentId : cardComponents.ElementAtOrDefault(5)?.myID ?? UnlockComponentId;
+            upperRightCloseButton.downNeighborID = confirming ? YesComponentId : cardComponents.ElementAtOrDefault(9)?.myID ?? UnlockComponentId;
             allClickableComponents.Add(new ClickableComponent(ToScreen(upperRightCloseButton.bounds), upperRightCloseButton.name)
             {
                 myID = upperRightCloseButton.myID,
                 leftNeighborID = upperRightCloseButton.leftNeighborID,
-                downNeighborID = upperRightCloseButton.downNeighborID
+                downNeighborID = upperRightCloseButton.downNeighborID,
+                fullyImmutable = true
             });
         }
-        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previousId);
+        currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID == previousId)
+            ?? cardComponents.FirstOrDefault()
+            ?? searchComponent;
     }
 
     private void SnapForGamepad()
@@ -504,14 +684,14 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
             RecalculateLayout();
     }
 
-    private void DrawConfirmation(SpriteBatch b)
+    private void DrawConfirmation(SpriteBatch b, int mouseX, int mouseY, bool showFocus, int focusedId)
     {
         Rectangle panel = R(460, 330, 750, 300);
         IClickableMenu.drawTextureBox(b, panel.X, panel.Y, panel.Width, panel.Height, Color.White);
         string message = Game1.parseText(i18n.Get(isUnlocked() ? "confirm.restore" : "confirm.unlock"), Game1.smallFont, panel.Width - 100);
         b.DrawString(Game1.smallFont, message, new Vector2(panel.X + 50, panel.Y + 55), Game1.textColor);
-        DrawButton(b, yesBounds, i18n.Get("common.yes"));
-        DrawButton(b, noBounds, i18n.Get("common.no"));
+        DrawButton(b, yesBounds, i18n.Get("common.yes"), yesBounds.Contains(mouseX, mouseY) || showFocus && focusedId == YesComponentId);
+        DrawButton(b, noBounds, i18n.Get("common.no"), noBounds.Contains(mouseX, mouseY) || showFocus && focusedId == NoComponentId);
     }
 
     private Rectangle R(int x, int y, int w, int h) => new(xPositionOnScreen + x, yPositionOnScreen + y, w, h);
@@ -520,5 +700,4 @@ internal sealed class GalleryMenu : IClickableMenu, IGallerySearchMenu
 
     private (int X, int Y) ToLogical(int x, int y)
         => ((int)Math.Round((x - drawOffsetX) / menuScale), (int)Math.Round((y - drawOffsetY) / menuScale));
-
 }

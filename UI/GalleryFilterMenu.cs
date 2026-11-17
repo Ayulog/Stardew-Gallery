@@ -28,7 +28,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         }
         else
         {
-            fields.AddRange(["kind", "npc", "location", "source", "state"]);
+            fields.AddRange(["kind", "npc", "location", "source", "state", "encounter"]);
             foreach (string field in fields)
             {
                 string value = Choices(field).FirstOrDefault(choice => SameId(field, choice.Id, Value(field)))?.Label ?? T("filter.any");
@@ -63,7 +63,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
     private string? Value(string field) => field switch
     {
         "kind" => ((int)draft.Kind).ToString(), "npc" => draft.Npc, "location" => draft.Location, "source" => draft.Source,
-        "state" => ((int)draft.Completion).ToString(), _ => null
+        "state" => ((int)draft.Completion).ToString(), "encounter" => draft.EncounterOnly ? "1" : "0", _ => null
     };
     private void Set(string field, string? value)
     {
@@ -72,7 +72,9 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         {
             "kind" => draft with { Kind = (QueryKind)(number ?? 0) }, "npc" => draft with { Npc = value },
             "location" => draft with { Location = value }, "source" => draft with { Source = value },
-            "state" => draft with { Completion = (QueryCompletion)(number ?? 0) }, _ => draft
+            "state" => draft with { Completion = (QueryCompletion)(number ?? 0) },
+            "encounter" => draft with { EncounterOnly = number == 1 },
+            _ => draft
         };
     }
     private Choice[] Choices(string field)
@@ -83,6 +85,7 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
             "kind" => new[] { "query.kind-all", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" }
                 .Select((key, i) => new Choice(i.ToString(), T(key))),
             "state" => new[] { "filter.any", "filter.done", "filter.pending" }.Select((key, i) => new Choice(i.ToString(), T(key))),
+            "encounter" => new[] { new Choice("0", T("filter.any")), new Choice("1", T("filter.encounter-on")) },
             "npc" => new[] { any }.Concat(index.Rows.SelectMany(row => row.Npcs).Distinct(StringComparer.Ordinal)
                 .Select(id => new Choice(id, Context.Characters.Get(id))).OrderBy(choice => choice.Label, StringComparer.CurrentCulture)),
             "location" => new[] { any }.Concat(index.Rows.Where(row => row.Event is not null).DistinctBy(row => row.LocationKey, StringComparer.OrdinalIgnoreCase)
@@ -91,8 +94,6 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
             _ => []
         };
         var choices = values.ToList();
-        // Keep an unavailable active value visible, just as the source picker does. It remains
-        // an exact filter until the player clears it, and naturally rejoins the list if restored.
         if (field is "npc" or "location" && Value(field) is { } selected && !choices.Any(choice => SameId(field, choice.Id, selected)))
         {
             string label = field == "npc" ? Context.Characters.Get(selected)
@@ -107,8 +108,6 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
     {
         var choices = index.Rows.Select(row => row.Source).DistinctBy(source => source.Key, StringComparer.OrdinalIgnoreCase)
             .Select(source => new Choice(source.Key, source.Label(T))).ToList();
-        // A refreshed catalog may remove all events from a selected source. Preserve that selection
-        // visibly, so an empty result cannot appear to have the unrestricted "Any" source filter.
         if (draft.Source is { } selected && !choices.Any(choice => string.Equals(choice.Id, selected, StringComparison.OrdinalIgnoreCase)))
         {
             string label = selected switch

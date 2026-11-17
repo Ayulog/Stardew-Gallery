@@ -25,14 +25,22 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
     private int dialogueAutoTicks;
     private Event? activeReplayEvent;
     private ReplaySceneEnvironmentScope? environmentScope;
+    private ReplayForkOption? forkOverride;
+    private string? staticMusicCue;
+    private bool scenePaused;
     private bool failSafeRunning;
     private int lastGameTick;
 
     internal bool IsActive => snapshot is not null;
     internal bool OwnsEvent(Event? value) => IsActive && value is not null && ReferenceEquals(value, activeReplayEvent);
     internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
+    internal ReplayForkOption? ForkOverride => forkOverride;
+    internal string? StaticMusicCue => staticMusicCue;
+    internal bool IsScenePaused => scenePaused;
+    internal bool ShouldFreezeDialogue => scenePaused && PlayingEvent is not null;
+    internal bool ShouldHideSceneUi => scenePaused && PlayingEvent is not null;
     internal int SpeedMultiplier => speedMultiplier;
-    internal int EffectiveSpeedMultiplier => !IsActive || restoring || !observed || Game1.CurrentEvent is null
+    internal int EffectiveSpeedMultiplier => !IsActive || restoring || !observed || scenePaused || Game1.CurrentEvent is null
         || ReplayLifecycleRules.BlocksReplaySpeed(
             ReplayLifecycleRules.IsTransitionBlocking(Game1.fadeToBlackAlpha, Game1.globalFade, Game1.nonWarpFade, Game1.locationRequest is not null),
             Game1.activeClickableMenu is StardewValley.Menus.DialogueBox)
@@ -40,9 +48,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         || Game1.activeClickableMenu is StardewValley.Menus.DialogueBox dialogue && ReplaySpeedPatches.IsChoice(dialogue)
         ? 1 : speedMultiplier;
 
-    internal bool TryStart(GalleryEvent entry, Action reopenMenu, out string error)
+    internal bool TryStart(GalleryEvent entry, Action reopenMenu, out string error, ReplayForkOption? selectedFork = null)
     {
         error = string.Empty;
+        if (WeddingMemento.IsWeddingIdentity(entry.Resolved.Identity))
+        {
+            error = helper.Translation.Get("replay.wedding-unavailable");
+            return false;
+        }
         if (entry.Kind == StoryKind.Internal || Context.IsMultiplayer)
         {
             error = helper.Translation.Get(entry.Kind == StoryKind.Internal ? "replay.internal" : "replay.multiplayer");
@@ -67,6 +80,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
             backupPath = ReplayBackup.Create();
             Trace($"回放备份完成：{backupPath}");
             snapshot = ReplaySnapshot.Capture(Game1.getLocationFromName(playback.LocationName));
+            forkOverride = selectedFork is { Mode: not ReplayForkMode.FollowSave } ? selectedFork : null;
+            scenePaused = false;
+            staticMusicCue = EventMusicExtractor.ExtractCueId(
+                entry.Resolved,
+                raw => Event.ParseCommands(raw),
+                cmd => ArgUtility.SplitBySpaceQuoteAware(cmd),
+                Game1.player?.dialogueQuestionsAnswered?.ToHashSet(StringComparer.Ordinal));
+            MaskCurrentEventQuestions(entry.Resolved);
             lastGameTick = Game1.ticks;
             reopen = reopenMenu;
             eventId = playback.EventId;
@@ -116,7 +137,9 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
             ReplaySceneEnvironment environment = ReplaySceneEnvironmentResolver.Resolve(
                 conditionParser.ParseRawKey(entry.EventKey).Conditions,
                 Game1.timeOfDay,
-                location.GetWeather().Weather);
+                location.GetWeather().Weather,
+                Game1.currentSeason,
+                location.Name);
             if (environment.Warning is not null)
                 monitor.Log($"回放演出环境不完整；事件仍会继续播放。{environment.Warning}", LogLevel.Warn);
             environmentScope = ReplaySceneEnvironmentScope.Apply(location, environment, monitor);
@@ -195,8 +218,20 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
             return;
         }
 
-        ticks++;
         bool playing = Game1.CurrentEvent is not null || Game1.eventUp;
+        if (scenePaused)
+        {
+            if (playing && observed && ReferenceEquals(activeReplayEvent, Game1.CurrentEvent))
+            {
+                // Scenic pause freezes event/dialogue progression and must never count toward timeouts.
+                quietTicks = 0;
+                dialogueAutoTicks = 0;
+                return;
+            }
+            scenePaused = false;
+        }
+
+        ticks++;
         if (playing)
         {
             if (ReplayLifecycleRules.IsSecondaryEvent(observed, activeReplayEvent, Game1.CurrentEvent))
@@ -246,6 +281,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         try
         {
             Trace($"开始恢复回放前状态：事件={eventId}，实际开始={observed}。");
+            scenePaused = false;
             restoring = true;
             ticks = 0;
             restoreStableTicks = 0;
@@ -351,6 +387,9 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         speedMultiplier = 1;
         dialogueAutoTicks = 0;
         activeReplayEvent = null;
+        forkOverride = null;
+        staticMusicCue = null;
+        scenePaused = false;
         try
         {
             if (restoreScopes)
@@ -382,6 +421,49 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         dialogueAutoTicks = 0;
         Game1.playSound("smallSelect");
         Trace($"回放速度切换为 {speedMultiplier}x：事件={eventId}，当前有效={EffectiveSpeedMultiplier}x，遮罩={Game1.fadeToBlackAlpha:0.00}，换图={Game1.locationRequest is not null}，菜单={Game1.activeClickableMenu?.GetType().Name ?? "无"}。");
+    }
+
+    internal bool ToggleScenePause()
+        => SetScenePaused(!scenePaused);
+
+    internal bool SetScenePaused(bool paused)
+    {
+        if (!paused)
+        {
+            if (!scenePaused)
+                return false;
+            scenePaused = false;
+            dialogueAutoTicks = 0;
+            Game1.playSound("smallSelect");
+            Trace($"退出定格观景模式：事件={eventId}。");
+            return true;
+        }
+
+        if (PlayingEvent is null || restoring
+            || ReplayLifecycleRules.IsTransitionBlocking(Game1.fadeToBlackAlpha, Game1.globalFade, Game1.nonWarpFade, Game1.locationRequest is not null))
+            return false;
+
+        scenePaused = true;
+        dialogueAutoTicks = 0;
+        Game1.playSound("smallSelect");
+        Trace($"进入定格观景模式：事件={eventId}。");
+        return true;
+    }
+
+    private void MaskCurrentEventQuestions(ResolvedEvent resolved)
+    {
+        if (Game1.player?.dialogueQuestionsAnswered is not { } liveAnswers)
+            return;
+        HashSet<string> inlineIds = ReplayBranchControl.CollectInlineQuestionIds(
+            resolved,
+            raw => Event.ParseCommands(raw),
+            cmd => ArgUtility.SplitBySpaceQuoteAware(cmd),
+            key => SafeTranslationLoader.TryLoad(Game1.content, key));
+        if (inlineIds.Count == 0)
+            return;
+        int masked = ReplayBranchControl.MaskCurrentEventAnswers(liveAnswers, inlineIds);
+        if (masked > 0)
+            Trace($"已临时移除本事件内联 $q/$r 回答记录 {masked} 项（回放结束由快照恢复）。");
     }
 
     private void UpdateAutoAdvance()

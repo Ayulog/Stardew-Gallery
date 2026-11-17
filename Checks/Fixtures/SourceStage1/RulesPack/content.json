@@ -1,0 +1,29 @@
+{
+  // Read-only fixture for SourceStage1Checks: the original declarer of trigger action rules and event branches.
+  "Format": "2.0.0",
+  "Changes": [
+    {
+      "Action": "EditData",
+      "Target": "Data/TriggerActions",
+      "Entries": {
+        "{{ModId}}_SetMarker": { "Id": "{{ModId}}_SetMarker", "Trigger": "DayStarted", "Actions": [ "MarkEventSeen Current 900001" ] },
+        "{{ModId}}_Deleted": null
+      }
+    },
+    { "Action": "EditData", "Target": "Data/TriggerActions", "FromFile": "data/fromfile-map.json" },
+    { "Action": "EditData", "Target": "Data/TriggerActions", "FromFile": "data/fromfile-list.json" },
+    { "Action": "Include", "FromFile": "data/more.json" },
+    { "Action": "EditData", "Target": "Data/TriggerActions", "MoveEntries": [ { "ID": "Vanilla_Rule", "ToPosition": "Top" } ] },
+    {
+      "Action": "EditData",
+      "Target": "Data/Events/Town",
+      "Entries": {
+        "910001/f Abigail 500": "none/-1000 -1000/farmer 0 0 0/end",
+        "Fixture.Rules/BranchA": "speak Abigail \"A\"",
+        "Fixture.Rules/BranchB": "speak Abigail \"B\"",
+        "-1/HiddenBranch": "end",
+        "sharedKey/f Abigail 500": "none/-1000 -1000/farmer 0 0 0/end"
+      }
+    }
+  ]
+}

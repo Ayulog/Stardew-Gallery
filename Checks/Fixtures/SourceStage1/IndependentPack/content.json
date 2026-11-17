@@ -1,0 +1,17 @@
+{
+  // Read-only fixture: an unrelated pack that also declares Shared_Rule through a Load list file and a bare branch key.
+  "Format": "2.0.0",
+  "Changes": [
+    { "Action": "Load", "Target": "Data/TriggerActions", "FromFile": "data/rules.json" },
+    {
+      "Action": "EditData",
+      "Target": "Data/TriggerActions",
+      "Entries": { "{{NotDefined}}_Rule": { "Id": "{{NotDefined}}_Rule", "Trigger": "DayStarted", "Action": "Null" } }
+    },
+    {
+      "Action": "EditData",
+      "Target": "Data/Events/Town",
+      "Entries": { "sharedKey": "speak Abigail \"branch\"" }
+    }
+  ]
+}
