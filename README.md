@@ -4,13 +4,13 @@
 
 *宣传插画由 AI 生成 / Promotional artwork generated with AI*
 
-> **最新发布版本 2.10.0**：删除 AI 名单与运行时修改追踪，画廊不再联网；修复回放后鱼饵弹药丢失、换季清空作物、失焦误读档等存档安全问题；条件判定与游戏 1.6.15 一致；完善手柄与 Steam Deck 支持（Steam 键盘可输入中文，搜索支持拼音），来源识别支持 Linux 与链接目录。升级说明详见 [2.10.0 版本说明](docs/RELEASE_2.10.0_NOTES.md)。
+> **最新发布版本 2.11.0**：全流程重制为复古烫金皮质回忆手账（左下双态三书签、拟真整页翻书、六幅四季昼夜漫步景窗与防剧透火漆信封）；新增双级“可偶遇”线索、每日清晨偶遇轻提示与原版社交页偶遇徽章；支持单周目平行分支（If 线）自动开放、本事件内联 `$q` 重选、`fork` 路线切换与一键暂停隐框定格观景；支持静默自动留影、配偶婚礼留念卡与跨档珍藏时刻；扩充近 60 项 Stardew Valley 1.6.15 只读确定性 `GameStateQuery`（含递归 `ANY`）及 **HD Portraits** 外观兼容。升级说明详见 [2.11.0 版本说明](docs/RELEASE_2.11.0_NOTES.md)。
 >
-> **Latest Release 2.10.0**: Removes the AI exclusion list and runtime modification tracking (the gallery no longer goes online), fixes replay safety issues such as lost bait and ammo, cleared crops after a season change and reloads after alt-tabbing, matches Stardew Valley 1.6.15 condition checks, and improves controller, Steam Deck (Chinese input through Steam's keyboard, pinyin search), Linux and linked-folder support. See the [2.10.0 Release Notes](docs/RELEASE_2.10.0_NOTES.md) for update instructions.
+> **Latest Release 2.11.0**: Full leather-bound story journal overhaul (three two-state bottom ribbon bookmarks, whole-page book turning, six seasonal/day-night strolling scenic windows, and wax-seal envelopes); adds two-tier Encounter Clues with optional morning HUD hints and vanilla Social tab clue badges; unlocks single-playthrough Parallel Branches (If-routes), in-scene `$q` choice re-prompting, `fork` route switching, and Pause & Hide UI scenic freeze; adds Silent Auto-Memento, spouse Wedding Mementos, and cross-save Treasured Moments; expands 1.6.15 deterministic read-only `GameStateQuery` coverage (including recursive `ANY`) and **HD Portraits** support. See the [2.11.0 Release Notes](docs/RELEASE_2.11.0_NOTES.md) for details.
 
 Copyright (C) 2026 Ayulog. Licensed under the GNU General Public License v3.0.
 
-[中文说明](#中文) · [English](#english) · [下载 / Download 2.10.0](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.10.0) · [更新日志 / Changelog](CHANGELOG.md)
+[中文说明](#中文) · [English](#english) · [下载 / Download 2.11.0](https://github.com/Ayulog/Stardew-Gallery/releases/tag/v2.11.0) · [更新日志 / Changelog](CHANGELOG.md)
 
 ---
 
@@ -90,7 +90,7 @@ Flip through a leather-bound story journal, inspect plain-language conditions, e
 
 ### 操作指南
 
-- **打开画廊與社交页直达**：平时按 `G` 键，或打开游戏菜单“收藏”页点击左侧标签下方的画廊图标；在游戏菜单“**社交**”页指向某位已认识村民时按 `G` 可直达其个人相册，按 `B` / `Esc` 无缝返回原社交页。
+- **打开画廊与社交页直达**：平时按 `G` 键，或打开游戏菜单“收藏”页点击左侧标签下方的画廊图标；在游戏菜单“**社交**”页指向某位已认识村民时按 `G` 可直达其个人相册，按 `B` / `Esc` 无缝返回原社交页。
 - **书签切换与翻书**：点击左下三枚彩色书签（或用手柄方向键移至左下书签按 `A`）切换“村民相册 / 故事索引 / 珍藏时刻”；使用底部翻页箭头、滚轮、`PageUp` / `PageDown` 或手柄 `LB` / `RB` 整页翻阅。搜索框按回车先列出候选并聚焦首项，再按回车或 `A` 打开。
 - **剧场控制与留影**：回放时按倍速键（手柄默认 `RB`）切换 `1x / 2x / 4x`；按暂停观景键（默认键盘 `H` 或手柄右摇杆按下）暂停推进并隐藏对话框与控制条；按 `F8`、手柄 `LB` 或点击相机图标手动抓拍无 UI 剧照，在详情页点击缩略图管理封面或打开本地目录。
 - **卸载模组**：直接删除 `Mods/StardewGallery` 文件夹即可（完全不污染存档资产；如需留存剧照、自定义命名与收藏记录，请提前备份 `event-photos/` 与 `user-data/`）。
@@ -121,7 +121,7 @@ dotnet run --project Checks/StardewGallery.Checks.csproj -c Release
 dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -c Release
 ```
 
-Windows 上可用一条命令依次运行构建、两套检查、SMAPI 运行时检查和打包：`pwsh tools/Verify-Local.ps1 -GamePath "<游戏目录>"`。2.10.0 的验证情况见 [2.10.0 版本说明](docs/RELEASE_2.10.0_NOTES.md)，待实机验收的场景见 [验收清单](docs/RELEASE_2.10.0_ACCEPTANCE.md)。
+Windows 上可用一条命令依次运行构建、两套检查、SMAPI 运行时检查和打包：`pwsh tools/Verify-Local.ps1 -GamePath "<游戏目录>"`。2.11.0 的验证与升级说明见 [2.11.0 版本说明](docs/RELEASE_2.11.0_NOTES.md)。
 
 ### 许可证
 
@@ -221,7 +221,7 @@ dotnet run --project Checks/StardewGallery.Checks.csproj -c Release
 dotnet run --project PersistenceChecks/StardewGallery.PersistenceChecks.csproj -c Release
 ```
 
-On Windows, one command runs the build, both check suites, SMAPI runtime checks, and packaging: `pwsh tools/Verify-Local.ps1 -GamePath "<game folder>"`. For 2.10.0 validation, see the [2.10.0 Release Notes](docs/RELEASE_2.10.0_NOTES.md); scenes awaiting in-game acceptance are listed in the [acceptance checklist](docs/RELEASE_2.10.0_ACCEPTANCE.md).
+On Windows, one command runs the build, both check suites, SMAPI runtime checks, and packaging: `pwsh tools/Verify-Local.ps1 -GamePath "<game folder>"`. For 2.11.0 details and update notes, see the [2.11.0 Release Notes](docs/RELEASE_2.11.0_NOTES.md).
 
 ### License
 

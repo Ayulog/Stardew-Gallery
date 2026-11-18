@@ -66,9 +66,9 @@
 
 ## 待实机验收与交接说明（下一棒必读）
 
-### 1. 当前工作区与安装状态（截至 2026-11-17）
-- **Git 状态**：仓库当前共有约 `140` 项未提交改动（含阶段 1–4 代码、新 UI 美术包 `assets/*.png` 切片、12 语言 `i18n/*.json` 623 键及文档更新），**尚未执行 `git commit`**，版本号仍保持 `2.10.0`（待实机验收定版后再统一升版与提交）。
-- **已部署实测包**：最新 Release 产物已覆盖安装至本机 `<GamePath>/Mods/StardewGallery`（`StardewGallery.dll` SHA-256：`78517AC3B4AB8A03689839BAB8F33A9549EF89027F768D5E79C140CD4C1ACCC1`），玩家数据（`config.json`、`event-photos/`、`user-data/`）完整保留。
+### 1. 当前工作区与发布状态（2.11.0 正式发布）
+- **版本状态**：已定版为 **`2.11.0`**（同步 `StardewGallery.csproj`、`manifest.json`、`CHANGELOG.md`、`README.md` 及 `docs/RELEASE_2.11.0_NOTES.md`，保留稳定 `UniqueID` 与 `EntryDll`）。
+- **实测与正式包**：已通过 `tools/Package-Release.ps1` 生成 `./release/StardewGallery-2.11.0-Nexus.zip` 并同步更新本机 `<GamePath>/Mods/StardewGallery`，玩家数据（`config.json`、`event-photos/`、`user-data/`）完整保留。
 - **美术原稿与备份位置**：
   - 设计师交付的原始未切图美术包位于 `release/StardewGallery-UI-Art-Pack-20261117/`（已在 `StardewGallery.csproj` 中排除入包，`release/` 不纳入 Git 提交）。
   - 被替换的 3 张旧版书本主底图原件已按工作区规范归档备份至仓库外回收目录（附 SHA-256 `MANIFEST.txt`）。
