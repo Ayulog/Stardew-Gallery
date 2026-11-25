@@ -34,6 +34,7 @@ internal static class EncounterClueClassifier
         bool locationAvailable = true)
     {
         if (entry.Kind == StoryKind.Internal
+            || entry.IsControllerEvent
             || parallelBranchUnlocked
             || !locationAvailable
             || state.EventsSeen?.Contains(entry.EventId) == true)

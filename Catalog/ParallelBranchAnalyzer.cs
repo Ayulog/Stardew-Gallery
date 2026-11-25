@@ -34,7 +34,7 @@ internal static class CharacterStoryProgress
 
         foreach (GalleryEvent entry in heartEvents)
         {
-            if (entry.Kind != StoryKind.Heart)
+            if (entry.Kind != StoryKind.Heart || entry.IsControllerEvent)
                 continue;
             if (parallelGroups.TryGetValue(entry.Resolved.Identity, out string? groupId))
             {
@@ -46,7 +46,7 @@ internal static class CharacterStoryProgress
 
         foreach (GalleryEvent entry in heartEvents)
         {
-            if (entry.Kind != StoryKind.Heart)
+            if (entry.Kind != StoryKind.Heart || entry.IsControllerEvent)
                 continue;
             if (parallelGroups.TryGetValue(entry.Resolved.Identity, out string? groupId)
                 && grouped.TryGetValue(groupId, out List<GalleryEvent>? members)

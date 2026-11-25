@@ -27,14 +27,22 @@ internal sealed class StorySearchIndex
         Func<GalleryEvent?, string, string?>? characterKey = null, Func<GalleryEvent, string>? locationKey = null,
         Func<string, string>? sourceText = null, PinyinTable? pinyin = null,
         Func<GalleryEvent, string>? defaultStoryTitle = null,
-        Func<GalleryEvent, EncounterClue>? clueFor = null)
+        Func<GalleryEvent, EncounterClue>? clueFor = null,
+        bool includeControllerEvents = false)
     {
         this.completed = completed ?? new HashSet<string>();
         this.pinyin = pinyin;
         string? CanonicalNpc(GalleryEvent? entry, string id) => characterKey is null ? id : characterKey(entry, id);
         string[] Npcs(GalleryEvent? entry, IEnumerable<string> ids) => ids.Select(id => CanonicalNpc(entry, id))
             .Where(id => id is not null).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
-        var projected = catalog.StoryEntries.DistinctBy(entry => entry.Resolved.Identity)
+        HashSet<string> duplicateVolumeNames = catalog.EventVolumes.Values.Concat(catalog.RuleVolumes.Values)
+            .Where(v => !v.IsVanilla)
+            .DistinctBy(v => v.Key, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(v => v.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var projected = catalog.SearchableEntries(includeControllerEvents).DistinctBy(entry => entry.Resolved.Identity)
             .Select(entry =>
             {
                 string? customOrNamed = names?.Invoke(entry.Resolved.Identity);
@@ -71,7 +79,10 @@ internal sealed class StorySearchIndex
         rows = projected.Select(row =>
         {
             StoryQuerySource source;
-            if (row.Prerequisite is { } prerequisite) source = PrerequisiteSource(prerequisite, catalog.RuleOrigins);
+            if (row.Prerequisite is { } prerequisite)
+                source = PrerequisiteSource(prerequisite, catalog.RuleOrigins, catalog.RuleVolumes, duplicateVolumeNames);
+            else if (catalog.EventVolumes.TryGetValue(row.Identity, out ShelfVolume? volume))
+                source = StoryQuerySource.FromVolume(volume, duplicateVolumeNames.Contains(volume.DisplayName));
             else
             {
                 catalog.Origins.TryGetValue(row.Identity, out EventOriginMatch? origin);
@@ -88,9 +99,18 @@ internal sealed class StorySearchIndex
     /// Without rules (internal event flows only) the source is unknown rather than guessed from related stories.
     /// </summary>
     internal static StoryQuerySource PrerequisiteSource(PrerequisiteEvent prerequisite, IReadOnlyDictionary<string, EventOriginMatch> ruleOrigins)
+        => PrerequisiteSource(prerequisite, ruleOrigins, null, null);
+
+    internal static StoryQuerySource PrerequisiteSource(
+        PrerequisiteEvent prerequisite,
+        IReadOnlyDictionary<string, EventOriginMatch> ruleOrigins,
+        IReadOnlyDictionary<string, ShelfVolume>? ruleVolumes,
+        IReadOnlySet<string>? duplicateVolumeNames)
     {
         StoryQuerySource[] sources = prerequisite.Sources.Select(source => source.RuleId).Distinct(StringComparer.Ordinal)
-            .Select(id => StoryQuerySource.From(ruleOrigins.GetValueOrDefault(id))).ToArray();
+            .Select(id => ruleVolumes is not null && ruleVolumes.TryGetValue(id, out ShelfVolume? volume)
+                ? StoryQuerySource.FromVolume(volume, duplicateVolumeNames?.Contains(volume.DisplayName) == true)
+                : StoryQuerySource.From(ruleOrigins.GetValueOrDefault(id))).ToArray();
         if (sources.Length == 0 || sources.Any(source => source.Key == StoryQuerySource.UnknownKey)) return StoryQuerySource.Unknown;
         if (sources.Any(source => source.Key == StoryQuerySource.AmbiguousKey)
             || sources.Select(source => source.Key).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
@@ -108,9 +128,10 @@ internal sealed class StorySearchIndex
         string? spelling = pinyin is null ? null : PinyinTable.Spelling(query);
         return rows.Where(row => (filter.Kind switch
             {
-                QueryKind.Heart => row.Event?.Kind == StoryKind.Heart,
-                QueryKind.Ordinary => row.Event?.Kind == StoryKind.Ordinary,
+                QueryKind.Heart => row.Event is { Kind: StoryKind.Heart, IsControllerEvent: false },
+                QueryKind.Ordinary => row.Event is { Kind: StoryKind.Ordinary, IsControllerEvent: false },
                 QueryKind.Prerequisite => row.Prerequisite is not null,
+                QueryKind.Controller => row.Event is { IsControllerEvent: true },
                 _ => true
             })
             && (filter.Location is null || string.Equals(row.LocationKey, filter.Location, StringComparison.OrdinalIgnoreCase))

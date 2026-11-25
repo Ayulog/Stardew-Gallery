@@ -24,6 +24,7 @@ internal sealed class GalleryPageState(GalleryPage page)
     internal int Focus { get; set; } = -1;
     internal string? LocationFilter { get; set; }
     internal StoryKind? KindFilter { get; set; }
+    internal string? HomeVolumeKey { get; set; }
     internal string? PrerequisiteId { get; init; }
     // Filter is applied on Query pages and is an isolated draft on Filters pages.
     internal QueryFilter Filter { get; set; } = new();

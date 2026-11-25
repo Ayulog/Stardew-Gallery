@@ -11,65 +11,94 @@ internal sealed class GalleryCharacterPanel(
     GalleryCharacter character,
     IReadOnlyList<GalleryEvent> events,
     ITranslationHelper i18n,
-    Texture2D scene,
     ICharacterAppearance appearance,
-    GalleryCatalog? catalog = null)
+    GalleryCatalog? catalog = null,
+    ScenicBackdropRenderer? scenicRenderer = null)
 {
+    private static RasterizerState? clipRasterizer;
+    private static RasterizerState ClipRasterizer => clipRasterizer ??= new RasterizerState { ScissorTestEnable = true };
+
+    private readonly ScenicWeatherParticles weatherParticles = new();
+
     internal void Prepare() => appearance.Prepare(character.Name, CharacterVisual.Sprite);
 
-    internal void DrawPhoto(SpriteBatch b)
+    internal void DrawPhoto(SpriteBatch b, float menuScale, int drawOffsetX, int drawOffsetY)
     {
+        if (b?.GraphicsDevice is not { } device)
+            return;
+
         Rectangle photo = Bounds(GallerySpreadLayout.PortraitBounds);
         Rectangle backdrop = GalleryDrawing.Inset(photo, -4, -4);
-        // User-confirmed rule: the seasonal day/dusk or night art is drawn in its original colours (no tint overlays).
-        GalleryUiSkin.DrawScene(b, backdrop, scene);
-        appearance.Draw(b, character.Name, CharacterVisual.Sprite, photo, Color.White);
-        DrawWeatherParticles(b, backdrop, ResolveCurrentPalette());
-    }
-
-    private static ScenicWindowPalette ResolveCurrentPalette()
-    {
-        string? weatherId = Game1.currentLocation?.GetWeather()?.Weather;
-        bool greenRain = false;
-        try { greenRain = Utility.isGreenRainDay(); } catch { }
-        return ScenicWindowStyle.Resolve(
-            Game1.currentSeason,
-            Game1.timeOfDay,
-            weatherId,
-            Game1.isRaining,
-            Game1.isSnowing,
-            greenRain);
-    }
-
-    /// <summary>Restrained pixel rain / green-rain motes / snowflakes over the scene; clear weather draws nothing.</summary>
-    private static void DrawWeatherParticles(SpriteBatch b, Rectangle photo, ScenicWindowPalette palette)
-    {
-        double ms = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0d;
-        if (palette.Weather is ScenicWeatherKind.Rain or ScenicWeatherKind.Storm or ScenicWeatherKind.GreenRain)
-        {
-            Color dropColor = palette.Weather == ScenicWeatherKind.GreenRain
-                ? new Color(154, 240, 148) * 0.55f
-                : new Color(200, 222, 255) * 0.5f;
-            int count = palette.Weather == ScenicWeatherKind.Storm ? 16 : 10;
-            int phase = (int)(ms * 0.22);
-            for (int i = 0; i < count; i++)
-            {
-                int rx = photo.X + 16 + ((i * 53 + phase / 2) % Math.Max(24, photo.Width - 32));
-                int ry = photo.Y + 12 + ((i * 41 + phase) % Math.Max(24, photo.Height - 30));
-                b.Draw(Game1.staminaRect, new Rectangle(rx, ry, 2, 8), dropColor);
-            }
+        Rectangle previousScissor = device.ScissorRectangle;
+        RasterizerState? previousRasterizer = device.RasterizerState;
+        Rectangle screenBackdrop = GalleryDrawing.ScaleRectangle(backdrop, menuScale, drawOffsetX, drawOffsetY);
+        Rectangle clip = Rectangle.Intersect(screenBackdrop, device.Viewport.Bounds);
+        if (previousRasterizer?.ScissorTestEnable == true)
+            clip = Rectangle.Intersect(clip, previousScissor);
+        if (clip.Width <= 0 || clip.Height <= 0)
             return;
-        }
-        if (palette.Weather == ScenicWeatherKind.Snow)
+
+        string season = WeddingDateRecord.NormalizeSeason(Game1.currentSeason) ?? "spring";
+        int timeOfDay = Game1.timeOfDay;
+        ScenicTimePhase phase = ScenicWindowRules.ResolveTimePhase(timeOfDay);
+        ScenicWeatherKind weather = ScenicWeatherParticles.ResolveCurrentWeather();
+        ScenicStageLayout layout = ScenicWindowRules.ComputeStageLayout(screenBackdrop.X, screenBackdrop.Y, screenBackdrop.Width, screenBackdrop.Height);
+        Matrix restoreTransform = Matrix.CreateScale(menuScale) * Matrix.CreateTranslation(drawOffsetX, drawOffsetY, 0f);
+
+        // Detach from the book's fractional menuScale matrix so the 96x68 pixel backdrop, 16x32 character sprite,
+        // and native WeatherDebris / rainTexture render in unscaled physical screen pixels at strict integer zoom
+        // (vanilla 4x = Game1.pixelZoom on normal viewports) with zero nearest-neighbor column squashing.
+        b.End();
+        bool batchOpen = false;
+        try
         {
-            int phase = (int)(ms * 0.05);
-            for (int i = 0; i < 12; i++)
-            {
-                int sx = photo.X + 16 + ((i * 47 + phase / 2 + (i % 3) * 7) % Math.Max(24, photo.Width - 32));
-                int sy = photo.Y + 12 + ((i * 37 + phase) % Math.Max(24, photo.Height - 24));
-                b.Draw(Game1.staminaRect, new Rectangle(sx, sy, 3, 3), Color.White * 0.7f);
-            }
+            device.ScissorRectangle = clip;
+            b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, ClipRasterizer, null, Matrix.Identity);
+            batchOpen = true;
+
+            if (scenicRenderer is not null)
+                scenicRenderer.Draw(b, layout, season, timeOfDay, weather);
+            else if (Game1.staminaRect is { } rect)
+                b.Draw(rect, new Rectangle(layout.StageX, layout.StageY, layout.StageWidth, layout.StageHeight),
+                    ScenicBackdropRenderer.FallbackColor(season, phase));
+
+            Color spriteTint = ResolveSpriteTint(phase, weather);
+            if (appearance is CharacterAppearance concreteAppearance)
+                concreteAppearance.DrawScenicSprite(b, character.Name, screenBackdrop, layout, spriteTint);
+            else
+                appearance.Draw(b, character.Name, CharacterVisual.Sprite, screenBackdrop, spriteTint);
+
+            double totalMs = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0d;
+            weatherParticles.Draw(b, layout, season, phase, weather, totalMs);
+
+            b.End();
+            batchOpen = false;
         }
+        finally
+        {
+            if (batchOpen)
+            {
+                try { b.End(); } catch { }
+            }
+            device.ScissorRectangle = previousScissor;
+            b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, previousRasterizer, null, restoreTransform);
+        }
+    }
+
+    private static Color ResolveSpriteTint(ScenicTimePhase phase, ScenicWeatherKind weather)
+    {
+        Color tint = phase switch
+        {
+            ScenicTimePhase.Dusk => new Color(255, 240, 224),
+            ScenicTimePhase.Night => new Color(216, 226, 250),
+            _ => Color.White
+        };
+
+        if (weather == ScenicWeatherKind.GreenRain)
+            return new Color((byte)(tint.R * 230 / 255), (byte)(tint.G * 252 / 255), (byte)(tint.B * 230 / 255));
+        if (weather == ScenicWeatherKind.Storm)
+            return new Color((byte)(tint.R * 228 / 255), (byte)(tint.G * 234 / 255), (byte)(tint.B * 246 / 255));
+        return tint;
     }
 
     // Nothing shown here can change while the page is open, so format it once instead of every frame.

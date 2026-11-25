@@ -78,12 +78,16 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         entry = state.Event is EventIdentity identity ? context.Catalog.Find(identity)
             ?? throw new ArgumentException("The event is no longer in the catalog.", nameof(state))
             : throw new ArgumentException("An event identity is required.", nameof(state));
-        character = entry.Kind == StoryKind.Heart ? GalleryEventNavigation.Owner(context.Catalog, entry, state.CharacterName) : null;
+        character = entry.Kind == StoryKind.Heart && !entry.IsControllerEvent
+            ? GalleryEventNavigation.Owner(context.Catalog, entry, state.CharacterName)
+            : null;
         this.conditions = conditions;
         i18n = context.I18n;
         // Resolve once when opening the page; drawing and scrolling never load event assets.
         EventSourceDisplay source = context.EventSource(entry.Resolved);
-        sourceSummary = source.Summary;
+        sourceSummary = context.Catalog.EventVolumes.TryGetValue(entry.Resolved.Identity, out ShelfVolume? volume) && !volume.IsVanilla
+            ? i18n.Get("source.summary", new { provider = volume.DisplayName })
+            : source.Summary;
         sourceStatus = source.Status;
         sourceParagraphs = source.Details.Where(text => !string.IsNullOrWhiteSpace(text)).ToArray();
         isParallelBranch = context.IsParallelBranch(entry);
@@ -125,7 +129,13 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         statusIcons = context.Textures.ConditionIcons;
         scrollbarTrackTexture = context.Textures.Scrollbar;
         photos = context.Photos;
-        leftPanel = character is null ? null : new GalleryCharacterPanel(character, context.Catalog.HeartEventsFor(character.Name), i18n, context.Textures.Scene, context.Appearance, context.Catalog);
+        leftPanel = character is null ? null : new GalleryCharacterPanel(
+            character,
+            context.Catalog.HeartEventsFor(character.Name),
+            i18n,
+            context.Appearance,
+            context.Catalog,
+            context.ScenicRenderer);
         leftPanel?.Prepare();
         scroll = state.Scroll;
         int initialFocus = state.Focus;
@@ -429,7 +439,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         string locClue = context.Locations.Get(entry.LocationName);
         Rectangle portraitBackdrop = GalleryDrawing.Inset(Bounds(GallerySpreadLayout.PortraitBounds), -4, -4);
         if (leftPanel is not null)
-            leftPanel.DrawPhoto(b);
+            leftPanel.DrawPhoto(b, menuScale, drawOffsetX, drawOffsetY);
         else if (coverTex is not null)
             GalleryPhotos.DrawCover(b, coverTex, portraitBackdrop, unlockedForViewing ? Color.White : new Color(215, 210, 198));
         else if (!seen)
@@ -500,43 +510,43 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         upperRightCloseButton?.draw(b);
         GalleryDrawing.EndScaled(b);
         if (ribbonHover is not null)
-            IClickableMenu.drawHoverText(b, ribbonHover, Game1.smallFont);
+            GalleryDrawing.DrawHoverTextSafe(b, ribbonHover, Game1.smallFont);
         else if (!canReplay && replayBounds.Contains(logicalMouseX, logicalMouseY))
-            IClickableMenu.drawHoverText(b, Game1.parseText(i18n.Get(replayAccess.ReasonKey ?? "event.locked"), Game1.smallFont,
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(i18n.Get(replayAccess.ReasonKey ?? "event.locked"), Game1.smallFont,
                 Math.Max(160, Math.Min(520, viewportWidth - 80))), Game1.smallFont);
         else if (SourceHovered() || Focused(SourceComponentId))
-            IClickableMenu.drawHoverText(b, Game1.parseText(state.SourceExpanded ? i18n.Get("source.collapse")
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(state.SourceExpanded ? i18n.Get("source.collapse")
                 : sourceSummary + "\n" + sourceStatus + "\n" + i18n.Get("source.expand"), Game1.smallFont,
                 Math.Max(160, Math.Min(520, viewportWidth - 80))), Game1.smallFont);
         else if (HasForkSelector() && (ForkRouteHovered() || Focused(ForkRouteComponentId)))
-            IClickableMenu.drawHoverText(b, Game1.parseText(i18n.Get("replay.route-tooltip", new { detail = CurrentForkDetail() }),
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(i18n.Get("replay.route-tooltip", new { detail = CurrentForkDetail() }),
                 Game1.smallFont, Math.Max(160, Math.Min(520, viewportWidth - 80))), Game1.smallFont);
         else if (Bounds(GallerySpreadLayout.DetailEventIdBounds).Contains(logicalMouseX, logicalMouseY)
             || leftPanel is null && Bounds(GallerySpreadLayout.LeftRowBounds(1)).Contains(logicalMouseX, logicalMouseY))
-            IClickableMenu.drawHoverText(b, Game1.parseText(context.CardTitle(entry, character?.Name) + "\n" + i18n.Get("event-detail.event-id", new { id = entry.EventId }),
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(context.CardTitle(entry, character?.Name) + "\n" + i18n.Get("event-detail.event-id", new { id = entry.EventId }),
                 Game1.smallFont, Math.Max(160, Math.Min(560, viewportWidth - 80))), Game1.smallFont);
         else if (ToScreen(Bounds(GallerySpreadLayout.DetailLocationBounds)).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
-            IClickableMenu.drawHoverText(b, Game1.parseText(LocationAndMusicLine(), Game1.smallFont,
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(LocationAndMusicLine(), Game1.smallFont,
                 Math.Max(160, Math.Min(520, viewportWidth - 80))), Game1.smallFont);
         else if (ToScreen(photoBounds).Contains(Game1.getMouseX(true), Game1.getMouseY(true)))
-            IClickableMenu.drawHoverText(b, i18n.Get("photo.title"), Game1.smallFont);
+            GalleryDrawing.DrawHoverTextSafe(b, i18n.Get("photo.title"), Game1.smallFont);
         drawMouse(b);
     }
 
     private void DrawFavoriteWoodButton(SpriteBatch b, Rectangle bounds, bool favorited, bool hot)
     {
         GalleryUiSkin.DrawWoodButton(b, bounds, "", hot ? UiButtonState.Hover : UiButtonState.Normal);
-        string text = i18n.Get(favorited ? "favorite.active" : "favorite.add");
+        string text = GalleryDrawing.SanitizeForFont(Game1.smallFont, i18n.Get(favorited ? "favorite.active" : "favorite.add"));
         int iconSize = 20;
         float textScale = Math.Min(0.95f, (bounds.Height - 2f) / Math.Max(1f, Game1.smallFont.LineSpacing));
         int innerWidth = bounds.Width - 24;
-        string fitted = GalleryTextFit.Ellipsize(text, Math.Max(20, innerWidth - iconSize - 6) / textScale, s => Game1.smallFont.MeasureString(s).X);
-        Vector2 size = Game1.smallFont.MeasureString(fitted) * textScale;
+        string fitted = GalleryTextFit.Ellipsize(text, Math.Max(20, innerWidth - iconSize - 6) / textScale, s => GalleryDrawing.MeasureStringSafe(Game1.smallFont, s).X);
+        Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fitted) * textScale;
         int totalW = iconSize + 6 + (int)Math.Ceiling(size.X);
         int startX = bounds.Center.X - totalW / 2;
         GalleryUiSkin.DrawBadge(b, favorited ? UiBadge.HeartFull : UiBadge.HeartEmpty,
             new Rectangle(startX, bounds.Center.Y - iconSize / 2, iconSize, iconSize));
-        b.DrawString(Game1.smallFont, fitted, new Vector2(startX + iconSize + 6, bounds.Center.Y - size.Y / 2f),
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fitted, new Vector2(startX + iconSize + 6, bounds.Center.Y - size.Y / 2f),
             new Color(62, 32, 12), 0f, Vector2.Zero, textScale, SpriteEffects.None, 0f);
     }
 
@@ -602,7 +612,8 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             : i18n.Get(access.ReasonKey ?? "event.locked");
         string[] lines =
         [
-            i18n.Get(entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"),
+            i18n.Get(entry.IsControllerEvent ? "query.kind-controller"
+                : entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary"),
             i18n.Get("event-detail.event-id", new { id = entry.EventId }),
             i18n.Get("event-detail.location", new { location = GalleryConditionPresentation.Location(entry, i18n) }),
             sourceSummary,
@@ -613,9 +624,10 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
         for (int row = 0; row < lines.Length; row++)
         {
             Rectangle area = GalleryDrawing.Inset(Bounds(GallerySpreadLayout.LeftRowBounds(row)), 34, 4);
-            string fitted = GalleryTextFit.Ellipsize(lines[row], area.Width / rowScale, s => Game1.smallFont.MeasureString(s).X);
-            Vector2 size = Game1.smallFont.MeasureString(fitted) * rowScale;
-            b.DrawString(Game1.smallFont, fitted, new Vector2(area.Center.X - size.X / 2f, area.Center.Y - size.Y / 2f),
+            string safeLine = GalleryDrawing.SanitizeForFont(Game1.smallFont, lines[row]);
+            string fitted = GalleryTextFit.Ellipsize(safeLine, area.Width / rowScale, s => GalleryDrawing.MeasureStringSafe(Game1.smallFont, s).X);
+            Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fitted) * rowScale;
+            GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fitted, new Vector2(area.Center.X - size.X / 2f, area.Center.Y - size.Y / 2f),
                 GallerySpreadDrawing.Ink, 0f, Vector2.Zero, rowScale, SpriteEffects.None, 0f);
         }
     }
@@ -623,10 +635,12 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private static void DrawHeaderText(SpriteBatch b, string text, Rectangle bounds, bool wrap = false)
     {
         if (wrap)
-            text = Game1.parseText(text, Game1.smallFont, bounds.Width);
-        Vector2 size = Game1.smallFont.MeasureString(text);
+            text = GalleryDrawing.ParseTextSafe(text, Game1.smallFont, bounds.Width);
+        else
+            text = GalleryDrawing.SanitizeForFont(Game1.smallFont, text);
+        Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, text);
         float scale = Math.Min(1f, Math.Min(bounds.Width / Math.Max(1f, size.X), bounds.Height / Math.Max(1f, size.Y)));
-        b.DrawString(Game1.smallFont, text, new Vector2(bounds.X, wrap ? bounds.Y : bounds.Center.Y - size.Y * scale / 2f), GallerySpreadDrawing.Ink,
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, text, new Vector2(bounds.X, wrap ? bounds.Y : bounds.Center.Y - size.Y * scale / 2f), GallerySpreadDrawing.Ink,
             0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
@@ -669,7 +683,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
             {
                 if (y > contentBounds.Y - scroll)
                     b.Draw(Game1.staminaRect, new Rectangle(contentBounds.X, y, contentBounds.Width, 1), GallerySpreadDrawing.LightInk);
-                b.DrawString(Game1.smallFont, text, new Vector2(contentBounds.X + RowPadding, y + RowPadding), Game1.textColor);
+                GalleryDrawing.DrawStringSafe(b, Game1.smallFont, text, new Vector2(contentBounds.X + RowPadding, y + RowPadding), Game1.textColor);
             }
             y += height;
         }
@@ -683,7 +697,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private static string WrapSourceText(string text, int width)
     {
         List<string> lines = [];
-        foreach (string line in Game1.parseText(text, Game1.smallFont, width).Replace("\r", "").Split('\n'))
+        foreach (string line in GalleryDrawing.ParseTextSafe(text, Game1.smallFont, width).Replace("\r", "").Split('\n'))
         {
             if (line.Length == 0) { lines.Add(""); continue; }
             int[] starts = StringInfo.ParseCombiningCharacters(line);
@@ -695,7 +709,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
                 {
                     int middle = low + (high - low) / 2;
                     int end = middle == starts.Length ? line.Length : starts[middle];
-                    if (Game1.smallFont.MeasureString(line[starts[offset]..end]).X <= width)
+                    if (GalleryDrawing.MeasureStringSafe(Game1.smallFont, line[starts[offset]..end]).X <= width)
                     { fit = middle; low = middle + 1; }
                     else high = middle - 1;
                 }
@@ -715,7 +729,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private string Wrap(string text, int width)
     {
         if (!wraps.TryGetValue((text, width), out string? wrapped))
-            wraps[(text, width)] = wrapped = Game1.parseText(text, Game1.smallFont, width);
+            wraps[(text, width)] = wrapped = GalleryDrawing.ParseTextSafe(text, Game1.smallFont, width);
         return wrapped;
     }
 
@@ -831,7 +845,7 @@ internal sealed class GalleryEventDetailMenu : IClickableMenu
     private int DrawWrapped(SpriteBatch b, string text, int x, int y, int width, Color color)
     {
         string wrapped = Wrap(text, width);
-        b.DrawString(Game1.smallFont, wrapped, new Vector2(x, y), color);
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, wrapped, new Vector2(x, y), color);
         return wrapped.Split('\n').Length * Game1.smallFont.LineSpacing;
     }
 

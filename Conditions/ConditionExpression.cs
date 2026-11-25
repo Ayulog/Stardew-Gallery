@@ -45,5 +45,6 @@ internal sealed record UpcomingFestivalCondition(int Days, ConditionSource Sourc
 internal sealed record NativeQueryCondition(string Query, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
 internal sealed record SkillCondition(string Skill, int MinimumLevel, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
 internal sealed record LegacySendMailCondition(string MailId, bool InMailboxToday, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
+internal sealed record QuestCondition(string QuestId, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);
 internal enum OpaqueConditionKind { UnknownType, MalformedKnown, MalformedSyntax }
 internal sealed record OpaqueCondition(OpaqueConditionKind Kind, string? KnownConditionName, ConditionSource Source, string RawSegment, bool Negated) : ConditionExpression(Source, RawSegment, Negated);

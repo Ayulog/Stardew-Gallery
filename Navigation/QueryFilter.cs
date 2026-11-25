@@ -1,6 +1,6 @@
 namespace StardewGallery;
 
-internal enum QueryKind { All, Heart, Ordinary, Prerequisite }
+internal enum QueryKind { All, Heart, Ordinary, Prerequisite, Controller }
 internal enum QueryCompletion { Any, Complete, Incomplete }
 
 internal sealed record QueryFilter
@@ -14,7 +14,7 @@ internal sealed record QueryFilter
 }
 
 /// <summary>A confirmed original provider, or an explicit unresolved category; candidate mods are never treated as confirmed.</summary>
-internal sealed record StoryQuerySource(string Key, string Name, string? ModId = null)
+internal sealed record StoryQuerySource(string Key, string Name, string? ModId = null, bool ShowModIdInLabel = true)
 {
     internal const string GameKey = "game", UnknownKey = "unknown", AmbiguousKey = "ambiguous";
     internal static StoryQuerySource Unknown { get; } = new(UnknownKey, "Unknown");
@@ -29,11 +29,21 @@ internal sealed record StoryQuerySource(string Key, string Name, string? ModId =
             : new(ModKey(provider.UniqueId), string.IsNullOrWhiteSpace(provider.Name) ? provider.UniqueId : provider.Name, provider.UniqueId);
     }
 
+    internal static StoryQuerySource FromVolume(ShelfVolume volume, bool disambiguate = false)
+    {
+        if (volume.IsVanilla)
+            return new(GameKey, volume.DisplayName);
+        string? modId = volume.Key.StartsWith("mod:", StringComparison.OrdinalIgnoreCase) ? volume.Key[4..] : null;
+        return new(volume.Key, volume.DisplayName, modId, disambiguate);
+    }
+
     internal string Label(Func<string, string>? translate = null)
-        => ModId is not null ? $"{Name} ({ModId})" : translate?.Invoke(Key switch
-        {
-            GameKey => "source.game",
-            AmbiguousKey => "source.origin-ambiguous",
-            _ => "source.unknown"
-        }) ?? Name;
+        => ModId is not null
+            ? (ShowModIdInLabel ? $"{Name} ({ModId})" : Name)
+            : translate?.Invoke(Key switch
+            {
+                GameKey => "source.game",
+                AmbiguousKey => "source.origin-ambiguous",
+                _ => "source.unknown"
+            }) ?? Name;
 }

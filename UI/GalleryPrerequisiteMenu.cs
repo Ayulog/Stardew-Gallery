@@ -499,7 +499,7 @@ internal sealed class GalleryPrerequisiteMenu : IClickableMenu
                 hoverTooltip = PrerequisitePresentation.Title(entry, context) + "\n" + i18n.Get("event-detail.event-id", new { id = entry.EventId });
         }
         if (hoverTooltip is not null)
-            drawHoverText(b, Game1.parseText(hoverTooltip, Game1.smallFont, Math.Max(180, Math.Min(560, viewportWidth - 80))), Game1.smallFont);
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(hoverTooltip, Game1.smallFont, Math.Max(180, Math.Min(560, viewportWidth - 80))), Game1.smallFont);
         drawMouse(b);
     }
 
@@ -518,9 +518,10 @@ internal sealed class GalleryPrerequisiteMenu : IClickableMenu
         for (int i = 0; i < lines.Length; i++)
         {
             Rectangle area = GalleryDrawing.Inset(GalleryBookChrome.ToRect(GallerySpreadLayout.LeftRowBounds(i)), 34, 4);
-            string fitted = GalleryTextFit.Ellipsize(lines[i], area.Width / rowScale, s => Game1.smallFont.MeasureString(s).X);
-            Vector2 size = Game1.smallFont.MeasureString(fitted) * rowScale;
-            b.DrawString(Game1.smallFont, fitted, new Vector2(area.Center.X - size.X / 2f, area.Center.Y - size.Y / 2f),
+            string safeLine = GalleryDrawing.SanitizeForFont(Game1.smallFont, lines[i]);
+            string fitted = GalleryTextFit.Ellipsize(safeLine, area.Width / rowScale, s => GalleryDrawing.MeasureStringSafe(Game1.smallFont, s).X);
+            Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fitted) * rowScale;
+            GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fitted, new Vector2(area.Center.X - size.X / 2f, area.Center.Y - size.Y / 2f),
                 GallerySpreadDrawing.Ink, 0f, Vector2.Zero, rowScale, SpriteEffects.None, 0f);
         }
     }
@@ -577,15 +578,15 @@ internal sealed class GalleryPrerequisiteMenu : IClickableMenu
                 b.Draw(Game1.staminaRect, new Rectangle(r.X, r.Y, r.Width, 1), GallerySpreadDrawing.LightInk);
 
             int textWidth = r.Width - RowPadding * 2 - (row.Status is not null ? StatusSize + StatusGap : 0);
-            string wrapped = Game1.parseText(row.Text, Game1.smallFont, Math.Max(80, textWidth));
+            string wrapped = GalleryDrawing.ParseTextSafe(row.Text, Game1.smallFont, Math.Max(80, textWidth));
             Color ink = row.IsSectionHeader ? GallerySpreadDrawing.Ink : Game1.textColor;
-            b.DrawString(Game1.smallFont, wrapped, new Vector2(r.X + RowPadding, r.Y + RowPadding), ink);
+            GalleryDrawing.DrawStringSafe(b, Game1.smallFont, wrapped, new Vector2(r.X + RowPadding, r.Y + RowPadding), ink);
 
             if (row.Note is { Length: > 0 } note)
             {
                 int bodyH = wrapped.Split('\n').Length * Game1.smallFont.LineSpacing;
-                string wrappedNote = Game1.parseText(note, Game1.smallFont, Math.Max(80, textWidth));
-                b.DrawString(Game1.smallFont, wrappedNote, new Vector2(r.X + RowPadding, r.Y + RowPadding + bodyH + 6), new Color(125, 90, 35));
+                string wrappedNote = GalleryDrawing.ParseTextSafe(note, Game1.smallFont, Math.Max(80, textWidth));
+                GalleryDrawing.DrawStringSafe(b, Game1.smallFont, wrappedNote, new Vector2(r.X + RowPadding, r.Y + RowPadding + bodyH + 6), new Color(125, 90, 35));
             }
 
             if (row.Status is { } status)
@@ -651,9 +652,9 @@ internal sealed class GalleryPrerequisiteMenu : IClickableMenu
             else
             {
                 int textW = contentBounds.Width - RowPadding * 2 - (row.Status is not null ? StatusSize + StatusGap : 0);
-                int linesH = Game1.parseText(row.Text, Game1.smallFont, Math.Max(80, textW)).Split('\n').Length * Game1.smallFont.LineSpacing;
+                int linesH = GalleryDrawing.ParseTextSafe(row.Text, Game1.smallFont, Math.Max(80, textW)).Split('\n').Length * Game1.smallFont.LineSpacing;
                 if (row.Note is { Length: > 0 } note)
-                    linesH += 6 + Game1.parseText(note, Game1.smallFont, Math.Max(80, textW)).Split('\n').Length * Game1.smallFont.LineSpacing;
+                    linesH += 6 + GalleryDrawing.ParseTextSafe(note, Game1.smallFont, Math.Max(80, textW)).Split('\n').Length * Game1.smallFont.LineSpacing;
                 h = Math.Max(StatusSize, linesH) + RowPadding * 2;
             }
             rowRects.Add(new Rectangle(contentBounds.X, y, contentBounds.Width, h));

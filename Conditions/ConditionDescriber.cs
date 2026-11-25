@@ -7,6 +7,11 @@ internal sealed record PlainTextValue(string Value) : ConditionTextValue;
 internal sealed record NumberTextValue(double Value) : ConditionTextValue;
 internal sealed record NpcTextValue(string Name) : ConditionTextValue;
 internal sealed record ItemTextValue(string Id) : ConditionTextValue;
+internal sealed record MailTextValue(string MailId) : ConditionTextValue;
+internal sealed record RecipeTextValue(string Name, bool IsCooking) : ConditionTextValue;
+internal sealed record BuildingTextValue(string Id) : ConditionTextValue;
+internal sealed record MonsterTextValue(string Id) : ConditionTextValue;
+internal sealed record QuestTextValue(string Id) : ConditionTextValue;
 internal sealed record TimeTextValue(int Value) : ConditionTextValue;
 internal sealed record TermTextValue(string Group, string Value) : ConditionTextValue;
 internal sealed record ListTextValue(IReadOnlyList<ConditionTextValue> Values) : ConditionTextValue;
@@ -25,7 +30,7 @@ internal static class ConditionDescriber
         SawEventCondition x => NamedNegative(x, "condition.seen", "condition.seen-not", ("id", List(x.EventIds.Select(Id)))),
         MissingPetCondition x => Named(x, x.PetType is null ? "condition.missing-pet" : "condition.missing-pet-type", ("type", Text(x.PetType ?? ""))),
         IsHostCondition x => Named(x, "condition.is-host"),
-        MailCondition x => NamedNegative(x, x.Scope switch { ConditionPlayerScope.HostPlayer => "condition.mail-host", ConditionPlayerScope.HostOrLocal => "condition.mail-host-or-local", _ => "condition.mail" }, x.Scope switch { ConditionPlayerScope.HostPlayer => "condition.mail-host-not", ConditionPlayerScope.HostOrLocal => "condition.mail-host-or-local-not", _ => "condition.mail-not" }, ("id", Id(x.MailId))),
+        MailCondition x => NamedNegative(x, x.Scope switch { ConditionPlayerScope.HostPlayer => "condition.mail-host", ConditionPlayerScope.HostOrLocal => "condition.mail-host-or-local", _ => "condition.mail" }, x.Scope switch { ConditionPlayerScope.HostPlayer => "condition.mail-host-not", ConditionPlayerScope.HostOrLocal => "condition.mail-host-or-local-not", _ => "condition.mail-not" }, ("id", new MailTextValue(x.MailId))),
         WorldStateCondition x => NamedNegative(x, "condition.world-state", "condition.world-state-not", ("id", Id(x.Id))),
         EarnedMoneyCondition x => Named(x, "condition.earned-money", ("amount", Num(x.Minimum))),
         HasMoneyCondition x => Named(x, "condition.has-money", ("amount", Num(x.Minimum))),
@@ -63,7 +68,8 @@ internal static class ConditionDescriber
         UpcomingFestivalCondition x => NamedNegative(x, "condition.upcoming-festival", "condition.no-upcoming-festival", ("days", Num(x.Days))),
         NativeQueryCondition x => DescribeQuery(x),
         SkillCondition x => Named(x, "condition.skill", ("skill", Term("skill", x.Skill)), ("level", Num(x.MinimumLevel))),
-        LegacySendMailCondition x => Named(x with { Negated = false }, "condition.special-mail"),
+        LegacySendMailCondition x => Named(x with { Negated = false }, "condition.special-mail", ("id", new MailTextValue(x.MailId))),
+        QuestCondition x => Named(x, "condition.quest", ("quest", new QuestTextValue(x.QuestId))),
         OpaqueCondition x => Named(x with { Negated = false }, x.Kind != OpaqueConditionKind.UnknownType ? "condition.unrecognized" : "condition.custom"),
         _ => Named(c with { Negated = false }, "condition.custom")
     };
@@ -71,7 +77,47 @@ internal static class ConditionDescriber
     private static ConditionTextSpec DescribeQuery(NativeQueryCondition condition)
         => SafeGameQuery.TryParse(condition.Query, out var clauses)
             ? DescribeClauses(clauses, condition)
-            : Named(condition, "condition.native-query", ("query", Text(condition.Query)));
+            : Named(condition, "condition.native-query", ("query", Text(StripCustomQueryPrefixes(condition.Query))));
+
+    internal static string StripCustomQueryPrefixes(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query) || GameQuerySplit.HasUnclosedQuote(query, ','))
+            return query;
+        string[] clauses = GameQuerySplit.Clauses(query);
+        if (clauses.Length == 0)
+            return query;
+        for (int i = 0; i < clauses.Length; i++)
+        {
+            string clause = clauses[i];
+            string trimmed = clause.TrimStart();
+            if (trimmed.Length == 0 || trimmed.StartsWith('"'))
+                continue;
+            int ws = 0;
+            while (ws < trimmed.Length && !char.IsWhiteSpace(trimmed[ws]))
+                ws++;
+            string head = trimmed[..ws];
+            string tail = trimmed[ws..];
+            bool neg = head.StartsWith('!');
+            string name = neg ? head[1..] : head;
+            if (name.Length == 0 || name.StartsWith('!'))
+                continue;
+            if (name.Contains('/'))
+            {
+                int slash = name.LastIndexOf('/');
+                if (slash > 0 && slash < name.Length - 1)
+                    name = name[(slash + 1)..];
+            }
+            else if (name.Contains('.'))
+            {
+                int lastDot = name.LastIndexOf('.');
+                int underscore = name.IndexOf('_', lastDot + 1);
+                if (underscore > lastDot && underscore < name.Length - 1)
+                    name = name[(underscore + 1)..];
+            }
+            clauses[i] = (neg ? "!" : "") + name + tail;
+        }
+        return string.Join(", ", clauses);
+    }
 
     private static ConditionTextSpec DescribeClauses(IReadOnlyList<SafeQueryClause> clauses, ConditionExpression source)
     {
@@ -135,7 +181,7 @@ internal static class ConditionDescriber
             "WORLD_STATE_ID" => NamedNegative(source, "condition.world-state", "condition.world-state-not", ("id", List(a.Select(Id)))),
             "BUILDINGS_CONSTRUCTED" => Named(source, a.Length > 4 && bool.Parse(a[4]) ? "condition.query-buildings-pending" : "condition.query-buildings",
                 ("location", a[0].Equals("All", StringComparison.OrdinalIgnoreCase) ? Term("location-key", "all") : QueryLocation(a[0])),
-                ("building", a.Length < 2 || a[1].Equals("All", StringComparison.OrdinalIgnoreCase) ? Term("building", "all") : Text(a[1])),
+                ("building", a.Length < 2 || a[1].Equals("All", StringComparison.OrdinalIgnoreCase) ? Term("building", "all") : new BuildingTextValue(a[1])),
                 ("count", a.Length > 2 ? Range(a, 2) : new RangeTextValue(1, null))),
             "PLAYER_HEARTS" or "PLAYER_FRIENDSHIP_POINTS" => a.Length == 3 ? Named(source,
                 clause.Name == "PLAYER_HEARTS" ? "condition.query-hearts" : "condition.query-points",
@@ -149,12 +195,12 @@ internal static class ConditionDescriber
             "PLAYER_HAS_RUN_TRIGGER_ACTION" => Named(source, "condition.query-run", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
             "PLAYER_HAS_DIALOGUE_ANSWER" => Named(source, "condition.query-dialogue-answer", ("player", Player(a[0])), ("ids", List(a.Skip(1).Select(Id)))),
             "PLAYER_VISITED_LOCATION" => Named(source, "condition.query-visited", ("player", Player(a[0])), ("locations", List(a.Skip(1).Select(QueryLocation)))),
-            "PLAYER_HAS_MAIL" => Named(source, "condition.query-mail", ("player", Player(a[0])), ("id", Id(a[1])),
+            "PLAYER_HAS_MAIL" => Named(source, "condition.query-mail", ("player", Player(a[0])), ("id", new MailTextValue(a[1])),
                 ("state", Term("mail-state", a.Length > 2 ? a[2] : "any"))),
             "PLAYER_HAS_ITEM" => Named(source, "condition.query-item", ("player", Player(a[0])), ("item", new ItemTextValue(a[1])),
                 ("count", a.Length > 2 ? Range(a, 2) : new RangeTextValue(1, null))),
-            "PLAYER_HAS_CRAFTING_RECIPE" => Named(source, "condition.query-crafting-recipe", ("player", Player(a[0])), ("recipe", Text(string.Join(' ', a.Skip(1))))),
-            "PLAYER_HAS_COOKING_RECIPE" => Named(source, "condition.query-cooking-recipe", ("player", Player(a[0])), ("recipe", Text(string.Join(' ', a.Skip(1))))),
+            "PLAYER_HAS_CRAFTING_RECIPE" => Named(source, "condition.query-crafting-recipe", ("player", Player(a[0])), ("recipe", new RecipeTextValue(string.Join(' ', a.Skip(1)), false))),
+            "PLAYER_HAS_COOKING_RECIPE" => Named(source, "condition.query-cooking-recipe", ("player", Player(a[0])), ("recipe", new RecipeTextValue(string.Join(' ', a.Skip(1)), true))),
             "PLAYER_HAS_ACHIEVEMENT" => Named(source, "condition.query-achievement", ("player", Player(a[0])), ("id", Num(SafeGameQuery.ParseInt(a[1])))),
             "PLAYER_HAS_SECRET_NOTE" => Named(source, "condition.query-secret-note", ("player", Player(a[0])), ("id", Num(SafeGameQuery.ParseInt(a[1])))),
             "PLAYER_GENDER" => Named(source, "condition.query-gender", ("player", Player(a[0])),
@@ -195,7 +241,7 @@ internal static class ConditionDescriber
         int countIndex = 1 + monsters.Length;
         RangeTextValue count = countIndex < a.Length ? Range(a, countIndex) : new RangeTextValue(1, null);
         return Named(source, "condition.query-killed-monsters",
-            ("player", Player(a[0])), ("monsters", List(monsters.Select(Text))), ("count", count));
+            ("player", Player(a[0])), ("monsters", List(monsters.Select(id => (ConditionTextValue)new MonsterTextValue(id)))), ("count", count));
     }
 
     private static TermTextValue Player(string value) => Term("player", value);
@@ -240,14 +286,128 @@ internal static class ConditionDescriber
     {
         "sun" => "sunny", "rain" => "rainy", "storm" => "stormy", "snow" => "snowy", "debris" => "wind", _ => value
     };
+
+    internal static MailDisplayInfo ExtractMailInfo(string? rawMailEntry, Func<string, string>? parseText = null)
+    {
+        if (rawMailEntry is null)
+            return new MailDisplayInfo(MailLookupKind.HiddenStoryFlag);
+        int marker = rawMailEntry.IndexOf("[#]", StringComparison.Ordinal);
+        if (marker < 0)
+            return new MailDisplayInfo(MailLookupKind.MailNoTitle);
+        string rawTitle = rawMailEntry[(marker + 3)..].Trim();
+        if (rawTitle.Length == 0)
+            return new MailDisplayInfo(MailLookupKind.MailNoTitle);
+        string parsed = (parseText is not null ? parseText(rawTitle) : rawTitle).Trim();
+        return parsed.Length == 0
+            ? new MailDisplayInfo(MailLookupKind.MailNoTitle)
+            : new MailDisplayInfo(MailLookupKind.MailTitled, parsed);
+    }
+
+    internal static string? ExtractRecipeDisplayName(string? rawRecipeEntry, bool isCooking, Func<string, string?>? resolveItem = null)
+    {
+        if (string.IsNullOrWhiteSpace(rawRecipeEntry))
+            return null;
+        string[] fields = rawRecipeEntry.Split('/');
+        int displayIndex = isCooking ? 4 : 5;
+        if (fields.Length > displayIndex && !string.IsNullOrWhiteSpace(fields[displayIndex]))
+            return fields[displayIndex].Trim();
+        if (fields.Length > 2 && !string.IsNullOrWhiteSpace(fields[2]) && resolveItem is not null)
+        {
+            string outputToken = fields[2].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+            if (outputToken.Length == 0)
+                return null;
+            if (!isCooking && fields.Length > 3 && fields[3].Trim().Equals("true", StringComparison.OrdinalIgnoreCase) && !outputToken.StartsWith('('))
+                outputToken = "(BC)" + outputToken;
+            string? resolved = resolveItem(outputToken);
+            if (!string.IsNullOrWhiteSpace(resolved))
+                return resolved;
+        }
+        return null;
+    }
+
+    internal static string ExtractMonsterDisplayName(string? rawMonsterEntry, string fallbackId)
+    {
+        if (string.IsNullOrWhiteSpace(rawMonsterEntry))
+            return fallbackId;
+        string[] fields = rawMonsterEntry.Split('/');
+        return fields.Length > 14 && !string.IsNullOrWhiteSpace(fields[14])
+            ? fields[14].Trim()
+            : fallbackId;
+    }
+
+    internal static string? ExtractQuestTitle(string? rawQuestEntry)
+    {
+        if (string.IsNullOrWhiteSpace(rawQuestEntry))
+            return null;
+        string[] fields = rawQuestEntry.Split('/');
+        return fields.Length > 1 && !string.IsNullOrWhiteSpace(fields[1])
+            ? fields[1].Trim()
+            : null;
+    }
 }
 
-internal sealed record ConditionDisplayResolver(Func<string, string> Npc, Func<string, string?> Item, Func<string, string, string> Term, Func<int, string> Time);
+internal enum MailLookupKind { Unknown, MailNoTitle, MailTitled, HiddenStoryFlag }
+internal readonly record struct MailDisplayInfo(MailLookupKind Kind, string? Title = null);
+
+internal sealed record ConditionDisplayResolver(Func<string, string> Npc, Func<string, string?> Item, Func<string, string, string> Term, Func<int, string> Time)
+{
+    internal Func<string, MailDisplayInfo>? Mail { get; init; }
+    internal Func<string, bool, string?>? Recipe { get; init; }
+    internal Func<string, string?>? Building { get; init; }
+    internal Func<string, string?>? Monster { get; init; }
+    internal Func<string, string?>? Quest { get; init; }
+}
 
 internal static class ConditionTextFormatter
 {
     internal static string Format(ConditionTextSpec spec, Func<string, IReadOnlyDictionary<string, string>, string> translate, ConditionDisplayResolver resolver)
     {
+        if (resolver.Mail is { } mailLookup && spec.Arguments.TryGetValue("id", out ConditionTextValue? mailArg) && mailArg is MailTextValue mailVal)
+        {
+            MailDisplayInfo info = mailLookup(mailVal.MailId);
+            if (spec.LocalizationKey == "condition.special-mail")
+            {
+                if (info.Kind == MailLookupKind.MailTitled && !string.IsNullOrWhiteSpace(info.Title))
+                    return translate("condition.legacy-send-mail", new Dictionary<string, string> { ["id"] = info.Title });
+                if (info.Kind == MailLookupKind.MailNoTitle)
+                    return translate("condition.legacy-send-mail", new Dictionary<string, string> { ["id"] = mailVal.MailId });
+                return translate("condition.special-mail", new Dictionary<string, string>());
+            }
+            if (spec.LocalizationKey is "condition.mail" or "condition.mail-host" or "condition.mail-host-or-local")
+            {
+                if (info.Kind == MailLookupKind.HiddenStoryFlag)
+                    return translate(spec.Negated ? "condition.story-flag-not" : "condition.story-flag",
+                        new Dictionary<string, string> { ["id"] = mailVal.MailId });
+                if (info.Kind == MailLookupKind.MailTitled && !string.IsNullOrWhiteSpace(info.Title))
+                    return translate(spec.Negated ? "condition.mail-titled-not" : "condition.mail-titled",
+                        new Dictionary<string, string> { ["title"] = info.Title });
+            }
+            if (spec.LocalizationKey == "condition.query-mail")
+            {
+                if (info.Kind == MailLookupKind.HiddenStoryFlag)
+                    return translate(spec.Negated ? "condition.story-flag-not" : "condition.story-flag",
+                        new Dictionary<string, string> { ["id"] = mailVal.MailId });
+                if (info.Kind == MailLookupKind.MailTitled && !string.IsNullOrWhiteSpace(info.Title))
+                {
+                    bool isDefaultPlayer = spec.Arguments.TryGetValue("player", out ConditionTextValue? pVal)
+                        && pVal is TermTextValue pTerm && pTerm.Value.ToUpperInvariant() is "CURRENT" or "TARGET";
+                    bool isDefaultState = spec.Arguments.TryGetValue("state", out ConditionTextValue? sVal)
+                        && sVal is TermTextValue sTerm && sTerm.Value.ToLowerInvariant() is "any" or "received";
+                    if (isDefaultPlayer && isDefaultState)
+                        return translate(spec.Negated ? "condition.mail-titled-not" : "condition.mail-titled",
+                            new Dictionary<string, string> { ["title"] = info.Title });
+
+                    Dictionary<string, string> queryArgs = spec.Arguments.ToDictionary(
+                        pair => pair.Key,
+                        pair => pair.Key == "id" ? info.Title : FormatValue(pair.Value, resolver, translate));
+                    string queryText = translate(spec.LocalizationKey, queryArgs);
+                    return spec.Negated
+                        ? translate("condition.not", new Dictionary<string, string> { ["condition"] = queryText })
+                        : queryText;
+                }
+            }
+        }
+
         Dictionary<string, string> args = spec.Arguments.ToDictionary(pair => pair.Key, pair => FormatValue(pair.Value, resolver, translate));
         string key = spec.Negated && spec.NaturalNegativeKey is not null ? spec.NaturalNegativeKey : spec.LocalizationKey;
         string text = translate(key, args);
@@ -279,11 +439,16 @@ internal static class ConditionTextFormatter
         return parts.Length == 2 && int.TryParse(parts[0], out from) && int.TryParse(parts[1], out to);
     }
 
-    private static string ResolveItem(string id, ConditionDisplayResolver resolver)
+    private static string ResolveItem(string id, ConditionDisplayResolver resolver, Func<string, IReadOnlyDictionary<string, string>, string> translate)
     {
         string? name = resolver.Item(id);
-        return string.IsNullOrWhiteSpace(name) ? id : name;
+        return string.IsNullOrWhiteSpace(name)
+            ? translate("item.unknown", new Dictionary<string, string> { ["id"] = id })
+            : name;
     }
+
+    private static string ResolveOptional(string? resolved, string fallback)
+        => string.IsNullOrWhiteSpace(resolved) ? fallback : resolved;
 
     private static string FormatFriendship(int points, Func<string, IReadOnlyDictionary<string, string>, string> translate)
         => translate("condition.hearts-value", new Dictionary<string, string>
@@ -302,7 +467,12 @@ internal static class ConditionTextFormatter
         PlainTextValue x => x.Value,
         NumberTextValue x => x.Value.ToString("0.##", CultureInfo.CurrentCulture),
         NpcTextValue x => resolver.Npc(x.Name),
-        ItemTextValue x => ResolveItem(x.Id, resolver),
+        ItemTextValue x => ResolveItem(x.Id, resolver, translate),
+        MailTextValue x => x.MailId,
+        RecipeTextValue x => ResolveOptional(resolver.Recipe?.Invoke(x.Name, x.IsCooking), x.Name),
+        BuildingTextValue x => ResolveOptional(resolver.Building?.Invoke(x.Id), x.Id),
+        MonsterTextValue x => ResolveOptional(resolver.Monster?.Invoke(x.Id), x.Id),
+        QuestTextValue x => ResolveOptional(resolver.Quest?.Invoke(x.Id), x.Id),
         TimeTextValue x => resolver.Time(x.Value),
         TermTextValue x => resolver.Term(x.Group, x.Value),
         CalendarDateTextValue x => translate("condition.season-date", new Dictionary<string, string>
@@ -317,7 +487,7 @@ internal static class ConditionTextFormatter
                 { ["min"] = x.Min.ToString(CultureInfo.CurrentCulture), ["max"] = max.ToString(CultureInfo.CurrentCulture) }),
         ListTextValue x => string.Join(", ", x.Values.Select(item => FormatValue(item, resolver, translate))),
         FriendshipRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{resolver.Npc(item.Npc)} ≥ {FormatFriendship(item.Points, translate)}")),
-        ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{ResolveItem(item.ItemId, resolver)} × {item.Count}")),
+        ShippedRequirementsTextValue x => string.Join(", ", x.Values.Select(item => $"{ResolveItem(item.ItemId, resolver, translate)} × {item.Count}")),
         _ => ""
     };
 }

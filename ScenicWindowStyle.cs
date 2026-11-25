@@ -30,31 +30,6 @@ internal sealed record ScenicWindowPalette(
 /// </summary>
 internal static class ScenicWindowStyle
 {
-    internal const int SceneSpringDay = 0;
-    internal const int SceneSummerDay = 1;
-    internal const int SceneFallDusk = 2;
-    internal const int SceneWinterDay = 3;
-    internal const int SceneNightClear = 4;
-    internal const int SceneWinterNight = 5;
-
-    /// <summary>
-    /// Selects one of the six un-tinted scenic window illustrations: seasonal day/dusk art before 20:00,
-    /// <c>Winter-Night</c> on winter nights from 20:00, and <c>Night-Clear</c> on non-winter nights from 20:00.
-    /// </summary>
-    internal static int ResolveSceneIndex(string? season, int timeOfDay)
-    {
-        string normalized = WeddingDateRecord.NormalizeSeason(season) ?? "spring";
-        if (timeOfDay >= 2000)
-            return normalized == "winter" ? SceneWinterNight : SceneNightClear;
-        return normalized switch
-        {
-            "summer" => SceneSummerDay,
-            "fall" => SceneFallDusk,
-            "winter" => SceneWinterDay,
-            _ => SceneSpringDay
-        };
-    }
-
     internal static ScenicWindowPalette Resolve(
         string? season,
         int timeOfDay,

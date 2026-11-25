@@ -9,6 +9,9 @@ namespace StardewGallery;
 internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiagnostics,
     Func<EventIdentity, EventOriginMatch> originFor)
 {
+    internal Func<string, EventOriginMatch>? CharacterOriginFor { get; init; }
+    internal Func<ModProvenanceService?>? ProvenanceFor { get; init; }
+
     private sealed record IdentityConflict(string Location, string EventId, string SelectedKey, IReadOnlyList<string> CandidateKeys);
 
     /// <summary>Everything the final catalog is built from that can change without an asset invalidation.</summary>
@@ -64,7 +67,7 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
             upgraded,
             LoadSingleEventAsset,
             (key, script) => GameLocation.IsValidLocationEvent(key, script),
-            galleryBuilder.IsInternalFlow,
+            resolved => galleryBuilder.IsInternalFlow(resolved) || galleryBuilder.IsControllerEvent(resolved),
             raw => Event.ParseCommands(raw),
             command => ArgUtility.SplitBySpaceQuoteAware(command),
             translationKey => SafeTranslationLoader.TryLoad(Game1.content, translationKey));
@@ -116,6 +119,62 @@ internal sealed class GalleryCatalogCache(IMonitor monitor, Func<bool> debugDiag
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(id => id,
                     id => originFor(new EventIdentity(EventDefinitionIndex.TriggerActionAsset, id)), StringComparer.OrdinalIgnoreCase)
         };
+        if (ProvenanceFor?.Invoke() is { } provenance)
+        {
+            HashSet<string> charSet = characters.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+            Dictionary<string, EventOriginMatch> charOrigins = new(StringComparer.Ordinal);
+            EventOriginMatch LookupCharacterOrigin(string npc)
+            {
+                if (!charOrigins.TryGetValue(npc, out EventOriginMatch? found))
+                    charOrigins[npc] = found = CharacterOriginFor?.Invoke(npc) ?? EventOriginMatch.Unknown;
+                return found;
+            }
+            string? CanonicalNpcName(string raw)
+            {
+                string trimmed = raw.TrimEnd('?', '·');
+                return trimmed switch
+                {
+                    "ClaireJoja" or "ClaireTheater" => "Claire",
+                    "Marlon" when charSet.Contains("MarlonFay") => "MarlonFay",
+                    "Gunther" when charSet.Contains("GuntherSilvian") => "GuntherSilvian",
+                    "Morris" when charSet.Contains("MorrisTod") => "MorrisTod",
+                    _ => trimmed
+                };
+            }
+
+            Dictionary<EventIdentity, ShelfVolume> eventVolumes = new();
+            foreach (GalleryEvent entry in catalog.AllEntries)
+            {
+                if (provenance.ResolveEventVolume(entry, catalog.Origins.GetValueOrDefault(entry.Resolved.Identity),
+                    LookupCharacterOrigin, CanonicalNpcName) is { } vol)
+                {
+                    eventVolumes[entry.Resolved.Identity] = vol;
+                }
+            }
+
+            Dictionary<string, ShelfVolume> characterVolumes = new(StringComparer.Ordinal);
+            foreach (GalleryCharacter character in catalog.Characters)
+            {
+                IEnumerable<ShelfVolume?> heartVols = catalog.HeartEventsFor(character.Name)
+                    .Select(entry => eventVolumes.GetValueOrDefault(entry.Resolved.Identity));
+                if (provenance.ResolveCharacterVolume(character.Name, LookupCharacterOrigin(character.Name), heartVols) is { } vol)
+                    characterVolumes[character.Name] = vol;
+            }
+
+            Dictionary<string, ShelfVolume> ruleVolumes = new(StringComparer.OrdinalIgnoreCase);
+            foreach ((string ruleId, EventOriginMatch ruleOrigin) in catalog.RuleOrigins)
+            {
+                if (ruleOrigin.Status == EventOriginMatchStatus.Identified && provenance.ResolveRuleVolume(ruleOrigin) is { } vol)
+                    ruleVolumes[ruleId] = vol;
+            }
+
+            catalog = catalog with
+            {
+                CharacterVolumes = characterVolumes,
+                EventVolumes = eventVolumes,
+                RuleVolumes = ruleVolumes
+            };
+        }
         List<IdentityConflict> conflicts = index.Groups
             .Where(group => group.Candidates.Count > 1)
             .Select(group => new IdentityConflict(

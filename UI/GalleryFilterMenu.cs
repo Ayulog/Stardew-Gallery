@@ -14,7 +14,10 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
     internal GalleryFilterMenu(GalleryViewContext context, GalleryPageState state) : base(context, state)
     {
         index = new StorySearchIndex(context.Catalog, e => context.Locations.Get(e.LocationName), context.Characters.Get,
-            characterKey: (entry, id) => context.Characters.Key(id, entry), locationKey: e => context.Locations.Key(e.LocationName), sourceText: T);
+            characterKey: (entry, id) => context.Characters.Key(id, entry), locationKey: e => context.Locations.Key(e.LocationName), sourceText: T,
+            includeControllerEvents: context.ShowControllerEvents);
+        if (!context.ShowControllerEvents && draft.Kind == QueryKind.Controller)
+            draft = draft with { Kind = QueryKind.All };
         Rebuild(state.Focus >= 0 ? state.Focus : RowId);
     }
     private string T(string key) => Context.I18n.Get(key);
@@ -82,7 +85,9 @@ internal sealed class GalleryFilterMenu : GalleryToolMenu
         Choice any = new(null, T("filter.any"));
         IEnumerable<Choice> values = field switch
         {
-            "kind" => new[] { "query.kind-all", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" }
+            "kind" => (Context.ShowControllerEvents
+                ? new[] { "query.kind-all", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite", "query.kind-controller" }
+                : new[] { "query.kind-all", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" })
                 .Select((key, i) => new Choice(i.ToString(), T(key))),
             "state" => new[] { "filter.any", "filter.done", "filter.pending" }.Select((key, i) => new Choice(i.ToString(), T(key))),
             "encounter" => new[] { new Choice("0", T("filter.any")), new Choice("1", T("filter.encounter-on")) },

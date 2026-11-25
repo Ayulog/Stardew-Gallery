@@ -539,6 +539,37 @@ internal static class Stage4RuntimeChecks
         activeMenuField!.receiveGamePadButton(Buttons.B);
         Check(activeMenuField?.GetType().Name == "GalleryMenu",
             mode + "B from Moments returns to Villager Overview Home instead of exiting the gallery");
+
+        // 5) Scenic Window: no intrusive weather toggle button (1007), headless DrawPhoto safety, and Source left-nav
+        VerifyScenicWindowAndNavigation(app, mode);
+    }
+
+    private static void VerifyScenicWindowAndNavigation(object app, string mode)
+    {
+        // Open Abigail album and verify weather toggle button 1007 is removed
+        Call(app, "OpenCharacter", "Abigail");
+        Check(activeMenuField?.GetType().Name == "GalleryCharacterMenu", mode + "opened Abigail album for scenic window checks");
+        object abigailPanel = Get(activeMenuField!, "leftPanel")!;
+        Check(activeMenuField!.allClickableComponents.All(c => c.myID != 1007),
+            mode + "Album no longer exposes intrusive top-right weather toggle component (1007)");
+
+        // Headless DrawPhoto safety (null SpriteBatch)
+        Call(abigailPanel, "DrawPhoto", null, 0.75f, 0, 0);
+
+        ClickableComponent firstStory = activeMenuField.allClickableComponents.Single(c => c.myID == 2002);
+        activeMenuField.receiveLeftClick(firstStory.bounds.Center.X, firstStory.bounds.Center.Y);
+        Check(activeMenuField?.GetType().Name == "GalleryEventDetailMenu", mode + "opened Detail from Abigail Album");
+        Check(activeMenuField!.allClickableComponents.All(c => c.myID != 1007),
+            mode + "Detail page no longer exposes intrusive top-right weather toggle component (1007)");
+
+        // Keyboard/controller Left from Source (1004) reaches bottom-left ribbon directly
+        Call(activeMenuField, "FocusComponent", 1004);
+        activeMenuField.receiveKeyPress(Keys.Left);
+        Check(activeMenuField.currentlySnappedComponent?.myID == 9100,
+            mode + "Left from Source (1004) moves cleanly to Villagers ribbon tab (9100)");
+
+        Call(app, "Close");
+        Call(app, "Reset");
     }
 
     private static (object App, object PhotoStore, object FavStore, object NameStore, FakeProxy MonitorProxy) BuildApplicationFixture(bool unlockAll)
@@ -607,7 +638,7 @@ internal static class Stage4RuntimeChecks
             .MakeGenericMethod(Type("Appearance.ICharacterAppearance"), typeof(FakeProxy))
             .Invoke(null, null)!;
         Texture2D dummyTex = (Texture2D)FormatterServices.GetUninitializedObject(typeof(Texture2D));
-        object textures = New("GalleryTextures", dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex);
+        object textures = New("GalleryTextures", dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex, dummyTex);
 
         var resolvedParam = System.Linq.Expressions.Expression.Parameter(Type("ResolvedEvent"), "resolved");
         object sampleDisplay = New("EventSourceDisplay", "Vanilla", "Confirmed", Array.Empty<string>());

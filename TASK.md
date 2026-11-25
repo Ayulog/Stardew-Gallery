@@ -39,7 +39,7 @@
   - `GalleryPrerequisiteMenu`、`GalleryPhotoMenu`、`GalleryRenameMenu` 全量皮质手账化重做；详情页与前置页跳转行改为单行镶边可点击横条，普通事件详情页左页补满全部 6 行铭牌。
   - 画廊外可偶遇联动（GMCM 默认开启 `ShowMorningEncounterHint` 清晨无剧透 HUD 提示与 `ShowSocialPageClueBadges` 原版社交页偶遇徽章点击直达相册，零逐帧重算、零控件注入）。
   - `TileCondition` 明确展示触发格坐标 `(X, Y)`；对照 1.6.15 `Stardew Valley.dll` 新增 `ANY` / `!ANY` 递归逻辑或（深度上限 4，Kleene 三值逻辑）与 18 项原版确定性只读 GSQ（`IS_COMMUNITY_CENTER_COMPLETE`、`IS_JOJA_MART_COMPLETE`、`IS_ISLAND_NORTH_BRIDGE_FIXED`、`FOUND_ALL_LOST_BOOKS`、`IS_MULTIPLAYER`、`IS_HOST`、`IS_VISITING_ISLAND`、`MUSEUM_DONATIONS`、`MINE_LOWEST_LEVEL_REACHED`、`PLAYER_FARMHOUSE_UPGRADE`、`PLAYER_HAS_MET`、`PLAYER_HAS_PET`、`PLAYER_HAS_CHILDREN`、`PLAYER_HAS_TOWN_KEY`、`PLAYER_SPECIAL_ORDER_COMPLETE`、`PLAYER_SPECIAL_ORDER_ACTIVE`、`PLAYER_HAS_HEARD_SONG`、`PLAYER_KILLED_MONSTERS`）。
-- [x] 全部 12 种官方语言 `i18n/*.json`（各 **623** 个键，占位符 100% 对齐）、`docs/REQUIREMENTS.md`、`README.md`（中英双语）、`docs/MODULES.md` 与 `StardewGallery.csproj`（排除 `release/**` 原稿入包，保持 `2.10.0` 版本号与稳定 `UniqueID`）同步更新。
+- [x] 全部 12 种官方语言 `i18n/*.json`（各 **643** 个键，占位符 100% 对齐）、`docs/REQUIREMENTS.md`、`README.md`（中英双语）、`CHANGELOG.md`、`docs/RELEASE_2.12.0_NOTES.md`、`docs/MODULES.md` 与 `StardewGallery.csproj`（`2.12.0` 版本号与稳定 `UniqueID`）同步更新。
 
 ## 编译与自动检查结果
 
@@ -66,9 +66,9 @@
 
 ## 待实机验收与交接说明（下一棒必读）
 
-### 1. 当前工作区与发布状态（2.11.0 正式发布）
-- **版本状态**：已定版为 **`2.11.0`**（同步 `StardewGallery.csproj`、`manifest.json`、`CHANGELOG.md`、`README.md` 及 `docs/RELEASE_2.11.0_NOTES.md`，保留稳定 `UniqueID` 与 `EntryDll`）。
-- **实测与正式包**：已通过 `tools/Package-Release.ps1` 生成 `./release/StardewGallery-2.11.0-Nexus.zip` 并同步更新本机 `<GamePath>/Mods/StardewGallery`，玩家数据（`config.json`、`event-photos/`、`user-data/`）完整保留。
+### 1. 当前工作区与发布状态（2.12.0 正式发布）
+- **版本状态**：已定版为 **`2.12.0`**（同步 `StardewGallery.csproj`、`manifest.json`、`CHANGELOG.md`、`README.md` 及 `docs/RELEASE_2.12.0_NOTES.md`，保留稳定 `UniqueID` 与 `EntryDll`）。
+- **正式打包与验证**：通过 `tools/Package-Release.ps1` 生成 `./release/StardewGallery-2.12.0-Nexus.zip`，并全量通过 `Checks`、`PersistenceChecks` 及 13 项 `SourcesRuntimeChecks`；本地 `Mods/StardewGallery` 更新时完整保留玩家数据（`config.json`、`event-photos/`、`user-data/`）。
 - **美术原稿与备份位置**：
   - 设计师交付的原始未切图美术包位于 `release/StardewGallery-UI-Art-Pack-20261117/`（已在 `StardewGallery.csproj` 中排除入包，`release/` 不纳入 Git 提交）。
   - 被替换的 3 张旧版书本主底图原件已按工作区规范归档备份至仓库外回收目录（附 SHA-256 `MANIFEST.txt`）。

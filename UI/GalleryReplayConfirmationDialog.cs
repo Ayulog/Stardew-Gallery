@@ -34,8 +34,8 @@ internal sealed class GalleryReplayConfirmationDialog : ConfirmationDialog
         int availableHeight = Math.Max(24, viewportHeight - margin * 2 - padding * 2 - 84);
         (string Text, Vector2 Size) Measure(float scale)
         {
-            string wrapped = Game1.parseText(originalMessage, Game1.dialogueFont, (int)(textWidth / scale));
-            return (wrapped, Game1.dialogueFont.MeasureString(wrapped) * scale);
+            string wrapped = GalleryDrawing.ParseTextSafe(originalMessage, Game1.dialogueFont, (int)(textWidth / scale));
+            return (wrapped, GalleryDrawing.MeasureStringSafe(Game1.dialogueFont, wrapped) * scale);
         }
         bool Fits(Vector2 size) => size.X <= textWidth && size.Y <= availableHeight;
         textScale = 1f;
@@ -101,7 +101,7 @@ internal sealed class GalleryReplayConfirmationDialog : ConfirmationDialog
         EnsureLayout();
         b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, viewportWidth, viewportHeight), Color.Black * .5f);
         drawTextureBox(b, xPositionOnScreen, yPositionOnScreen, width, height, Color.White);
-        b.DrawString(Game1.dialogueFont, message, new Vector2(textBounds.X, textBounds.Y), Game1.textColor,
+        GalleryDrawing.DrawStringSafe(b, Game1.dialogueFont, message, new Vector2(textBounds.X, textBounds.Y), Game1.textColor,
             0, Vector2.Zero, textScale, SpriteEffects.None, 0);
         okButton.draw(b);
         cancelButton.draw(b);

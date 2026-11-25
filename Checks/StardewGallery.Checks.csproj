@@ -10,12 +10,16 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="ConditionStage1Checks.cs" />
+    <Compile Include="ConditionReadabilityChecks.cs" />
     <Compile Include="SourceStage1Checks.cs" />
     <Compile Include="Stage2Checks.cs" />
     <Compile Include="Stage3Checks.cs" />
     <Compile Include="Stage4Checks.cs" />
+    <Compile Include="PortraitComparisonChecks.cs" />
+    <Compile Include="..\Replay\PortraitComparisonLogic.cs" Link="Replay\PortraitComparisonLogic.cs" />
     <Compile Include="..\GalleryPagination.cs" Link="GalleryPagination.cs" />
     <Compile Include="..\ScenicWindowStyle.cs" Link="ScenicWindowStyle.cs" />
+    <Compile Include="..\Scenic\ScenicWindowRules.cs" Link="Scenic\ScenicWindowRules.cs" />
     <Compile Include="..\GalleryCardTitleFormatter.cs" Link="GalleryCardTitleFormatter.cs" />
     <Compile Include="..\Catalog\ParallelBranchAnalyzer.cs" Link="Catalog\ParallelBranchAnalyzer.cs" />
     <Compile Include="..\Catalog\StoryQuoteExtractor.cs" Link="Catalog\StoryQuoteExtractor.cs" />
@@ -31,6 +35,8 @@
     <Compile Include="..\Sources\PackFiles.cs" Link="Sources\PackFiles.cs" />
     <Compile Include="TestLinks.cs" />
     <Compile Include="EventOriginPresentationChecks.cs" />
+    <Compile Include="ModProvenanceChecks.cs" />
+    <Compile Include="..\Sources\ModProvenanceService.cs" Link="Sources\ModProvenanceService.cs" />
     <Compile Include="..\Sources\EventDefinitionIndex.cs" Link="Sources\EventDefinitionIndex.cs" />
     <Compile Include="..\Sources\AliveNpcEventScanner.cs" Link="Sources\AliveNpcEventScanner.cs" />
     <Compile Include="..\Sources\ContentPackEventScanner.cs" Link="Sources\ContentPackEventScanner.cs" />

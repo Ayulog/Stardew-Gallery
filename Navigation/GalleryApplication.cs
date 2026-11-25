@@ -10,6 +10,8 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
     GalleryPhotos photos, ReplayService replay, Func<bool> isUnlocked, Action toggleUnlock, ICharacterAppearance appearance,
     Func<ResolvedEvent, EventSourceDisplay> sourceDetails, EventNameStore names, FavoriteEventStore? favorites = null) : IGalleryNavigation
 {
+    internal Func<bool>? ShowControllerEvents { get; init; }
+    internal ScenicBackdropRenderer? ScenicRenderer { get; init; }
     private readonly GalleryPageHistory history = new();
     private GalleryViewContext? view;
     private GalleryTextures? textures;
@@ -58,14 +60,16 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
         if (textures is null)
         {
             textures = new(Load("assets/GalleryHome.png"), Load(GalleryUiAssets.EventAlbum), Load(GalleryUiAssets.EventDetail),
-                Load("assets/CharacterScene-day-v2.png"), Load(EventThumbnailAsset.For()), Load(GalleryUiAssets.ReplayGlyph),
+                Load(EventThumbnailAsset.For()), Load(GalleryUiAssets.ReplayGlyph),
                 Load(GalleryUiAssets.EventSlotFrame), Load(GalleryUiAssets.ScrollbarTrack), Load(GalleryUiAssets.ConditionStatusIcons));
             if (!GalleryUiSkin.IsLoaded)
                 GalleryUiSkin.Load(Load, warning => monitor.Log(warning, LogLevel.Warn));
         }
         AdoptFormerEntries(snapshot);
         view = new(snapshot, helper.Translation, textures, photos, this, isUnlocked, replay.Access)
-            { Names = names, Favorites = favorites, Appearance = appearance, EventSource = sourceDetails, Pinyin = LoadPinyin() };
+            { Names = names, Favorites = favorites, Appearance = appearance, EventSource = sourceDetails, Pinyin = LoadPinyin(),
+              ShowControllerEvents = ShowControllerEvents?.Invoke() == true,
+              ScenicRenderer = ScenicRenderer };
     }
     private Texture2D Load(string path) => helper.ModContent.Load<Texture2D>(path);
 
@@ -105,6 +109,23 @@ internal sealed class GalleryApplication(IModHelper helper, IMonitor monitor, Ga
         }
     }
     internal void Reset() { externalReturn = null; view = null; history.Reset(); }
+
+    internal void OnLocaleChanged(bool isCurrentScreenGalleryOpen)
+    {
+        view = null;
+        if (!isCurrentScreenGalleryOpen || !Context.IsWorldReady)
+            return;
+        try
+        {
+            ReleaseInput();
+            PrepareSession();
+            ShowCurrent();
+        }
+        catch (Exception error)
+        {
+            monitor.Log($"Gallery locale refresh failed: {error}", LogLevel.Error);
+        }
+    }
 
     public void SwitchTab(GalleryBookTab tab)
     {

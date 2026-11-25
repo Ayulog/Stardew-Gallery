@@ -1,5 +1,15 @@
 # Changelog / 更新日志
 
+## 2.12.0 - 2026-11-25 - Scenic Horizon, Portrait Compare & Volume Provenance / 原生像素景窗、剧场立绘对比与分卷归并
+
+- **12 态 `96×68` 原生像素景窗与 `4x` 真实比例动画 / 12-State `96×68` Native Pixel Scenic Windows & Unscaled `4x` Sprites**：角色相册左页重制为「春夏秋冬 × 白昼/黄昏/星夜」12 幅 `96×68` 原生像素地平线底图并移除天气切换按钮，脱离外层小数缩放按游戏 `4x` 整像素对齐绘制底图、角色与粒子；直接复用原版 `AnimatedSprite` 散步/专属休闲动作及 `WeatherDebris` / `4x` `rainTexture` 雨雪绿雨萤火虫，彻底消除角色挤压变形。 / Rebuilt the album scenic window with 12 native `96×68` seasonal/day-night horizon backdrops (removing the weather toggle), rendered at unscaled integer `4x` pixel zoom detached from fractional book scaling with vanilla `AnimatedSprite` stroll/hobby animations and `WeatherDebris` / `4x` `rainTexture` effects.
+- **剧场立绘实时对比 / Real-Time Theater Portrait Comparison**：回放对话时支持单按 `V` 或右上角按钮全幅切换“美化 / 原版”立绘，长按超过 `220ms` 切入并保持“左原版｜右美化”半屏分割对比（松手保持分屏，再单按恢复）；通过受控只读原生 `ContentManager` 与未补丁 `isPortraitBox` 逆向桩实现，兼容 CP、`HD Portraits`、`Portraiture` 与 `DDFC`；恢复仅在 `2x / 4x` 下生效的“自动继续普通对话”可选开关。 / Added real-time portrait comparison during replay dialogue via hotkey (`V`) or HUD button (tap to toggle Modded/Vanilla; hold `> 220ms` via direct hardware polling for sticky side-by-side split compare), reading unpatched `.xnb` portraits safely across CP, `HD Portraits`, `Portraiture`, and `DDFC`, and restored the optional `2x / 4x` auto-advance normal dialogue toggle.
+- **三级模组归属、去壳归并与动态分卷书架 / Three-Tier Mod Provenance & Dynamic Volume Shelf**：新增 `ModProvenanceService` 与 `CleanModName` 去壳归并，并在首页右页顶部提供支持拼音检索的动态分卷选择器（纯原版存档自动隐藏），与故事索引“来源”筛选口径统一。 / Added three-tier provenance attribution (`ModProvenanceService`), `CleanModName` normalization, and an embedded parchment Volume Selector on the overview page when modded villager volumes exist.
+- **后台控制事件双重折叠 / Background Controller Event Folding**：对既无对白也无可见演出的静默后台控制脚本标为 `IsControllerEvent` 并默认折叠（不计入收集分母、禁回放），可在 GMCM 开启 `ShowControllerEvents` 于故事索引只读查看。 / Folded silent background controller events (`IsControllerEvent`) from albums and completion denominators while allowing optional read-only viewing in Story Index via GMCM `ShowControllerEvents`.
+- **1.6 条件可读化与字体防崩 / Readable 1.6 Conditions & Font Safety**：只读查询 `Data/mail` 区分真实信件标题与后台节点，补齐物品、配方、建筑、怪物、任务及 `Custom_` 地点可读名，新增 `SpriteFont` 缺字 `'?'` 安全降级并同步 12 国语言（643 键）。 / Separated real `Data/mail` letters from internal story flags, resolved readable names for items/recipes/buildings/monsters/quests and `Custom_` locations, added missing-glyph `'?'` font fallback, and synced all 12 official locales (643 keys).
+
+详见 [2.12.0 版本说明](docs/RELEASE_2.12.0_NOTES.md)。 / See the [2.12.0 Release Notes](docs/RELEASE_2.12.0_NOTES.md) for details.
+
 ## 2.11.0 - 2026-11-18 - Native Leather Journal & Experience Upgrade / 原生皮质手账重制与体验升级
 
 - **皮质手账全套皮肤与三书签 / Leather Journal & Three Bookmarks**：全界面统一重制为 `1672×941` 复古烫金皮质手账（涵盖村民相册、角色相册、故事索引、珍藏时刻、剧情详情、前置事件详情、剧照管理与改名面板，告别旧版独立大黄框）；左下悬挂长短双态织物三书签，主书页采用拟真整页翻书。 / Unified every gallery view inside a `1672×941` leather-bound journal (including prerequisite details, photo manager, and rename dialog, retiring legacy standalone box screens), paired with three two-state bottom-left fabric bookmarks and whole-page book turning.

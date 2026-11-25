@@ -38,22 +38,22 @@ internal sealed class GalleryTextBox : TextBox
             b.Draw(texture, new Rectangle(dx[col], dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row]),
                 new Rectangle(sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row]), Color.White);
         }
-        string text = Text;
-        float scale = Math.Min(1f, (Height - 20f) / Math.Max(1f, Game1.smallFont.MeasureString(text.Length == 0 ? "Ag" : text).Y));
+        string text = GalleryDrawing.SanitizeForFont(Game1.smallFont, Text);
+        float scale = Math.Min(1f, (Height - 20f) / Math.Max(1f, GalleryDrawing.MeasureStringSafe(Game1.smallFont, text.Length == 0 ? "Ag" : text).Y));
         float available = (Width - 40f) / scale;
-        if (Game1.smallFont.MeasureString(text).X > available)
+        if (GalleryDrawing.MeasureStringSafe(Game1.smallFont, text).X > available)
         {
             int[] starts = StringInfo.ParseCombiningCharacters(text);
             int low = 0, high = starts.Length;
             while (low < high)
             {
                 int middle = (low + high) / 2;
-                if (Game1.smallFont.MeasureString(text[starts[middle]..]).X <= available) high = middle; else low = middle + 1;
+                if (GalleryDrawing.MeasureStringSafe(Game1.smallFont, text[starts[middle]..]).X <= available) high = middle; else low = middle + 1;
             }
             text = low == starts.Length ? "" : text[starts[low]..];
         }
-        Vector2 size = Game1.smallFont.MeasureString(text) * scale;
-        b.DrawString(Game1.smallFont, text, new Vector2(X + 16, Y + (Height - size.Y) / 2), Game1.textColor,
+        Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, text) * scale;
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, text, new Vector2(X + 16, Y + (Height - size.Y) / 2), Game1.textColor,
             0, Vector2.Zero, scale, SpriteEffects.None, 0);
         if (Selected && Game1.currentGameTime.TotalGameTime.TotalMilliseconds % 1000 >= 500)
             b.Draw(Game1.staminaRect, new Rectangle(X + 18 + (int)size.X, Y + 10, 3, Height - 20), Game1.textColor);

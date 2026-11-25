@@ -41,10 +41,12 @@ internal sealed class ContentPackEventScanner
             scans[cacheKey] = scan;
         }
         foreach (EventDefinitionCandidate candidate in scan.Candidates) index.Add(candidate);
+        foreach (CharacterDefinitionCandidate character in scan.CharacterCandidates) index.AddCharacter(character);
         return scan.Result;
     }
 
-    private sealed record CachedScan(EventDefinitionScanResult Result, IReadOnlyList<EventDefinitionCandidate> Candidates, IReadOnlyList<FileStamp> Files);
+    private sealed record CachedScan(EventDefinitionScanResult Result, IReadOnlyList<EventDefinitionCandidate> Candidates,
+        IReadOnlyList<CharacterDefinitionCandidate> CharacterCandidates, IReadOnlyList<FileStamp> Files);
 
     private sealed class PackReader : IDisposable
     {
@@ -65,6 +67,7 @@ internal sealed class ContentPackEventScanner
         private readonly Dictionary<string, List<string>> tokens = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> visitedIncludes = new(PathComparer);
         private readonly HashSet<EventDefinitionCandidate> candidates = new();
+        private readonly HashSet<CharacterDefinitionCandidate> characterCandidates = new();
         private readonly List<EventDefinitionScanIssue> issues = new();
         private readonly HashSet<string> issueKeys = new(StringComparer.Ordinal);
         private string root = string.Empty;
@@ -94,7 +97,7 @@ internal sealed class ContentPackEventScanner
             }
             catch (Exception ex) when (IsReadFailure(ex)) { Issue("content.json", PackFiles.Describe(ex), ScanIssueKind.Unreadable); }
             EventDefinitionCandidate[] result = candidates.ToArray();
-            return new(new(filesRead, result.Length, issues.AsReadOnly()), result, files.Observed);
+            return new(new(filesRead, result.Length, issues.AsReadOnly()), result, characterCandidates.ToArray(), files.Observed);
         }
 
         private void ReadTokens(JsonElement content)
@@ -169,8 +172,14 @@ internal sealed class ContentPackEventScanner
                 if (!Property(change, "Target", out JsonElement target) || target.ValueKind != JsonValueKind.String) continue;
                 if (!CouldContainEventTarget(target.GetString()!)) continue;
                 foreach (string asset in ExpandList(target.GetString()!, null, false, relativePath)
-                    .Select(EventAssetName.Normalize).Where(EventDefinitionIndex.IsIndexedAsset))
+                    .Select(EventAssetName.Normalize)
+                    .Where(a => EventDefinitionIndex.IsIndexedAsset(a) || EventDefinitionIndex.IsCharacterAsset(a)))
                 {
+                    if (EventDefinitionIndex.IsCharacterAsset(asset))
+                    {
+                        ReadCharacterChange(change, asset, isLoad, relativePath);
+                        continue;
+                    }
                     if (EventDefinitionIndex.IsTriggerActionAsset(asset))
                     {
                         ReadTriggerActionChange(change, EventDefinitionIndex.TriggerActionAsset, isLoad, relativePath);
@@ -194,6 +203,42 @@ internal sealed class ContentPackEventScanner
                             if (!isLoad && Property(values, "Entries", out JsonElement importedEntries)) values = importedEntries;
                             ReadEntries(values, asset, dataFile);
                         }
+                }
+            }
+        }
+
+        private void ReadCharacterChange(JsonElement change, string asset, bool isLoad, string relativePath)
+        {
+            bool scopedToSingleEntry = !isLoad && TriggerActionDeclarations.HasNonEmptyTargetField(change);
+            if (!isLoad && !scopedToSingleEntry && Property(change, "Entries", out JsonElement entries))
+                ReadCharacterEntries(entries, asset, relativePath);
+            if (!Property(change, "FromFile", out JsonElement from) || from.ValueKind != JsonValueKind.String || scopedToSingleEntry)
+                return;
+            foreach (string dataFile in ExpandList(from.GetString()!, asset, false, relativePath))
+            {
+                if (!Path.GetExtension(dataFile).Equals(".json", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                JsonDocument? data = ReadJson(dataFile);
+                if (data is null) continue;
+                if (isLoad)
+                    ReadCharacterEntries(data.RootElement, asset, dataFile);
+                else if (Property(data.RootElement, "Entries", out JsonElement importedEntries))
+                    ReadCharacterEntries(importedEntries, asset, dataFile);
+            }
+        }
+
+        private void ReadCharacterEntries(JsonElement entries, string asset, string relativePath)
+        {
+            if (entries.ValueKind != JsonValueKind.Object) return;
+            foreach (JsonProperty entry in entries.EnumerateObject())
+            {
+                if (entry.Value.ValueKind != JsonValueKind.Object) continue;
+                foreach (string expanded in Expand(entry.Name, asset, true, relativePath))
+                {
+                    string id = expanded.Trim();
+                    if (id.Length == 0 || id.Contains("{{", StringComparison.Ordinal))
+                        continue;
+                    characterCandidates.Add(new CharacterDefinitionCandidate(pack.Actor, id, NormalizeRelative(relativePath)));
                 }
             }
         }
@@ -444,6 +489,9 @@ internal sealed class ContentPackEventScanner
                 const string triggerActions = EventDefinitionIndex.TriggerActionAsset;
                 if (tokenStart < 0 ? knownPrefix.Equals(triggerActions, StringComparison.OrdinalIgnoreCase)
                     : triggerActions.StartsWith(knownPrefix, StringComparison.OrdinalIgnoreCase)) return true;
+                const string characters = EventDefinitionIndex.CharacterAsset;
+                if (tokenStart < 0 ? knownPrefix.Equals(characters, StringComparison.OrdinalIgnoreCase)
+                    : characters.StartsWith(knownPrefix, StringComparison.OrdinalIgnoreCase)) return true;
             }
             return false;
         }

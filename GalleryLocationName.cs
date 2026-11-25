@@ -13,7 +13,12 @@ internal static class GalleryLocationName
         if (!GalleryNameText.IsMissing(translated))
             return translated;
         string readable = id.StartsWith("Custom_", StringComparison.OrdinalIgnoreCase) ? id[7..] : id;
-        readable = Regex.Replace(readable, @"([a-z0-9])([A-Z])", "$1 $2");
-        return readable.Replace('_', ' ').Trim();
+        readable = readable.Replace('_', ' ');
+        readable = Regex.Replace(readable, @"([A-Z]+)([A-Z][a-z])", "$1 $2");
+        readable = Regex.Replace(readable, @"([a-z])([A-Z])", "$1 $2");
+        readable = Regex.Replace(readable, @"([A-Za-z])([0-9])", "$1 $2");
+        readable = Regex.Replace(readable, @"([0-9])([A-Za-z])", "$1 $2");
+        readable = Regex.Replace(readable, @"\s+", " ").Trim();
+        return readable.Length == 0 ? id : readable;
     }
 }

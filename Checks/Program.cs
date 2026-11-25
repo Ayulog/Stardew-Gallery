@@ -10,8 +10,10 @@ if (args.Contains("--appearance")) return;
 // while skipping the two suites that create and delete temporary fixture directories.
 bool memoryOnly = args.Contains("--stage1") || args.Contains("--stage2") || args.Contains("--stage3") || args.Contains("--stage4");
 ConditionStage1Checks.Run(FakeSplitArgs);
+ConditionReadabilityChecks.Run();
 SourceStage1Checks.Run();
 Stage2Checks.Run(FakeSplitArgs);
+PortraitComparisonChecks.Run();
 Stage3Checks.Run();
 Stage4Checks.Run();
 
@@ -22,6 +24,7 @@ if (!memoryOnly)
 }
 EventOriginPresentationChecks.Run();
 SourceQueryChecks.Run();
+ModProvenanceChecks.Run(memoryOnly);
 if (args.Contains("--event-sources")) return;
 
 GallerySearchChecks.Run();

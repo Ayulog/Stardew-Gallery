@@ -187,7 +187,7 @@ internal sealed class GalleryPhotoMenu : IClickableMenu
             hoverTooltip = !string.IsNullOrWhiteSpace(folderStatusNotice) ? folderStatusNotice : folderLabel;
         }
         if (hoverTooltip is not null)
-            IClickableMenu.drawHoverText(batch, Game1.parseText(hoverTooltip, Game1.smallFont, Math.Max(200, Math.Min(560, Game1.uiViewport.Width - 80))), Game1.smallFont);
+            GalleryDrawing.DrawHoverTextSafe(batch, GalleryDrawing.ParseTextSafe(hoverTooltip, Game1.smallFont, Math.Max(200, Math.Min(560, Game1.uiViewport.Width - 80))), Game1.smallFont);
         drawMouse(batch);
     }
 

@@ -352,7 +352,7 @@ internal sealed class GalleryMomentsMenu : IClickableMenu
         GalleryDrawing.EndScaled(b);
 
         if (tooltip is not null)
-            drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, Math.Min(600, Math.Max(200, viewportWidth - 80))), Game1.smallFont);
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(tooltip, Game1.smallFont, Math.Min(600, Math.Max(200, viewportWidth - 80))), Game1.smallFont);
         drawMouse(b);
     }
 
@@ -364,7 +364,7 @@ internal sealed class GalleryMomentsMenu : IClickableMenu
         GalleryBookChrome.DrawLockedStoryEnvelope(b, leftPhoto, i18n.Get("tab.moments"), i18n.Get("favorite.add"));
         GalleryUiSkin.DrawCardFrame(b, leftPhoto, false);
         GalleryDrawing.DrawCentered(b, i18n.Get("moments.empty-title"), leftText, GallerySpreadDrawing.Ink);
-        string hint = Game1.parseText(i18n.Get("moments.empty-hint"), Game1.smallFont, rightBox.Width - 40);
+        string hint = GalleryDrawing.ParseTextSafe(i18n.Get("moments.empty-hint"), Game1.smallFont, rightBox.Width - 40);
         GalleryDrawing.DrawCentered(b, hint, rightBox, GallerySpreadDrawing.Ink);
     }
 

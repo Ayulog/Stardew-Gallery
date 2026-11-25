@@ -74,6 +74,7 @@ internal static class GallerySpreadLayout
     }
 
     internal static (int X, int Y, int Width, int Height) HomeSearchBounds => (168, 118, 390, 48);
+    internal static (int X, int Y, int Width, int Height) HomeVolumeBounds => (948, 118, 520, 48);
     internal static (int X, int Y, int Width, int Height) HomeUnlockBounds => (1236, 770, 248, 48);
 
     // Story index (symmetric spread).

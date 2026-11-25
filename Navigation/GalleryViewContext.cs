@@ -5,7 +5,7 @@ using StardewGallery.Appearance;
 
 namespace StardewGallery;
 
-internal sealed record GalleryTextures(Texture2D Home, Texture2D Album, Texture2D Detail, Texture2D Scene,
+internal sealed record GalleryTextures(Texture2D Home, Texture2D Album, Texture2D Detail,
     Texture2D Thumbnail, Texture2D Replay, Texture2D SlotFrame, Texture2D Scrollbar, Texture2D ConditionIcons);
 
 internal sealed record GalleryViewContext(GalleryCatalog Catalog, ITranslationHelper I18n, GalleryTextures Textures,
@@ -14,6 +14,8 @@ internal sealed record GalleryViewContext(GalleryCatalog Catalog, ITranslationHe
     internal ICharacterAppearance Appearance { get; init; } = null!;
     internal EventNameStore? Names { get; init; }
     internal FavoriteEventStore? Favorites { get; init; }
+    internal bool ShowControllerEvents { get; init; }
+    internal ScenicBackdropRenderer? ScenicRenderer { get; init; }
     internal bool IsFavorite(EventIdentity identity) => Favorites?.IsFavorite(identity) == true;
     /// <summary>Set for Chinese: searches typed in Latin letters also match Chinese names by pinyin.</summary>
     internal PinyinTable? Pinyin { get; init; }
@@ -71,7 +73,7 @@ internal sealed record GalleryViewContext(GalleryCatalog Catalog, ITranslationHe
 
     internal EncounterClue EventClue(GalleryEvent entry)
     {
-        if (entry.Kind == StoryKind.Internal)
+        if (entry.Kind == StoryKind.Internal || entry.IsControllerEvent)
             return EncounterClue.None;
         eventClues ??= [];
         if (eventClues.TryGetValue(entry.Resolved.Identity, out EncounterClue cached))
@@ -155,19 +157,19 @@ internal sealed record GalleryViewContext(GalleryCatalog Catalog, ITranslationHe
         }
     }
 
-    private (int NamesRevision, StorySearchIndex Index, float RowScale)? queryIndex;
+    private (int NamesRevision, bool ShowControllerEvents, StorySearchIndex Index, float RowScale)? queryIndex;
 
     /// <summary>
     /// The query page is rebuilt on every visit; keep its index and row text scale for this view
-    /// (one catalog and locale), and rebuild them after a custom name changes.
+    /// (one catalog and locale), and rebuild them after a custom name or controller visibility changes.
     /// </summary>
     internal (StorySearchIndex Index, float RowScale) QueryIndex(Func<(StorySearchIndex Index, float RowScale)> build)
     {
         int revision = Names?.Revision ?? 0;
-        if (queryIndex is { } cached && cached.NamesRevision == revision)
+        if (queryIndex is { } cached && cached.NamesRevision == revision && cached.ShowControllerEvents == ShowControllerEvents)
             return (cached.Index, cached.RowScale);
         (StorySearchIndex index, float rowScale) = build();
-        queryIndex = (revision, index, rowScale);
+        queryIndex = (revision, ShowControllerEvents, index, rowScale);
         return (index, rowScale);
     }
 }

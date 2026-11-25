@@ -32,7 +32,8 @@ internal sealed class ReplayService(IModHelper helper, IMonitor monitor, ReplayC
             saveFileReady: saveReady,
             festivalLocation: festival is not null && festival.Equals(entry.LocationName, StringComparison.OrdinalIgnoreCase),
             parallelBranchUnlocked: parallelBranchUnlocked?.Invoke(entry) == true,
-            isWedding: WeddingMemento.IsWeddingIdentity(entry.Resolved.Identity));
+            isWedding: WeddingMemento.IsWeddingIdentity(entry.Resolved.Identity),
+            isControllerEvent: entry.IsControllerEvent);
     }
 
     /// <summary>

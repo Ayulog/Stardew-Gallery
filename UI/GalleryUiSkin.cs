@@ -36,17 +36,11 @@ internal static class GalleryUiSkin
     internal const string LockedEnvelopeAsset = "assets/CardLockedEnvelope.png";
     internal const string ParallelEnvelopeAsset = "assets/CardParallelEnvelope.png";
 
-    internal static readonly string[] SceneAssets =
-    [
-        "assets/CharacterScene-Spring-Day.png", "assets/CharacterScene-Summer-Day.png", "assets/CharacterScene-Fall-Dusk.png",
-        "assets/CharacterScene-Winter-Day.png", "assets/CharacterScene-Night-Clear.png", "assets/CharacterScene-Winter-Night.png"
-    ];
-
     internal static readonly string[] AllAssets =
     [
         RibbonsAsset, TabPlaquesAsset, WoodButtonsAsset, PagerArrowsAsset, SearchBoxAsset, FilterRowAsset, ClueRowAsset, StoryRowAsset,
         CheckboxAsset, BadgesAsset, PillsAsset, HudIconsAsset, FocusCornersAsset, CardFrameAsset, TitlePlaqueAsset, FavoriteRibbonAsset,
-        LockedEnvelopeAsset, ParallelEnvelopeAsset, .. SceneAssets
+        LockedEnvelopeAsset, ParallelEnvelopeAsset
     ];
 
     // Atlas cell sizes (see the slicer script): keep in sync with Checks/GallerySpreadChecks.cs.
@@ -65,7 +59,6 @@ internal static class GalleryUiSkin
     internal const int CornerCell = 14;
     internal const int CardFrameWidth = 297, CardFrameHeight = 177, CardFrameInsetX = 16, CardFrameInsetY = 14;
     internal const int TitlePlaqueWidth = 220, TitlePlaqueHeight = 30, TitlePlaqueCap = 26;
-    internal const int SceneSpringDay = 0, SceneSummerDay = 1, SceneFallDusk = 2, SceneWinterDay = 3, SceneNightClear = 4, SceneWinterNight = 5;
 
     /// <summary>Inside a story-row card, where the small cover photo sits (relative to the row's top-left, at 112 px height).</summary>
     internal static Rectangle StoryRowThumbnail(Rectangle row) => new(row.X + 22, row.Y + 23, 114, 68);
@@ -88,12 +81,6 @@ internal static class GalleryUiSkin
     }
 
     internal static Texture2D? Get(string asset) => textures.TryGetValue(asset, out Texture2D? texture) ? texture : null;
-
-    internal static Texture2D? Scene(int index) => index >= 0 && index < SceneAssets.Length ? Get(SceneAssets[index]) : null;
-
-    /// <summary>User-confirmed scenic window rule: seasonal day/dusk art before 20:00, night art from 20:00.</summary>
-    internal static int SceneIndexFor(string? season, int timeOfDay)
-        => ScenicWindowStyle.ResolveSceneIndex(season, timeOfDay);
 
     // ---------------------------------------------------------------- drawing helpers
 
@@ -128,7 +115,8 @@ internal static class GalleryUiSkin
         int availH = Math.Max(bounds.Height - 2, bounds.Height >= 34 ? Game1.smallFont.LineSpacing : bounds.Height - 2);
         int iconSize = leadingIcon is not null && HasHudIcons ? Math.Clamp(bounds.Height - 22, 18, 28) : 0;
         int iconGap = iconSize > 0 ? 8 : 0;
-        Vector2 textSize = Game1.smallFont.MeasureString(text);
+        string safeText = GalleryDrawing.SanitizeForFont(Game1.smallFont, text);
+        Vector2 textSize = GalleryDrawing.MeasureStringSafe(Game1.smallFont, safeText);
         float scale = GalleryTextFit.Scale(textSize.X, textSize.Y, Math.Max(12, availW - iconSize - iconGap), availH);
         float totalW = iconSize + iconGap + textSize.X * scale;
         float startX = bounds.Center.X - totalW / 2f;
@@ -137,7 +125,7 @@ internal static class GalleryUiSkin
             DrawHudIcon(b, hudIcon, new Rectangle((int)Math.Round(startX), bounds.Center.Y - iconSize / 2, iconSize, iconSize), ink * opacity);
             startX += iconSize + iconGap;
         }
-        b.DrawString(Game1.smallFont, text, new Vector2(startX, bounds.Center.Y - textSize.Y * scale / 2f), ink * opacity, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, safeText, new Vector2(startX, bounds.Center.Y - textSize.Y * scale / 2f), ink * opacity, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
     internal static void DrawPagerArrow(SpriteBatch b, Rectangle bounds, bool next, UiButtonState state)
@@ -262,8 +250,9 @@ internal static class GalleryUiSkin
         float textScale = Math.Min(0.9f, (effectiveHeight - 1f) / Math.Max(1f, Game1.smallFont.LineSpacing));
         int iconSize = icon is null ? 0 : effectiveHeight - 6;
         int pad = Math.Max(10, effectiveHeight / 2 - 2);
-        string fitted = GalleryTextFit.Ellipsize(text, Math.Max(20, maxWidth - pad * 2 - iconSize) / textScale, value => Game1.smallFont.MeasureString(value).X);
-        Vector2 size = Game1.smallFont.MeasureString(fitted) * textScale;
+        string safeText = GalleryDrawing.SanitizeForFont(Game1.smallFont, text);
+        string fitted = GalleryTextFit.Ellipsize(safeText, Math.Max(20, maxWidth - pad * 2 - iconSize) / textScale, value => GalleryDrawing.MeasureStringSafe(Game1.smallFont, value).X);
+        Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fitted) * textScale;
         int width = Math.Min(maxWidth, (int)Math.Ceiling(size.X) + pad * 2 + (iconSize > 0 ? iconSize + 4 : 0));
         Rectangle bounds = new(alignRight ? origin.X - width : origin.X, origin.Y, width, effectiveHeight);
         Texture2D? texture = Get(PillsAsset);
@@ -278,7 +267,7 @@ internal static class GalleryUiSkin
             x += iconSize + 4;
         }
         Color ink = color == UiPill.Amber ? new Color(70, 34, 6) : new Color(255, 236, 200);
-        b.DrawString(Game1.smallFont, fitted, new Vector2(x, bounds.Center.Y - size.Y / 2f), ink, 0f, Vector2.Zero, textScale, SpriteEffects.None, 0f);
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fitted, new Vector2(x, bounds.Center.Y - size.Y / 2f), ink, 0f, Vector2.Zero, textScale, SpriteEffects.None, 0f);
         return bounds;
     }
 
@@ -339,11 +328,12 @@ internal static class GalleryUiSkin
                 hot ? new Color(255, 250, 225) : Color.White);
         int cap = Math.Max(14, (int)Math.Round(TitlePlaqueCap * bounds.Height / (float)TitlePlaqueHeight) - 4);
         Rectangle textArea = new(bounds.X + cap, bounds.Y, Math.Max(24, bounds.Width - cap * 2), bounds.Height);
-        Vector2 rawTitle = Game1.smallFont.MeasureString(text);
+        string safeText = GalleryDrawing.SanitizeForFont(Game1.smallFont, text);
+        Vector2 rawTitle = GalleryDrawing.MeasureStringSafe(Game1.smallFont, safeText);
         float scale = Math.Min(0.95f, Math.Max(0.76f, Math.Min(textArea.Width / Math.Max(1f, rawTitle.X), (bounds.Height + 2f) / Math.Max(1f, rawTitle.Y))));
-        string fitted = GalleryTextFit.Ellipsize(text, textArea.Width / scale, value => Game1.smallFont.MeasureString(value).X);
-        Vector2 size = Game1.smallFont.MeasureString(fitted) * scale;
-        b.DrawString(Game1.smallFont, fitted, new Vector2(textArea.Center.X - size.X / 2f, textArea.Center.Y - size.Y / 2f),
+        string fitted = GalleryTextFit.Ellipsize(safeText, textArea.Width / scale, value => GalleryDrawing.MeasureStringSafe(Game1.smallFont, value).X);
+        Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fitted) * scale;
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fitted, new Vector2(textArea.Center.X - size.X / 2f, textArea.Center.Y - size.Y / 2f),
             new Color(70, 38, 14), 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
@@ -380,13 +370,14 @@ internal static class GalleryUiSkin
             DrawThreeSlice(b, texture, new Rectangle(0, active ? TabPlaqueHeight : 0, TabPlaqueWidth, TabPlaqueHeight), bounds, 10, 10,
                 active ? Color.White : hot ? new Color(255, 248, 228) : new Color(246, 236, 216));
         Rectangle area = GalleryDrawing.Inset(bounds, 7, 0);
-        Vector2 raw = Game1.smallFont.MeasureString(text);
+        string safeText = GalleryDrawing.SanitizeForFont(Game1.smallFont, text);
+        Vector2 raw = GalleryDrawing.MeasureStringSafe(Game1.smallFont, safeText);
         float naturalScale = Math.Min(active ? 0.96f : 0.9f, Math.Min(area.Width / Math.Max(1f, raw.X), (bounds.Height + 2f) / Math.Max(1f, raw.Y)));
         float scale = Math.Max(0.74f, naturalScale);
-        string fitted = GalleryTextFit.Ellipsize(text, area.Width / scale, value => Game1.smallFont.MeasureString(value).X);
-        Vector2 size = Game1.smallFont.MeasureString(fitted) * scale;
+        string fitted = GalleryTextFit.Ellipsize(safeText, area.Width / scale, value => GalleryDrawing.MeasureStringSafe(Game1.smallFont, value).X);
+        Vector2 size = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fitted) * scale;
         Color ink = active ? new Color(70, 30, 10) : hot ? new Color(110, 66, 30) : new Color(130, 92, 56);
-        b.DrawString(Game1.smallFont, fitted, new Vector2(area.Center.X - size.X / 2f, area.Center.Y - size.Y / 2f), ink, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fitted, new Vector2(area.Center.X - size.X / 2f, area.Center.Y - size.Y / 2f), ink, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
     /// <summary>Draw the bottom part of one ribbon cell so the swallow-tail is never distorted.</summary>
@@ -403,11 +394,5 @@ internal static class GalleryUiSkin
         b.Draw(texture, new Rectangle(tail.X, tail.Bottom - length, tail.Width, length), source, Color.White);
         if (!active)
             b.Draw(Game1.staminaRect, new Rectangle(tail.X + 3, tail.Y, tail.Width - 6, 3), Color.Black * 0.35f);
-    }
-
-    internal static void DrawScene(SpriteBatch b, Rectangle bounds, Texture2D fallback)
-    {
-        int index = SceneIndexFor(Game1.currentSeason, Game1.timeOfDay);
-        b.Draw(Scene(index) ?? fallback, bounds, Color.White);
     }
 }

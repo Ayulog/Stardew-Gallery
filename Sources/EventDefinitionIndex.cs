@@ -14,6 +14,9 @@ internal sealed record EventDefinitionCandidate(EventSourceActor Actor, string A
     internal bool IsModification { get; init; }
 }
 
+internal sealed record CharacterDefinitionCandidate(EventSourceActor Actor, string CharacterId,
+    string RelativePath, bool IsModification = false);
+
 /// <summary>Incomplete: one provider was found, but a pack it builds on couldn't be read fully and may hold the original.</summary>
 internal enum EventOriginMatchStatus { Unknown, Identified, Ambiguous, Incomplete }
 
@@ -35,8 +38,10 @@ internal sealed class EventDefinitionIndex
 {
     private readonly Dictionary<EventIdentity, List<EventDefinitionCandidate>> definitions = new();
     private readonly Dictionary<(string Asset, string Key), List<EventDefinitionCandidate>> exactDefinitions = new(ExactAssetKeyComparer.Instance);
+    private readonly Dictionary<string, List<CharacterDefinitionCandidate>> characterDefinitions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> dependencies = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<EventDefinitionCandidate> seen = new();
+    private readonly HashSet<CharacterDefinitionCandidate> seenCharacters = new();
     private readonly Dictionary<string, EventSourceActor> incomplete = new(StringComparer.OrdinalIgnoreCase);
 
     internal int Count => seen.Count;
@@ -74,6 +79,36 @@ internal sealed class EventDefinitionIndex
                 exactDefinitions.Add(exactKey, exactValues = new());
             exactValues.Add(candidate);
         }
+    }
+
+    internal void AddCharacter(CharacterDefinitionCandidate candidate)
+    {
+        string id = (candidate.CharacterId ?? string.Empty).Trim();
+        if (id.Length == 0 || id.Contains("{{", StringComparison.Ordinal)) return;
+        candidate = candidate with { CharacterId = id };
+        if (!seenCharacters.Add(candidate)) return;
+        if (!characterDefinitions.TryGetValue(id, out List<CharacterDefinitionCandidate>? values))
+            characterDefinitions.Add(id, values = new());
+        values.Add(candidate);
+    }
+
+    internal EventOriginMatch MatchCharacter(string characterId)
+    {
+        string id = (characterId ?? string.Empty).Trim();
+        if (id.Length == 0) return EventOriginMatch.Unknown;
+        if (!characterDefinitions.TryGetValue(id, out List<CharacterDefinitionCandidate>? values))
+        {
+            string? fallbackKey = characterDefinitions.Keys.FirstOrDefault(k => string.Equals(k, id, StringComparison.OrdinalIgnoreCase));
+            if (fallbackKey is null) return EventOriginMatch.Unknown;
+            values = characterDefinitions[fallbackKey];
+        }
+        List<EventDefinitionCandidate> projected = values
+            .Select(c => new EventDefinitionCandidate(c.Actor, CharacterAsset, c.CharacterId, c.RelativePath, string.Empty)
+            {
+                IsModification = c.IsModification
+            })
+            .ToList();
+        return ResolveMatch(projected);
     }
 
     internal EventOriginMatch Match(string assetName, string eventId)
@@ -147,12 +182,18 @@ internal sealed class EventDefinitionIndex
     /// <summary>The asset this index uses for Data/TriggerActions rules, keyed by their Id field.</summary>
     internal const string TriggerActionAsset = "Data/TriggerActions";
 
+    /// <summary>The asset this index uses for Data/Characters declarations.</summary>
+    internal const string CharacterAsset = "Data/Characters";
+
     /// <summary>An event key's ID (first '/' entry), or a trigger-action rule ID as written.</summary>
     internal static string GetEntryId(string assetName, string rawKey)
         => IsTriggerActionAsset(assetName) ? (rawKey ?? string.Empty).Trim() : GetEventId(rawKey);
 
     internal static bool IsTriggerActionAsset(string assetName)
         => EventAssetName.Normalize(assetName).Equals(TriggerActionAsset, StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsCharacterAsset(string assetName)
+        => EventAssetName.Normalize(assetName).Equals(CharacterAsset, StringComparison.OrdinalIgnoreCase);
 
     internal static bool IsIndexedAsset(string assetName) => IsEventAsset(assetName) || IsTriggerActionAsset(assetName);
 

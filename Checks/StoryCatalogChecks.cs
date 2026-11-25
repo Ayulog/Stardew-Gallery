@@ -73,14 +73,21 @@ internal static class StoryCatalogChecks
         GalleryCatalog catalog = result.Catalog;
         GalleryEvent Get(string id) => catalog.Find(new EventIdentity("Data/Events/Town", id))!;
         foreach (string id in new[] { "heart", "short", "silent", "canonical", "fragment-heart", "continuation", "silent-continuation", "optional-actor", "nonsocial", "dating", "spouse", "typed-dating", "typed-spouse", "unlisted-continuation", "dating-continuation", "double-negative-spouse" })
+        {
             Check(Get(id).Kind == StoryKind.Heart, id + " is a heart story");
+            Check(!Get(id).IsControllerEvent, id + " is not a background controller event");
+        }
         // The game strips one '!', so "!!D Abigail" names no precondition and gives no relationship evidence.
         Check(Get("double-negative-dating").Kind == StoryKind.Ordinary, "double-negative-dating stays searchable outside the album");
         foreach (string id in new[] { "ordinary", "zero", "negative", "negative-points", "malformed", "festival", "visible-mail", "unknown", "incomplete", "fragment", "unrelated", "ordinary-child", "internal-child", "multiple", "case", "cycle-a", "cycle-b", "ambiguous", "unknown-continuation", "incomplete-continuation", "negative-dating", "negative-spouse", "not-spouse", "weekday", "invalid-dating", "ordinary-emote", "ordinary-animation", "not-spouse-canonical", "generic-roommate", "spouse-bed", "named-romance-scene" })
             Check(Get(id).Kind == StoryKind.Ordinary, id + " stays searchable outside the album");
+        foreach (string id in new[] { "ordinary-emote", "ordinary-animation", "fragment", "incomplete", "incomplete-continuation" })
+            Check(!Get(id).IsControllerEvent, id + " has visible stage action, dialogue, or missing fragments");
+        foreach (string id in new[] { "unknown", "unknown-continuation" })
+            Check(Get(id).IsControllerEvent, id + " has neither dialogue nor visible stage actions");
         foreach (string id in new[] { "mail", "marker", "queued", "transition", "internal-continuation", "internal-spouse", "empty-continuation", "visible-timing", "visible-long-timing" })
         {
-            Check(Get(id).Kind == StoryKind.Internal, id + " is an internal flow");
+            Check(Get(id).Kind == StoryKind.Internal && !Get(id).IsControllerEvent, id + " is an internal flow");
             Check(!catalog.StoryEntries.Contains(Get(id)) && catalog.ExcludedEvents.Contains(Get(id)), id + " is hidden but retained");
         }
         Check(catalog.AllEntries.Count() == source.Length && result.AnalyzedEvents.Count == source.Length, "no source entries discarded");

@@ -59,10 +59,14 @@ internal static class GallerySpreadChecks
         Disjoint("Portrait, six left rows, and album ribbon plaques", leftRegions.ToArray());
 
         // Symmetric Villager Overview spread: left 3x3 + right 3x3 around spine X = 836.
+        Check(GallerySpreadLayout.HomeVolumeBounds == (948, 118, 520, 48), "Home volume selector bounds changed.");
+        Check(GallerySpreadLayout.HomeVolumeBounds.X > 862, "Home volume selector crossed spine.");
+        Contains(GallerySpreadLayout.RightPageBounds, GallerySpreadLayout.HomeVolumeBounds, "Home volume selector inside right page");
         List<(int X, int Y, int Width, int Height)> homeRegions =
         [
             GallerySpreadLayout.SpreadTitleBounds,
             GallerySpreadLayout.HomeSearchBounds,
+            GallerySpreadLayout.HomeVolumeBounds,
             GallerySpreadLayout.HomeUnlockBounds,
             GallerySpreadLayout.SpreadPrevBounds,
             GallerySpreadLayout.SpreadIndicatorBounds,
@@ -255,12 +259,6 @@ internal static class GallerySpreadChecks
             (GalleryUiAssets.EventSlotFrame, "assets/EventSlotFrameOverlay.png", 345, 205),
             (GalleryUiAssets.ScrollbarTrack, "assets/ScrollbarTrack.png", 24, 640),
             (EventThumbnailAsset.Placeholder, "assets/EventPlaceholder.png", 640, 360),
-            ("assets/CharacterScene-Spring-Day.png", "assets/CharacterScene-Spring-Day.png", 760, 540),
-            ("assets/CharacterScene-Summer-Day.png", "assets/CharacterScene-Summer-Day.png", 760, 540),
-            ("assets/CharacterScene-Fall-Dusk.png", "assets/CharacterScene-Fall-Dusk.png", 760, 540),
-            ("assets/CharacterScene-Winter-Day.png", "assets/CharacterScene-Winter-Day.png", 760, 540),
-            ("assets/CharacterScene-Night-Clear.png", "assets/CharacterScene-Night-Clear.png", 760, 540),
-            ("assets/CharacterScene-Winter-Night.png", "assets/CharacterScene-Winter-Night.png", 760, 540),
             ("assets/CardLockedEnvelope.png", "assets/CardLockedEnvelope.png", 530, 298),
             ("assets/CardParallelEnvelope.png", "assets/CardParallelEnvelope.png", 530, 298),
             ("assets/UiRibbons.png", "assets/UiRibbons.png", 336, 132),
@@ -278,7 +276,19 @@ internal static class GallerySpreadChecks
             ("assets/UiFocusCorners.png", "assets/UiFocusCorners.png", 56, 14),
             ("assets/UiCardFrame.png", "assets/UiCardFrame.png", 297, 177),
             ("assets/UiTitlePlaque.png", "assets/UiTitlePlaque.png", 220, 30),
-            ("assets/UiFavoriteRibbon.png", "assets/UiFavoriteRibbon.png", 24, 40)
+            ("assets/UiFavoriteRibbon.png", "assets/UiFavoriteRibbon.png", 24, 40),
+            ("assets/Scenic-Spring-Day.png", "assets/Scenic-Spring-Day.png", 96, 68),
+            ("assets/Scenic-Spring-Dusk.png", "assets/Scenic-Spring-Dusk.png", 96, 68),
+            ("assets/Scenic-Spring-Night.png", "assets/Scenic-Spring-Night.png", 96, 68),
+            ("assets/Scenic-Summer-Day.png", "assets/Scenic-Summer-Day.png", 96, 68),
+            ("assets/Scenic-Summer-Dusk.png", "assets/Scenic-Summer-Dusk.png", 96, 68),
+            ("assets/Scenic-Summer-Night.png", "assets/Scenic-Summer-Night.png", 96, 68),
+            ("assets/Scenic-Fall-Day.png", "assets/Scenic-Fall-Day.png", 96, 68),
+            ("assets/Scenic-Fall-Dusk.png", "assets/Scenic-Fall-Dusk.png", 96, 68),
+            ("assets/Scenic-Fall-Night.png", "assets/Scenic-Fall-Night.png", 96, 68),
+            ("assets/Scenic-Winter-Day.png", "assets/Scenic-Winter-Day.png", 96, 68),
+            ("assets/Scenic-Winter-Dusk.png", "assets/Scenic-Winter-Dusk.png", 96, 68),
+            ("assets/Scenic-Winter-Night.png", "assets/Scenic-Winter-Night.png", 96, 68)
         ];
         foreach (var asset in assets)
         {
@@ -298,6 +308,19 @@ internal static class GallerySpreadChecks
             Check(width == asset.Width && height == asset.Height,
                 $"{asset.Actual}: expected {asset.Width}x{asset.Height}, got {width}x{height}.");
         }
+
+        string[] retiredScenes =
+        [
+            "assets/CharacterScene-day-v2.png",
+            "assets/CharacterScene-Spring-Day.png",
+            "assets/CharacterScene-Summer-Day.png",
+            "assets/CharacterScene-Fall-Dusk.png",
+            "assets/CharacterScene-Winter-Day.png",
+            "assets/CharacterScene-Night-Clear.png",
+            "assets/CharacterScene-Winter-Night.png"
+        ];
+        foreach (string retired in retiredScenes)
+            Check(!File.Exists(Path.Combine(root!.FullName, retired)), $"Retired scene asset must be deleted: {retired}.");
 
         Console.WriteLine($"Gallery spread checks passed (bottom-left ribbons, five spreads, Option C detail regions, and {assets.Length} PNG headers).");
     }

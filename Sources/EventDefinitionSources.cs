@@ -9,12 +9,22 @@ namespace StardewGallery;
 internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor)
 {
     private EventDefinitionIndex? index;
+    private ModProvenanceService? provenance;
     private readonly HashSet<string> gameAssets = new(StringComparer.OrdinalIgnoreCase);
     // The scanners keep each pack's results until a file it read changes, so asset invalidations don't rescan every pack.
     // SMAPI matches mod file paths case-insensitively by default on Linux and Android (UseCaseInsensitivePaths).
     private ContentPackEventScanner contentPacks = new(ReadCompiledDefinitions, NormalizeJson, IgnoreCase);
     private AliveNpcEventScanner aliveNpcs = new(NormalizeJson, IgnoreCase);
     private static bool IgnoreCase => !OperatingSystem.IsWindows();
+
+    internal ModProvenanceService? Provenance
+    {
+        get
+        {
+            EnsureScanned();
+            return provenance;
+        }
+    }
 
     internal string Status => index is null ? "Event definition files have not been scanned yet."
         : $"Event definition index: {index.Count} declarations; {gameAssets.Count} vanilla assets checked.";
@@ -23,10 +33,18 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
     internal void Reset(bool full = false)
     {
         index = null;
+        provenance = null;
         gameAssets.Clear();
         if (!full) return;
         contentPacks = new(ReadCompiledDefinitions, NormalizeJson, IgnoreCase);
         aliveNpcs = new(NormalizeJson, IgnoreCase);
+    }
+
+    internal EventOriginMatch ReadCharacter(string characterId)
+    {
+        EnsureScanned();
+        ReadGameCharacters();
+        return index!.MatchCharacter(characterId);
     }
 
     internal EventOriginMatch Read(string assetName, string eventId)
@@ -56,7 +74,8 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
         int packs = 0, files = 0, issues = 0;
         try
         {
-            IModInfo[] loaded = helper.ModRegistry.GetAll().Where(mod =>
+            IModInfo[] allMods = helper.ModRegistry.GetAll().ToArray();
+            IModInfo[] loaded = allMods.Where(mod =>
                 string.Equals(mod.Manifest.ContentPackFor?.UniqueID, "Pathoschild.ContentPatcher", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(mod.Manifest.ContentPackFor?.UniqueID, AliveNpcEventScanner.FrameworkId, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(mod.Manifest.UniqueID, AliveNpcEventScanner.FrameworkId, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -64,17 +83,50 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
             // under the launch-configured Mods root; never access SMAPI's private ModMetadata.
             string? root = ModDirectoryDiscovery.ResolveRoot(Constants.GamePath, helper.DirectoryPath,
                 Environment.GetCommandLineArgs(), Environment.GetEnvironmentVariable("SMAPI_MODS_PATH"));
-            if (root is null)
+            ModDirectoryDiscoveryResult? discovered = null;
+            if (root is not null)
+            {
+                var allIdentities = allMods.Select(mod => new ModDirectoryIdentity(mod.Manifest.UniqueID,
+                    mod.Manifest.Version.ToString(), mod.Manifest.ContentPackFor?.UniqueID, mod.Manifest.EntryDll)).ToArray();
+                discovered = ModDirectoryDiscovery.Discover(root, allIdentities, NormalizeJson);
+                issues += discovered.Issues.Count;
+                foreach (EventDefinitionScanIssue issue in discovered.Issues.Take(5))
+                    monitor.Log($"Event mod directory scan {issue.RelativePath}: {issue.Reason}", LogLevel.Debug);
+            }
+
+            List<ModProvenanceManifest> provenanceManifests = new(allMods.Length);
+            foreach (IModInfo mod in allMods)
+            {
+                string? contentPackFor = mod.Manifest.ContentPackFor?.UniqueID;
+                var deps = mod.Manifest.Dependencies.Select(dependency => dependency.UniqueID).ToList();
+                if (contentPackFor is not null) deps.Add(contentPackFor);
+                var actor = new EventSourceActor(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString());
+                index.RegisterPack(new EventDefinitionPack(actor, string.Empty, deps));
+
+                string? parentDirName = null;
+                if (root is not null && discovered is not null && discovered.Directories.TryGetValue(mod.Manifest.UniqueID, out string? modDir))
+                {
+                    string rel = Path.GetRelativePath(root, modDir).Replace('\\', '/').TrimEnd('/');
+                    string? parent = Path.GetDirectoryName(rel)?.Replace('\\', '/');
+                    if (!string.IsNullOrWhiteSpace(parent) && parent != ".")
+                        parentDirName = parent;
+                }
+                provenanceManifests.Add(new ModProvenanceManifest(
+                    mod.Manifest.UniqueID,
+                    mod.Manifest.Name,
+                    mod.Manifest.Author,
+                    contentPackFor,
+                    mod.Manifest.Dependencies.Select(d => d.UniqueID).ToArray(),
+                    parentDirName));
+            }
+            provenance = new ModProvenanceService(provenanceManifests);
+            ReadGameCharacters();
+
+            if (root is null || discovered is null)
             {
                 monitor.Log("Event definition scan could not locate the configured Mods folder containing this mod. File sources remain unavailable.", LogLevel.Warn);
                 return;
             }
-            var identities = loaded.Select(mod => new ModDirectoryIdentity(mod.Manifest.UniqueID,
-                mod.Manifest.Version.ToString(), mod.Manifest.ContentPackFor?.UniqueID, mod.Manifest.EntryDll)).ToArray();
-            ModDirectoryDiscoveryResult discovered = ModDirectoryDiscovery.Discover(root, identities, NormalizeJson);
-            issues += discovered.Issues.Count;
-            foreach (EventDefinitionScanIssue issue in discovered.Issues.Take(5))
-                monitor.Log($"Event mod directory scan {issue.RelativePath}: {issue.Reason}", LogLevel.Debug);
             foreach (IModInfo mod in loaded)
             {
                 var actor = new EventSourceActor(mod.Manifest.UniqueID, mod.Manifest.Name, mod.Manifest.Version.ToString());
@@ -202,6 +254,28 @@ internal sealed class EventDefinitionSources(IModHelper helper, IMonitor monitor
         {
             gameAssets.Remove(actualAsset);
             monitor.Log($"Vanilla trigger action definitions unavailable: {error.Message}", LogLevel.Debug);
+        }
+    }
+
+    /// <summary>Index the original game's Data/Characters keys, read with the plain MonoGame reader for Tier 1 Vanilla locking.</summary>
+    private void ReadGameCharacters()
+    {
+        const string asset = EventDefinitionIndex.CharacterAsset;
+        if (index is null || gameAssets.Contains(asset)
+            || PackFiles.ResolveContentAsset(Constants.ContentPath, asset) is not { } actualAsset
+            || !gameAssets.Add(actualAsset)) return;
+        try
+        {
+            using var content = new ContentManager(Game1.content.ServiceProvider, Constants.ContentPath);
+            Dictionary<string, StardewValley.GameData.Characters.CharacterData> characters =
+                content.Load<Dictionary<string, StardewValley.GameData.Characters.CharacterData>>(actualAsset);
+            foreach (string id in characters.Keys)
+                index.AddCharacter(new CharacterDefinitionCandidate(EventSourceActor.GameBase, id, actualAsset + ".xnb"));
+        }
+        catch (Exception error)
+        {
+            gameAssets.Remove(actualAsset);
+            monitor.Log($"Vanilla character definitions unavailable: {error.Message}", LogLevel.Debug);
         }
     }
 }

@@ -22,6 +22,9 @@ internal static class StoryReplayChecks
             "locked events keep the locked reason before save-file checks");
         Check(ReplayAccessPolicy.Evaluate(StoryKind.Heart, true, false, false, festivalLocation: true).ReasonKey == "replay.festival-location",
             "today's festival venue cannot be used for replay");
+        ReplayAccess controllerAccess = ReplayAccessPolicy.Evaluate(StoryKind.Ordinary, seen: true, unlockAll: true, ordinaryEnabled: true, isControllerEvent: true);
+        Check(!controllerAccess.Allowed && controllerAccess.ReasonKey == "replay.controller-unavailable",
+            "background controller events are strictly non-replayable even with unlock-all and ordinary replay enabled");
         Console.WriteLine("Story replay access checks passed.");
     }
 

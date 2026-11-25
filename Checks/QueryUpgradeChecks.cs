@@ -56,7 +56,7 @@ internal static class QueryUpgradeChecks
             Check(SafeGameQuery.Evaluate(clauses, context with { Details = new() }) is null, "missing facts remain unknown");
         }
         Check(!SafeGameQuery.TryParse("CustomAuthor.UnsafeQuery foo", out _), "unknown third-party query is not invoked");
-        Check(Enum.GetValues<QueryKind>().Length == 4 && new QueryFilter().Kind == QueryKind.All, "one all-events option includes every query category");
+        Check(Enum.GetValues<QueryKind>().Length == 5 && new QueryFilter().Kind == QueryKind.All, "one all-events option includes every query category");
         Check(GalleryNameText.IsMissing("(no translation:Name.JunimoJade)")
             && GalleryNameText.IsMissing("{{i18n:missing}}"), "translation diagnostics are not player-facing names");
         Check(GalleryLocationName.Resolve("Custom_TestRoom", "(no translation:TestRoom.Name)", _ => "测试房间") == "测试房间", "missing display name uses translation fallback");

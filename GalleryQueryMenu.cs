@@ -39,6 +39,11 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
     private int dropdownSelectedIndex;
     private bool dropdownSearchFocused;
     private bool draggingDropdownScroll;
+    private ulong inputGeneration = 1;
+    private ulong? overlayConsumedInputGeneration;
+    private ulong? suppressLeftClickGeneration;
+    private ulong? suppressRightClickGeneration;
+    private Dictionary<Keys, ulong>? suppressedMappedKeyGenerations;
     private TextBox? dropdownSearch;
     private string lastDropdownSearch = "";
 
@@ -73,8 +78,9 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
                 key => context.I18n.Get(key),
                 context.Pinyin,
                 defaultStoryTitle: entry => context.CardTitle(entry),
-                clueFor: context.EventClue);
-            return (built, Math.Min(1f, 30f / built.Rows.Select(row => Game1.smallFont.MeasureString(row.DisplayTitle + row.Characters + row.Location).Y)
+                clueFor: context.EventClue,
+                includeControllerEvents: context.ShowControllerEvents);
+            return (built, Math.Min(1f, 30f / built.Rows.Select(row => GalleryDrawing.MeasureStringSafe(Game1.smallFont, row.DisplayTitle + row.Characters + row.Location).Y)
                 .Append((float)Game1.smallFont.LineSpacing).Max()));
         });
         search = new GalleryTextBox
@@ -91,6 +97,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             state.Filter = state.Filter with { Location = state.LocationFilter };
         state.KindFilter = null;
         state.LocationFilter = null;
+        if (!context.ShowControllerEvents && state.Filter.Kind == QueryKind.Controller)
+            state.Filter = state.Filter with { Kind = QueryKind.All };
         rows = index.Search(search.Text, state.Filter);
 
         int initialFocus = state.Focus;
@@ -105,6 +113,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void update(GameTime time)
     {
+        PurgeStaleInputSuppressions();
+        inputGeneration++;
         base.update(time);
         RefreshSearch();
         RefreshDropdownSearch();
@@ -186,6 +196,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        if (ConsumeLeftClickSuppression())
+            return;
         (x, y) = ToLogical(x, y);
         if (upperRightCloseButton?.bounds.Contains(x, y) == true)
         {
@@ -214,6 +226,12 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         {
             GalleryTextBox.SelectForInput(search);
             Focus(SearchId);
+            if (search.Selected)
+            {
+                ulong frameGen = CurrentFrameSuppressionGeneration();
+                suppressRightClickGeneration = frameGen;
+                SuppressMappedKey(Buttons.Y, frameGen);
+            }
             return;
         }
         DeselectSearch();
@@ -231,6 +249,12 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             {
                 Focus(FilterBase + i);
                 ActivateFilterRow(i);
+                if (IsDropdownOpen)
+                {
+                    ulong frameGen = CurrentFrameSuppressionGeneration();
+                    suppressRightClickGeneration = frameGen;
+                    SuppressMappedKey(Buttons.Y, frameGen);
+                }
                 return;
             }
         }
@@ -272,7 +296,12 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         draggingDropdownScroll = false;
     }
 
-    public override void receiveRightClick(int x, int y, bool playSound = true) => HandleControllerBack();
+    public override void receiveRightClick(int x, int y, bool playSound = true)
+    {
+        if (ConsumeRightClickSuppression())
+            return;
+        HandleControllerBack();
+    }
 
     public override void receiveScrollWheelAction(int direction)
     {
@@ -318,6 +347,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void receiveKeyPress(Keys key)
     {
+        if (ConsumeSuppressedMappedKey(key))
+            return;
         if (IsDropdownOpen)
         {
             if (dropdownSearch?.Selected == true)
@@ -328,12 +359,12 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
                 {
                     DeselectSearch();
                     dropdownSearchFocused = false;
-                    dropdownSelectedIndex = Math.Clamp(dropdownSelectedIndex, 0, dropdownChoices.Length - 1);
+                    dropdownSelectedIndex = 0;
                     EnsureDropdownVisible();
                 }
                 return;
             }
-            if (key == Keys.Escape || Game1.options.menuButton.Any(binding => binding.key == key))
+            if (key == Keys.Escape || Game1.options.menuButton?.Any(binding => binding.key == key) == true)
             {
                 CloseDropdown(playSound: true);
                 return;
@@ -342,6 +373,18 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             {
                 keyboardFocus = true;
                 HandleDropdownKey(key);
+                return;
+            }
+            if (Game1.options.moveUpButton is { } upBindings && Game1.options.doesInputListContain(upBindings, key))
+            {
+                keyboardFocus = true;
+                HandleDropdownKey(Keys.Up);
+                return;
+            }
+            if (Game1.options.moveDownButton is { } downBindings && Game1.options.doesInputListContain(downBindings, key))
+            {
+                keyboardFocus = true;
+                HandleDropdownKey(Keys.Down);
                 return;
             }
             return;
@@ -365,23 +408,71 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     public override void receiveGamePadButton(Buttons button)
     {
+        if (overlayConsumedInputGeneration == inputGeneration)
+        {
+            SuppressMappedKey(button);
+            if (button == Buttons.A)
+                suppressLeftClickGeneration = inputGeneration;
+            else if (button == Buttons.X)
+                suppressRightClickGeneration = inputGeneration;
+            return;
+        }
+
         if (IsDropdownOpen)
         {
             if (button is Buttons.B or Buttons.Y)
             {
+                SuppressMappedKey(button);
                 CloseDropdown(playSound: true);
+                overlayConsumedInputGeneration = inputGeneration;
                 return;
             }
             if (button == Buttons.A)
             {
+                suppressLeftClickGeneration = inputGeneration;
+                SuppressMappedKey(button);
                 ActivateDropdownSelection();
+                overlayConsumedInputGeneration = inputGeneration;
                 return;
             }
             if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
             {
+                SuppressMappedKey(button);
                 MoveDropdownSelection(button == Buttons.LeftShoulder ? -DropdownMaxVisible : DropdownMaxVisible);
                 return;
             }
+            if (button is Buttons.DPadUp or Buttons.LeftThumbstickUp)
+            {
+                SuppressMappedKey(button);
+                if (dropdownSearch?.Selected != true)
+                {
+                    keyboardFocus = true;
+                    HandleDropdownKey(Keys.Up);
+                }
+                return;
+            }
+            if (button is Buttons.DPadDown or Buttons.LeftThumbstickDown)
+            {
+                SuppressMappedKey(button);
+                if (dropdownSearch?.Selected == true)
+                {
+                    if (dropdownChoices.Length > 0)
+                    {
+                        DeselectSearch();
+                        dropdownSearchFocused = false;
+                        dropdownSelectedIndex = 0;
+                        EnsureDropdownVisible();
+                    }
+                }
+                else
+                {
+                    keyboardFocus = true;
+                    HandleDropdownKey(Keys.Down);
+                }
+                return;
+            }
+            suppressRightClickGeneration = inputGeneration;
+            SuppressMappedKey(button);
             return;
         }
 
@@ -392,16 +483,90 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             int row = focused >= FilterBase && focused < FilterBase + 5 ? focused - FilterBase : 0;
             Focus(FilterBase + row);
             OpenDropdown(row);
+            if (IsDropdownOpen)
+            {
+                overlayConsumedInputGeneration = inputGeneration;
+                suppressLeftClickGeneration = inputGeneration;
+                suppressRightClickGeneration = inputGeneration;
+            }
+            SuppressMappedKey(button);
             return;
         }
-        if (button == Buttons.B) { HandleControllerBack(); return; }
+        if (button == Buttons.B)
+        {
+            bool wasSearchSelected = search.Selected;
+            SuppressMappedKey(button);
+            HandleControllerBack();
+            if (wasSearchSelected && !search.Selected)
+            {
+                overlayConsumedInputGeneration = inputGeneration;
+                suppressLeftClickGeneration = inputGeneration;
+                suppressRightClickGeneration = inputGeneration;
+            }
+            return;
+        }
         if (button is Buttons.LeftShoulder or Buttons.RightShoulder)
         {
+            SuppressMappedKey(button);
             DeselectSearch();
             TurnPage(button == Buttons.LeftShoulder ? -1 : 1);
             return;
         }
         base.receiveGamePadButton(button);
+    }
+
+    private ulong CurrentFrameSuppressionGeneration()
+        => inputGeneration > 0 ? inputGeneration - 1 : 0;
+
+    private void SuppressMappedKey(Buttons button, ulong? generation = null)
+    {
+        Keys mapped = Utility.mapGamePadButtonToKey(button);
+        if (mapped != Keys.None)
+            (suppressedMappedKeyGenerations ??= new Dictionary<Keys, ulong>())[mapped] = generation ?? inputGeneration;
+    }
+
+    private bool ConsumeLeftClickSuppression()
+    {
+        bool active = suppressLeftClickGeneration is { } gen && gen + 1 >= inputGeneration;
+        suppressLeftClickGeneration = null;
+        return active;
+    }
+
+    private bool ConsumeRightClickSuppression()
+    {
+        bool active = suppressRightClickGeneration is { } gen && gen + 1 >= inputGeneration;
+        suppressRightClickGeneration = null;
+        return active;
+    }
+
+    private bool ConsumeSuppressedMappedKey(Keys key)
+    {
+        if (suppressedMappedKeyGenerations is null || !suppressedMappedKeyGenerations.TryGetValue(key, out ulong gen))
+            return false;
+        return gen + 1 >= inputGeneration;
+    }
+
+    private void PurgeStaleInputSuppressions()
+    {
+        if (overlayConsumedInputGeneration is { } overlayGen && overlayGen < inputGeneration)
+            overlayConsumedInputGeneration = null;
+        if (suppressLeftClickGeneration is { } leftGen && leftGen < inputGeneration)
+            suppressLeftClickGeneration = null;
+        if (suppressRightClickGeneration is { } rightGen && rightGen < inputGeneration)
+            suppressRightClickGeneration = null;
+        if (suppressedMappedKeyGenerations is not { Count: > 0 })
+            return;
+        List<Keys>? expired = null;
+        foreach (KeyValuePair<Keys, ulong> pair in suppressedMappedKeyGenerations)
+        {
+            if (pair.Value < inputGeneration)
+                (expired ??= []).Add(pair.Key);
+        }
+        if (expired is not null)
+        {
+            foreach (Keys key in expired)
+                suppressedMappedKeyGenerations.Remove(key);
+        }
     }
 
     private void Activate(int id)
@@ -622,13 +787,6 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
 
     private void HandleDropdownLeftClick(int x, int y)
     {
-        Rectangle anchor = FilterRowBounds(dropdownFilterRow);
-        if (anchor.Contains(x, y))
-        {
-            CloseDropdown(playSound: true);
-            return;
-        }
-
         var layout = ComputeDropdownLayout();
         if (!layout.Popup.Contains(x, y))
         {
@@ -641,6 +799,12 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             dropdownSearchFocused = true;
             UpdateDropdownSearchBounds();
             GalleryTextBox.SelectForInput(dropdownSearch);
+            if (dropdownSearch.Selected)
+            {
+                ulong frameGen = CurrentFrameSuppressionGeneration();
+                suppressRightClickGeneration = frameGen;
+                SuppressMappedKey(Buttons.Y, frameGen);
+            }
             return;
         }
 
@@ -1038,12 +1202,13 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             string fieldLabel = context.I18n.Get("filter." + field);
             string valLabel = FormatInlineFilterValue(field);
             float fScale = Math.Min(0.92f, (rowRect.Height - 10f) / Game1.smallFont.LineSpacing);
-            int labelW = Math.Min(210, (int)Math.Ceiling(Game1.smallFont.MeasureString(fieldLabel).X * fScale) + 20);
+            int labelW = Math.Min(210, (int)Math.Ceiling(GalleryDrawing.MeasureStringSafe(Game1.smallFont, fieldLabel).X * fScale) + 20);
             GalleryDrawing.DrawEllipsized(b, fieldLabel, new Rectangle(rowRect.X + 18, rowRect.Y, labelW - 18, rowRect.Height), fScale);
             Rectangle valArea = new(rowRect.X + labelW + 8, rowRect.Y, Math.Max(40, rowRect.Width - labelW - arrowW - 18), rowRect.Height);
-            string fittedVal = GalleryTextFit.Ellipsize(valLabel, valArea.Width / fScale, s => Game1.smallFont.MeasureString(s).X);
-            Vector2 valSize = Game1.smallFont.MeasureString(fittedVal) * fScale;
-            b.DrawString(Game1.smallFont, fittedVal, new Vector2(valArea.Right - valSize.X, valArea.Center.Y - valSize.Y / 2f),
+            string safeValLabel = GalleryDrawing.SanitizeForFont(Game1.smallFont, valLabel);
+            string fittedVal = GalleryTextFit.Ellipsize(safeValLabel, valArea.Width / fScale, s => GalleryDrawing.MeasureStringSafe(Game1.smallFont, s).X);
+            Vector2 valSize = GalleryDrawing.MeasureStringSafe(Game1.smallFont, fittedVal) * fScale;
+            GalleryDrawing.DrawStringSafe(b, Game1.smallFont, fittedVal, new Vector2(valArea.Right - valSize.X, valArea.Center.Y - valSize.Y / 2f),
                 GallerySpreadDrawing.Ink, 0f, Vector2.Zero, fScale, SpriteEffects.None, 0f);
         }
 
@@ -1115,7 +1280,9 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             GalleryDrawing.DrawEllipsized(b, primaryTitle,
                 new Rectangle(textLeft, bounds.Y + 20, textWidth, 34), Math.Min(0.94f, rowTextScale));
 
-            string kindText = context.I18n.Get(entry is null ? "query.kind-prerequisite" : entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary");
+            string kindText = context.I18n.Get(entry is null ? "query.kind-prerequisite"
+                : entry.IsControllerEvent ? "query.kind-controller"
+                : entry.Kind == StoryKind.Heart ? "query.kind-heart" : "query.kind-ordinary");
             string charPart = row.Characters.Length == 0 ? "" : row.Characters + GalleryDrawing.TextSeparator;
             string locPart = row.Location is "" or "-" ? "" : GalleryDrawing.TextSeparator + row.Location;
             string metaLine = charPart + kindText + locPart;
@@ -1143,7 +1310,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         }
 
         if (rows.Count == 0)
-            GalleryDrawing.DrawCentered(b, Game1.parseText(context.I18n.Get("nav.no-results"), Game1.smallFont, 560), new Rectangle(892, 340, 612, 180));
+            GalleryDrawing.DrawCentered(b, GalleryDrawing.ParseTextSafe(context.I18n.Get("nav.no-results"), Game1.smallFont, 560), new Rectangle(892, 340, 612, 180));
 
         GalleryBookChrome.DrawPager(
             b,
@@ -1163,7 +1330,7 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         upperRightCloseButton?.draw(b);
         GalleryDrawing.EndScaled(b);
         if (!overlayActive && tooltip is not null)
-            drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, Math.Min(620, Math.Max(200, viewportWidth - 80))), Game1.smallFont);
+            GalleryDrawing.DrawHoverTextSafe(b, GalleryDrawing.ParseTextSafe(tooltip, Game1.smallFont, Math.Min(620, Math.Max(200, viewportWidth - 80))), Game1.smallFont);
         drawMouse(b);
     }
 
@@ -1243,6 +1410,8 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
             return seen
                 ? (context.I18n.Get("filter.done"), UiPill.Wood, null)
                 : (context.I18n.Get("filter.pending"), UiPill.Wood, null);
+        if (entry.IsControllerEvent)
+            return (context.I18n.Get("pill.controller"), UiPill.Wood, null);
 
         if (row.Clue == EncounterClue.AvailableToday)
             return (context.I18n.Get("clue.available-today"), UiPill.Amber, UiBadge.AvailableToday);
@@ -1301,7 +1470,9 @@ internal sealed class GalleryQueryMenu : IClickableMenu, IGallerySearchMenu
         FilterChoice any = new(null, T("filter.any"));
         IEnumerable<FilterChoice> values = field switch
         {
-            "kind" => new[] { "filter.any", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" }
+            "kind" => (context.ShowControllerEvents
+                ? new[] { "filter.any", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite", "query.kind-controller" }
+                : new[] { "filter.any", "query.kind-heart", "query.kind-ordinary", "query.kind-prerequisite" })
                 .Select((key, i) => new FilterChoice(i.ToString(), T(key))),
             "state" => new[] { "filter.any", "filter.done", "filter.pending" }
                 .Select((key, i) => new FilterChoice(i.ToString(), T(key))),

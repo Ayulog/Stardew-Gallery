@@ -32,6 +32,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
     private int lastGameTick;
 
     internal bool IsActive => snapshot is not null;
+    internal PortraitComparisonController PortraitComparison { get; } = new(monitor, helper);
     internal bool OwnsEvent(Event? value) => IsActive && value is not null && ReferenceEquals(value, activeReplayEvent);
     internal Event? PlayingEvent => IsActive && observed && !restoring && ReferenceEquals(Game1.CurrentEvent, activeReplayEvent) ? activeReplayEvent : null;
     internal ReplayForkOption? ForkOverride => forkOverride;
@@ -61,6 +62,11 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
             error = helper.Translation.Get(entry.Kind == StoryKind.Internal ? "replay.internal" : "replay.multiplayer");
             return false;
         }
+        if (entry.IsControllerEvent)
+        {
+            error = helper.Translation.Get("replay.controller-unavailable");
+            return false;
+        }
         if (!ReplaySaveGuard.IsReady)
         {
             error = helper.Translation.Get("replay.protection-failed");
@@ -76,12 +82,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
 
         try
         {
+            PortraitComparison?.Reset();
             Trace($"回放请求：地点={playback.LocationName}，事件={playback.EventId}。");
             backupPath = ReplayBackup.Create();
             Trace($"回放备份完成：{backupPath}");
             snapshot = ReplaySnapshot.Capture(Game1.getLocationFromName(playback.LocationName));
             forkOverride = selectedFork is { Mode: not ReplayForkMode.FollowSave } ? selectedFork : null;
             scenePaused = false;
+            dialogueAutoTicks = 0;
             staticMusicCue = EventMusicExtractor.ExtractCueId(
                 entry.Resolved,
                 raw => Event.ParseCommands(raw),
@@ -282,6 +290,7 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         {
             Trace($"开始恢复回放前状态：事件={eventId}，实际开始={observed}。");
             scenePaused = false;
+            dialogueAutoTicks = 0;
             restoring = true;
             ticks = 0;
             restoreStableTicks = 0;
@@ -392,6 +401,14 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
         scenePaused = false;
         try
         {
+            PortraitComparison?.Reset();
+        }
+        catch (Exception error)
+        {
+            SafeLog($"清理立绘对比资源失败：{error}", LogLevel.Warn);
+        }
+        try
+        {
             if (restoreScopes)
                 environment?.Dispose();
         }
@@ -468,16 +485,22 @@ internal sealed class ReplayCoordinator(IMonitor monitor, IModHelper helper,
 
     private void UpdateAutoAdvance()
     {
-        if (!autoAdvanceDialogue() || EffectiveSpeedMultiplier <= 1
+        if (autoAdvanceDialogue?.Invoke() != true
+            || EffectiveSpeedMultiplier <= 1
             || Game1.activeClickableMenu is not StardewValley.Menus.DialogueBox dialogue
-            || ReplaySpeedPatches.IsChoice(dialogue) || dialogue.transitioning
-            || dialogue.characterIndexInDialogue < dialogue.getCurrentString().Length - 1 || dialogue.safetyTimer > 0)
+            || ReplaySpeedPatches.IsChoice(dialogue)
+            || dialogue.transitioning
+            || dialogue.getCurrentString() is not { } currentString
+            || dialogue.characterIndexInDialogue < currentString.Length - 1
+            || dialogue.safetyTimer > 0)
         {
             dialogueAutoTicks = 0;
             return;
         }
+
         if (++dialogueAutoTicks < (speedMultiplier == 4 ? 12 : 20))
             return;
+
         dialogueAutoTicks = 0;
         dialogue.receiveLeftClick(Game1.getMouseX(true), Game1.getMouseY(true));
     }

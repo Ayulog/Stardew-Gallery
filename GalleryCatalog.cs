@@ -15,6 +15,7 @@ internal sealed record GalleryEvent(
 )
 {
     public StoryKind Kind { get; init; } = StoryKind.Ordinary;
+    public bool IsControllerEvent { get; init; }
     public IReadOnlyList<string> RelatedNpcNames { get; init; } = Ownership.Owners.Select(owner => owner.Name).ToArray();
     public string? ClassificationReason { get; init; }
     public string Identity => Resolved.Identity.StorageKey;
@@ -41,12 +42,17 @@ internal sealed record GalleryCatalog(
     internal IReadOnlyDictionary<EventIdentity, EventOriginMatch> Origins { get; init; } = new Dictionary<EventIdentity, EventOriginMatch>();
     /// <summary>Static Data/TriggerActions providers by rule ID, for prerequisite display and source queries only.</summary>
     internal IReadOnlyDictionary<string, EventOriginMatch> RuleOrigins { get; init; } = new Dictionary<string, EventOriginMatch>(StringComparer.OrdinalIgnoreCase);
+    internal IReadOnlyDictionary<string, ShelfVolume> CharacterVolumes { get; init; } = new Dictionary<string, ShelfVolume>(StringComparer.Ordinal);
+    internal IReadOnlyDictionary<EventIdentity, ShelfVolume> EventVolumes { get; init; } = new Dictionary<EventIdentity, ShelfVolume>();
+    internal IReadOnlyDictionary<string, ShelfVolume> RuleVolumes { get; init; } = new Dictionary<string, ShelfVolume>(StringComparer.OrdinalIgnoreCase);
     /// <summary>Maps each event in a mutually exclusive parallel heart-event group (size &gt;= 2) to its deterministic group ID.</summary>
     internal IReadOnlyDictionary<EventIdentity, string> ParallelGroups { get; init; } = new Dictionary<EventIdentity, string>();
     internal IReadOnlyList<PrerequisiteEvent> Prerequisites { get; init; } = [];
     internal PrerequisiteEvent? FindPrerequisite(string id) => Prerequisites.FirstOrDefault(entry => entry.EventId == id);
     internal IEnumerable<GalleryEvent> AllEntries => Events.Concat(ExcludedEvents);
-    internal IEnumerable<GalleryEvent> StoryEntries => AllEntries.Where(entry => entry.Kind != StoryKind.Internal);
+    internal IEnumerable<GalleryEvent> StoryEntries => AllEntries.Where(entry => entry.Kind != StoryKind.Internal && !entry.IsControllerEvent);
+    internal IEnumerable<GalleryEvent> SearchableEntries(bool includeControllerEvents)
+        => AllEntries.Where(entry => entry.Kind != StoryKind.Internal && (includeControllerEvents || !entry.IsControllerEvent));
     internal GalleryEvent? Find(EventIdentity identity) => AllEntries.FirstOrDefault(entry => entry.Resolved.Identity == identity);
     internal IReadOnlyList<GalleryEvent> ParallelPeers(EventIdentity identity)
         => ParallelGroups.TryGetValue(identity, out string? groupId)
@@ -67,6 +73,7 @@ internal sealed record GalleryCatalog(
         return !isSeen(entry.EventId) && ParallelPeers(entry.Resolved.Identity).Any(peer => isSeen(peer.EventId));
     }
     internal IReadOnlyList<GalleryEvent> HeartEventsFor(string name) => Events.Where(entry => entry.Kind == StoryKind.Heart
+        && !entry.IsControllerEvent
         && entry.Ownership.Owners.Any(owner => owner.Name == name)).OrderBy(entry => entry.Ownership.Owners.First(owner => owner.Name == name).FriendshipPoints ?? int.MaxValue)
         .ThenBy(entry => entry.EventId, StringComparer.Ordinal).ToArray();
 }

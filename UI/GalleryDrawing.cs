@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
@@ -8,9 +9,66 @@ namespace StardewGallery;
 
 internal static class GalleryDrawing
 {
+    private sealed class FontCharacterCache(int count, HashSet<char> chars)
+    {
+        internal int Count { get; } = count;
+        internal HashSet<char> Chars { get; } = chars;
+    }
+
+    private static readonly ConditionalWeakTable<SpriteFont, FontCharacterCache> FontCharCaches = new();
+
     internal const int MenuWidth = GallerySpreadLayout.LogicalWidth;
     internal const int MenuHeight = GallerySpreadLayout.LogicalHeight;
     internal static string TextSeparator => LocalizedContentManager.CurrentLanguageCode == LocalizedContentManager.LanguageCode.ko ? " / " : " · ";
+
+    internal static string SanitizeForFont(SpriteFont? font, string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text ?? string.Empty;
+        if (font is null || font.DefaultCharacter is not null || font.Characters is not { Count: > 0 } chars)
+            return text;
+
+        FontCharacterCache cache = FontCharCaches.GetValue(font, static f =>
+        {
+            IReadOnlyCollection<char>? fontChars = f.Characters;
+            return fontChars is null
+                ? new FontCharacterCache(0, [])
+                : new FontCharacterCache(fontChars.Count, new HashSet<char>(fontChars));
+        });
+        if (cache.Count != chars.Count)
+        {
+            cache = new FontCharacterCache(chars.Count, new HashSet<char>(chars));
+            FontCharCaches.AddOrUpdate(font, cache);
+        }
+        return cache.Chars.Count == 0
+            ? text
+            : GalleryTextFit.SanitizeForCharacterSet(text, font.DefaultCharacter, cache.Chars.Contains);
+    }
+
+    internal static Vector2 MeasureStringSafe(SpriteFont font, string? text)
+        => font.MeasureString(SanitizeForFont(font, text));
+
+    internal static string ParseTextSafe(string? text, SpriteFont font, int width)
+        => Game1.parseText(SanitizeForFont(font, text), font, width);
+
+    internal static void DrawStringSafe(SpriteBatch b, SpriteFont font, string? text, Vector2 position, Color color)
+        => b.DrawString(font, SanitizeForFont(font, text), position, color);
+
+    internal static void DrawStringSafe(
+        SpriteBatch b,
+        SpriteFont font,
+        string? text,
+        Vector2 position,
+        Color color,
+        float rotation,
+        Vector2 origin,
+        float scale,
+        SpriteEffects effects,
+        float layerDepth)
+        => b.DrawString(font, SanitizeForFont(font, text), position, color, rotation, origin, scale, effects, layerDepth);
+
+    internal static void DrawHoverTextSafe(SpriteBatch b, string? text, SpriteFont font)
+        => IClickableMenu.drawHoverText(b, SanitizeForFont(font, text), font);
 
     internal static Rectangle Inset(Rectangle bounds, int horizontal = 12, int vertical = 0)
         => new(bounds.X + horizontal, bounds.Y + vertical, Math.Max(0, bounds.Width - horizontal * 2), Math.Max(0, bounds.Height - vertical * 2));
@@ -87,23 +145,26 @@ internal static class GalleryDrawing
 
     internal static void DrawCentered(SpriteBatch b, string text, Rectangle bounds, Color? color = null)
     {
-        Vector2 size = Game1.smallFont.MeasureString(text);
+        string safe = SanitizeForFont(Game1.smallFont, text);
+        Vector2 size = Game1.smallFont.MeasureString(safe);
         float scale = GalleryTextFit.Scale(size.X, size.Y, bounds.Width, bounds.Height);
-        b.DrawString(Game1.smallFont, text, new Vector2(bounds.Center.X - size.X * scale / 2, bounds.Center.Y - size.Y * scale / 2),
+        b.DrawString(Game1.smallFont, safe, new Vector2(bounds.Center.X - size.X * scale / 2, bounds.Center.Y - size.Y * scale / 2),
             color ?? Game1.textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
     internal static void DrawLeftFitted(SpriteBatch b, string text, Rectangle bounds, Color? color = null)
     {
-        Vector2 size = Game1.smallFont.MeasureString(text);
+        string safe = SanitizeForFont(Game1.smallFont, text);
+        Vector2 size = Game1.smallFont.MeasureString(safe);
         float scale = GalleryTextFit.Scale(size.X, size.Y, bounds.Width, bounds.Height);
-        b.DrawString(Game1.smallFont, text, new Vector2(bounds.X, bounds.Center.Y - size.Y * scale / 2),
+        b.DrawString(Game1.smallFont, safe, new Vector2(bounds.X, bounds.Center.Y - size.Y * scale / 2),
             color ?? Game1.textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
     }
 
     internal static void DrawEllipsized(SpriteBatch b, string text, Rectangle bounds, float scale)
     {
-        string label = GalleryTextFit.Ellipsize(text, bounds.Width / scale, value => Game1.smallFont.MeasureString(value).X);
+        string safe = SanitizeForFont(Game1.smallFont, text);
+        string label = GalleryTextFit.Ellipsize(safe, bounds.Width / scale, value => Game1.smallFont.MeasureString(value).X);
         Vector2 size = Game1.smallFont.MeasureString(label) * scale;
         b.DrawString(Game1.smallFont, label, new Vector2(bounds.X, bounds.Center.Y - size.Y / 2), Game1.textColor,
             0, Vector2.Zero, scale, SpriteEffects.None, 0);

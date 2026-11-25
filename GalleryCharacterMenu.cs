@@ -68,14 +68,14 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
         Rectangle plaqueText = new(0, 0, GallerySpreadLayout.EventCardBounds(0).Width - 24 - GalleryUiSkin.TitlePlaqueCap * 2, 24);
         cardTitles = items.Select(FormatItemTitle).ToArray();
-        float titleHeight = cardTitles.Select(title => Game1.smallFont.MeasureString(title).Y)
+        float titleHeight = cardTitles.Select(title => GalleryDrawing.MeasureStringSafe(Game1.smallFont, title).Y)
             .Append(Game1.smallFont.LineSpacing).Max();
         cardLabelScale = Math.Min(0.86f, plaqueText.Height / Math.Max(1f, titleHeight));
-        cardLabels = cardTitles.Select(title => GalleryTextFit.Ellipsize(title, plaqueText.Width / Math.Max(0.4f, cardLabelScale),
-            text => Game1.smallFont.MeasureString(text).X)).ToArray();
+        cardLabels = cardTitles.Select(title => GalleryTextFit.Ellipsize(GalleryDrawing.SanitizeForFont(Game1.smallFont, title), plaqueText.Width / Math.Max(0.4f, cardLabelScale),
+            text => GalleryDrawing.MeasureStringSafe(Game1.smallFont, text).X)).ToArray();
 
         // Left panel uses only heart events so Wedding Memento never alters story-node denominators.
-        leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Textures.Scene, context.Appearance, context.Catalog);
+        leftPanel = new GalleryCharacterPanel(character, events, i18n, context.Appearance, context.Catalog, context.ScenicRenderer);
         leftPanel.Prepare();
 
         int focusIndex = EventCardFocus.TryFromComponentId(state.Focus, CardComponentBase, items.Count, out EventCardFocus restored)
@@ -400,7 +400,7 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
         int focusedId = currentlySnappedComponent?.myID ?? -1;
 
         GalleryDrawing.BeginScaled(b, menuScale, drawOffsetX, drawOffsetY);
-        leftPanel.DrawPhoto(b);
+        leftPanel.DrawPhoto(b, menuScale, drawOffsetX, drawOffsetY);
         b.Draw(background, new Rectangle(0, 0, width, height), Color.White);
         GalleryBookChrome.DrawRibbonTabs(b, GalleryBookTab.Villagers, focusedId, showFocus, new Point(mouseX, mouseY), i18n, out string? hoverTooltip, albumPage: true);
         GalleryBookChrome.DrawPageTitle(b, i18n.Get("album.title", new { name = character.DisplayName }), menuScale, drawOffsetX, drawOffsetY);
@@ -444,8 +444,8 @@ internal sealed class GalleryCharacterMenu : IClickableMenu
 
         if (hoverTooltip is not null)
         {
-            drawHoverText(b,
-                Game1.parseText(hoverTooltip, Game1.smallFont, Math.Min(620, Math.Max(200, Game1.uiViewport.Width - 80))),
+            GalleryDrawing.DrawHoverTextSafe(b,
+                GalleryDrawing.ParseTextSafe(hoverTooltip, Game1.smallFont, Math.Min(620, Math.Max(200, Game1.uiViewport.Width - 80))),
                 Game1.smallFont);
         }
         drawMouse(b);

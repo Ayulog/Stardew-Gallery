@@ -19,6 +19,8 @@ internal sealed class ModConfig
 
     public bool EnableOrdinaryEventReplay { get; set; }
 
+    public bool ShowControllerEvents { get; set; }
+
     public KeybindList GalleryKeys { get; set; } = new(SButton.G);
 
     public KeybindList ReplaySpeedKeys { get; set; } = new(SButton.RightShoulder);
@@ -26,4 +28,6 @@ internal sealed class ModConfig
     public KeybindList ScreenshotKeys { get; set; } = KeybindList.Parse("F8, LeftShoulder");
 
     public KeybindList PauseSceneKeys { get; set; } = KeybindList.Parse("H, RightStick");
+
+    public KeybindList PortraitCompareKeys { get; set; } = new(SButton.V);
 }

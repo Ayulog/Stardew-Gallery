@@ -34,13 +34,16 @@ internal sealed class GalleryCatalogBuilder(
                 ? new EventOwnership(OwnershipKind.Direct, facts.RelationshipNpcNames.Select(name => new EventOwner(name, null)).ToArray())
                 : ownership[entry.Identity];
             bool directHeart = facts.FriendshipRequirements.Count > 0 || facts.RelationshipNpcNames.Count > 0;
+            bool isController = internalReason is null && IsControllerEvent(entry);
             return new GalleryEvent(entry, eventOwnership)
             {
                 Kind = internalReason is not null ? StoryKind.Internal : directHeart ? StoryKind.Heart : StoryKind.Ordinary,
+                IsControllerEvent = isController,
                 RelatedNpcNames = facts.Actors.Concat(facts.DialogueCounts.Keys).Concat(facts.FriendshipRequirements.Keys)
                     .Concat(facts.RelationshipNpcNames)
                     .Distinct(StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal).ToArray(),
-                ClassificationReason = internalReason ?? (facts.FriendshipRequirements.Count > 0 ? "positive-friendship"
+                ClassificationReason = internalReason ?? (isController ? "controller-no-dialogue-or-visible-stage-action"
+                    : facts.FriendshipRequirements.Count > 0 ? "positive-friendship"
                     : facts.RelationshipNpcNames.Count > 0 ? "positive-relationship" : "no-confirmed-heart-relationship")
             };
         });
@@ -57,9 +60,9 @@ internal sealed class GalleryCatalogBuilder(
             {
                 GalleryEvent entry = classified[facts.Identity];
                 string[] previousIds = facts.PrerequisiteEventIds.Distinct(StringComparer.Ordinal).ToArray();
-                if (entry.Kind != StoryKind.Ordinary || facts.FriendshipRequirements.Count > 0
+                if (entry.Kind != StoryKind.Ordinary || entry.IsControllerEvent || facts.FriendshipRequirements.Count > 0
                     || previousIds.Length != 1 || !byId.TryGetValue(previousIds[0], out List<EventEvidence>? matches)
-                    || matches.Count != 1 || classified[matches[0].Identity] is not { Kind: StoryKind.Heart } previous
+                    || matches.Count != 1 || classified[matches[0].Identity] is not { Kind: StoryKind.Heart, IsControllerEvent: false } previous
                     || entry.Fragments.MissingKeys.Count > 0)
                     continue;
 
@@ -80,7 +83,7 @@ internal sealed class GalleryCatalogBuilder(
             .Select(resolved => classified[resolved.Identity])
             .ToList();
         List<GalleryEvent> includedEvents = analyzedEvents
-            .Where(entry => entry.Kind == StoryKind.Heart)
+            .Where(entry => entry.Kind == StoryKind.Heart && !entry.IsControllerEvent)
             .ToList();
         HashSet<string> galleryNames = includedEvents
             .SelectMany(entry => entry.Ownership.Owners)
@@ -100,7 +103,7 @@ internal sealed class GalleryCatalogBuilder(
         GalleryCatalog catalog = new(
             galleryCharacters,
             includedEvents,
-            analyzedEvents.Where(entry => entry.Kind != StoryKind.Heart).ToList()
+            analyzedEvents.Where(entry => entry.Kind != StoryKind.Heart || entry.IsControllerEvent).ToList()
         )
         {
             ParallelGroups = parallelGroups
@@ -190,6 +193,121 @@ internal sealed class GalleryCatalogBuilder(
     }
 
     internal bool IsInternalFlow(ResolvedEvent entry) => InternalFlowReason(entry) is not null;
+
+    /// <summary>
+    /// Dual predicate for silent background controller scripts (e.g., mod state-setters / offscreen triggers):
+    /// true ONLY when there are (a) NO dialogue/message/question commands AND (b) NO visible non-blackout stage
+    /// action commands across root and reachable fork/switchEvent fragments.
+    /// </summary>
+    internal bool IsControllerEvent(ResolvedEvent entry)
+    {
+        if (entry.Fragments.MissingKeys.Count > 0)
+            return false;
+        string[] root = parseCommands(entry.ResolvedScript);
+        if (root.Length < 3)
+            return false;
+
+        bool rootOffscreen = IsOffscreen(splitPositions(root[1]));
+        var scriptsByKey = entry.Fragments.ScriptsByKey;
+        Queue<(string Script, bool Offscreen, bool BlackedOut, bool SkipHeader)> pending = new();
+        HashSet<(string Script, bool Offscreen, bool BlackedOut, bool SkipHeader)> visited = new();
+        HashSet<string> visitedScripts = new(StringComparer.Ordinal);
+
+        void Enqueue(string script, bool offscreen, bool blackedOut, bool skipHeader)
+        {
+            var state = (script, offscreen, blackedOut, skipHeader);
+            if (visited.Add(state))
+            {
+                pending.Enqueue(state);
+                visitedScripts.Add(script);
+            }
+        }
+
+        Enqueue(entry.ResolvedScript, rootOffscreen, blackedOut: false, skipHeader: true);
+        if (scriptsByKey is null || scriptsByKey.Count == 0)
+        {
+            foreach (string fragment in entry.Fragments.Scripts.Where(s => s != entry.ResolvedScript))
+                Enqueue(fragment, offscreen: false, blackedOut: false, skipHeader: false);
+        }
+
+        while (pending.Count > 0)
+        {
+            (string script, bool offscreen, bool blackedOut, bool skipHeader) = pending.Dequeue();
+            string[] commands = parseCommands(script);
+            int start = skipHeader ? 3 : 0;
+            for (int i = start; i < commands.Length; i++)
+            {
+                string raw = commands[i];
+                if (EventCommandEnumerator.TryGetQuickQuestionBranches(raw, out _))
+                    return false;
+
+                string[] args = splitArguments(raw);
+                if (args.Length == 0)
+                    continue;
+
+                string head = args[0].ToLowerInvariant();
+                if (head is "speak" or "splitspeak" or "message" or "question" or "quickquestion" or "textabovehead")
+                    return false;
+
+                if (head == "globalfade")
+                {
+                    blackedOut = true;
+                    continue;
+                }
+                if (head == "globalfadetoclear")
+                {
+                    blackedOut = false;
+                    continue;
+                }
+                if (head == "fade")
+                {
+                    blackedOut = !(args.Length > 1 && args[1].Equals("unfade", StringComparison.OrdinalIgnoreCase));
+                    continue;
+                }
+                if (head == "viewport")
+                {
+                    if (args.Length >= 3 && int.TryParse(args[1], out int vx) && int.TryParse(args[2], out int vy))
+                        offscreen = vx < 0 && vy < 0;
+                    continue;
+                }
+                if (head is "fork" or "switchevent" && args.Length > 1)
+                {
+                    string key = head == "switchevent" ? args[1] : (args.Length > 2 ? args[2] : args[1]);
+                    if (scriptsByKey is not null && scriptsByKey.TryGetValue(key, out string? frag))
+                        Enqueue(frag, offscreen, blackedOut, skipHeader: false);
+                    if (head == "switchevent")
+                        break;
+                    continue;
+                }
+
+                if (!offscreen && !blackedOut && head is "move" or "advancedmove" or "animate" or "emote"
+                    or "showframe" or "jump" or "shake" or "specifictemporarysprite" or "addtemporaryactor")
+                    return false;
+            }
+        }
+
+        // Defensive check: if any fragment script wasn't reached by key lookup, inspect it conservatively.
+        foreach (string unvisited in entry.Fragments.Scripts)
+        {
+            if (visitedScripts.Contains(unvisited))
+                continue;
+            foreach (string raw in parseCommands(unvisited))
+            {
+                if (EventCommandEnumerator.TryGetQuickQuestionBranches(raw, out _))
+                    return false;
+                string[] args = splitArguments(raw);
+                if (args.Length == 0) continue;
+                string head = args[0].ToLowerInvariant();
+                if (head is "speak" or "splitspeak" or "message" or "question" or "quickquestion" or "textabovehead")
+                    return false;
+                if (head is "move" or "advancedmove" or "animate" or "emote" or "showframe" or "jump" or "shake"
+                    or "specifictemporarysprite" or "addtemporaryactor")
+                    return false;
+            }
+        }
+
+        return true;
+    }
 
     private string? InternalFlowReason(ResolvedEvent entry)
     {

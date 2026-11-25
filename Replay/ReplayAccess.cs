@@ -12,10 +12,11 @@ internal static class ReplayAccessPolicy
     internal static ReplayAccess Evaluate(StoryKind kind, bool seen, bool unlockAll, bool ordinaryEnabled,
         bool protectionReady = true, bool multiplayer = false, bool active = false,
         bool saveFileReady = true, bool festivalLocation = false, bool parallelBranchUnlocked = false,
-        bool isWedding = false)
+        bool isWedding = false, bool isControllerEvent = false)
     {
         if (isWedding) return new(false, "replay.wedding-unavailable");
         if (kind == StoryKind.Internal) return new(false, "replay.internal");
+        if (isControllerEvent) return new(false, "replay.controller-unavailable");
         if (!protectionReady) return new(false, "replay.protection-failed");
         if (multiplayer) return new(false, "replay.multiplayer");
         if (active) return new(false, "replay.already-running");

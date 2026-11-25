@@ -15,6 +15,7 @@ internal static class Stage4Checks
         assertions = 0;
         CheckWholePagePagination();
         CheckScenicWindowPalettes();
+        CheckScenicWindowRulesAndHobbyAnimations();
         CheckScenicMeadowStroll();
         CheckCardTitleFormatter();
         CheckStorySearchIndexEncounterAndDisplayTitles();
@@ -81,24 +82,87 @@ internal static class Stage4Checks
         Check(greenRain.Weather == ScenicWeatherKind.GreenRain && greenRain.AtmosphereOverlay.G > greenRain.AtmosphereOverlay.R,
             "green rain overrides ordinary rain with green atmospheric tint");
         Check(unknownSeason.NormalizedSeason == "spring", "unknown season falls back cleanly to spring");
+    }
 
-        // User-confirmed 6-illustration scenic window rule (<2000 seasonal day/dusk, >=2000 Night-Clear or Winter-Night)
-        Check(ScenicWindowStyle.ResolveSceneIndex("spring", 900) == ScenicWindowStyle.SceneSpringDay
-            && ScenicWindowStyle.ResolveSceneIndex("spring", 1950) == ScenicWindowStyle.SceneSpringDay,
-            "spring <2000 selects CharacterScene-Spring-Day");
-        Check(ScenicWindowStyle.ResolveSceneIndex("summer", 1400) == ScenicWindowStyle.SceneSummerDay,
-            "summer <2000 selects CharacterScene-Summer-Day");
-        Check(ScenicWindowStyle.ResolveSceneIndex("fall", 1800) == ScenicWindowStyle.SceneFallDusk,
-            "fall <2000 selects CharacterScene-Fall-Dusk");
-        Check(ScenicWindowStyle.ResolveSceneIndex("winter", 1950) == ScenicWindowStyle.SceneWinterDay,
-            "winter <2000 selects CharacterScene-Winter-Day");
-        Check(ScenicWindowStyle.ResolveSceneIndex("spring", 2000) == ScenicWindowStyle.SceneNightClear
-            && ScenicWindowStyle.ResolveSceneIndex("summer", 2200) == ScenicWindowStyle.SceneNightClear
-            && ScenicWindowStyle.ResolveSceneIndex("fall", 2400) == ScenicWindowStyle.SceneNightClear,
-            "non-winter >=2000 selects CharacterScene-Night-Clear");
-        Check(ScenicWindowStyle.ResolveSceneIndex("winter", 2000) == ScenicWindowStyle.SceneWinterNight
-            && ScenicWindowStyle.ResolveSceneIndex("Winter", 2550) == ScenicWindowStyle.SceneWinterNight,
-            "winter >=2000 selects CharacterScene-Winter-Night");
+    private static void CheckScenicWindowRulesAndHobbyAnimations()
+    {
+        // 12 seasonal x day/dusk/night native 96x68 pixel-art asset paths
+        Check(ScenicWindowRules.AllAssetPaths.Count == 12, "Expected exactly 12 seasonal day/dusk/night scenic assets");
+        Check(ScenicWindowRules.ResolveAssetPath("spring", 900) == "assets/Scenic-Spring-Day.png", "Spring 09:00 -> Scenic-Spring-Day.png");
+        Check(ScenicWindowRules.ResolveAssetPath("Spring", 1700) == "assets/Scenic-Spring-Dusk.png", "Spring 17:00 -> Scenic-Spring-Dusk.png");
+        Check(ScenicWindowRules.ResolveAssetPath("SPRING", 2000) == "assets/Scenic-Spring-Night.png", "Spring 20:00 -> Scenic-Spring-Night.png");
+        Check(ScenicWindowRules.ResolveAssetPath("summer", 1200) == "assets/Scenic-Summer-Day.png", "Summer Day");
+        Check(ScenicWindowRules.ResolveAssetPath("fall", 1830) == "assets/Scenic-Fall-Dusk.png", "Fall Dusk");
+        Check(ScenicWindowRules.ResolveAssetPath("winter", 2230) == "assets/Scenic-Winter-Night.png", "Winter Night");
+        Check(ScenicWindowRules.ResolveAssetPath("unknown_season", 1100) == "assets/Scenic-Spring-Day.png", "Unknown season falls back to Spring");
+
+        // Weather priority: GreenRain -> Storm -> Rain -> Snow -> Wind -> Clear
+        Check(ScenicWindowRules.ResolveWorldWeather("Sun", isRaining: true, isSnowing: true, isLightning: true, isDebrisWeather: true, isGreenRain: true) == ScenicWeatherKind.GreenRain,
+            "GreenRain takes highest priority");
+        Check(ScenicWindowRules.ResolveWorldWeather("Rain", isRaining: true, isSnowing: true, isLightning: true, isDebrisWeather: true) == ScenicWeatherKind.Storm,
+            "Storm overrides Rain/Snow/Wind");
+        Check(ScenicWindowRules.ResolveWorldWeather("Snow", isRaining: true, isSnowing: true, isDebrisWeather: true) == ScenicWeatherKind.Rain,
+            "Rain overrides Snow/Wind");
+        Check(ScenicWindowRules.ResolveWorldWeather("Wind", isSnowing: true, isDebrisWeather: true) == ScenicWeatherKind.Snow,
+            "Snow overrides Wind");
+        Check(ScenicWindowRules.ResolveWorldWeather("Wind", isDebrisWeather: true) == ScenicWeatherKind.Wind,
+            "Wind resolves to Wind");
+        Check(ScenicWindowRules.ResolveWorldWeather("Sun") == ScenicWeatherKind.Clear,
+            "Sun resolves to Clear");
+
+        // Weather overcast wash applies only to Rain/Storm/GreenRain (keeps Clear/Wind/Snow pixel art crisp)
+        Check(ScenicWindowRules.WeatherWashOverlay(ScenicWeatherKind.Clear).Alpha == 0f, "Clear applies zero wash");
+        Check(ScenicWindowRules.WeatherWashOverlay(ScenicWeatherKind.Snow).Alpha == 0f, "Snow applies zero wash");
+        Check(ScenicWindowRules.WeatherWashOverlay(ScenicWeatherKind.Wind).Alpha == 0f, "Wind applies zero wash");
+        Check(ScenicWindowRules.WeatherWashOverlay(ScenicWeatherKind.Rain).Alpha > 0f, "Rain applies subtle wash");
+        Check(ScenicWindowRules.WeatherWashOverlay(ScenicWeatherKind.GreenRain).G > ScenicWindowRules.WeatherWashOverlay(ScenicWeatherKind.GreenRain).R,
+            "GreenRain applies green-dominant wash");
+
+        // Strict screen-space integer pixel zoom (prevents fractional-scale sprite squashing)
+        Check(ScenicWindowRules.ComputePixelZoom(388, 278) == 4, "1080p @ 100% uses exact 4x vanilla pixel zoom");
+        Check(ScenicWindowRules.ComputePixelZoom(291, 208) == 4, "1080p @ 125% (user screenshot size) stays exact 4x vanilla pixel zoom");
+        Check(ScenicWindowRules.ComputePixelZoom(277, 198) == 4, "720p keeps exact 4x vanilla pixel zoom");
+        Check(ScenicWindowRules.ComputePixelZoom(200, 150) == 3, "Small viewport steps down cleanly to integer 3x");
+        Check(ScenicWindowRules.ComputePixelZoom(130, 100) == 2, "Very small viewport steps down cleanly to integer 2x");
+
+        ScenicStageLayout stage1080 = ScenicWindowRules.ComputeStageLayout(236, 116, 388, 278);
+        Check(stage1080.PixelZoom == 4 && stage1080.StageWidth == 384 && stage1080.StageHeight == 272,
+            "1080p stage renders 96x68 at exact 384x272");
+        Check(stage1080.ActorFeetY > 116 + 128 && stage1080.ActorFeetY < 116 + 278,
+            "1080p actor feet sit comfortably inside meadow");
+
+        ScenicStageLayout stageScaled = ScenicWindowRules.ComputeStageLayout(180, 90, 291, 208);
+        Check(stageScaled.PixelZoom == 4 && stageScaled.ActorFeetY - 128 >= 90 && stageScaled.ActorFeetY <= 90 + 208 - 6,
+            "125% scaled viewport keeps full 4x character headroom and meadow footing");
+
+        // Safe Data/AnimationDescriptions hobby parser & posture filter
+        Dictionary<string, string> descriptions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["abigail_flute"] = "16 17/18 19 18 19/17 16",
+            ["abigail_sleep"] = "28/28/28",
+            ["haley_photo"] = "26/27 28/26",
+            ["modnpc_sleep"] = "16/17/16",
+            ["modnpc_sit_chair"] = "16/17/16",
+            ["modnpc_violin"] = "16/17 18/16",
+            ["bad_overflow"] = "16/99/16"
+        };
+
+        string? abiKey = ScenicWindowRules.SelectHobbyAnimationKey("Abigail", descriptions, 64, 256, 16, 32, out ScenicParsedAnimation abiAnim);
+        Check(abiKey == "abigail_flute" && abiAnim.LoopFrames.SequenceEqual([18, 19, 18, 19]),
+            "Curated vanilla Abigail hobby resolves abigail_flute");
+
+        // Seasonal outfit sheet with only 4 rows (16 frames): abigail_flute uses frames 16..19 -> must safely reject
+        string? abiShortSheet = ScenicWindowRules.SelectHobbyAnimationKey("Abigail", descriptions, 64, 128, 16, 32, out _);
+        Check(abiShortSheet is null, "Out-of-bounds hobby animation is safely rejected on 4-row outfit sheets");
+
+        // Modded NPC skips sleep/sit and selects upright violin hobby
+        string? modKey = ScenicWindowRules.SelectHobbyAnimationKey("ModNpc", descriptions, 64, 256, 16, 32, out ScenicParsedAnimation modAnim);
+        Check(modKey == "modnpc_violin" && modAnim.LoopFrames.SequenceEqual([17, 18]),
+            "Modded NPC safely ignores sleep/sit and picks upright violin hobby");
+
+        // Non-standard sheet layout (e.g., 2 columns) rejected safely
+        Check(ScenicWindowRules.SelectHobbyAnimationKey("Haley", descriptions, 32, 256, 16, 32, out _) is null,
+            "Non-4-column sheet safely skips hobby animations");
     }
 
     private static void CheckScenicMeadowStroll()

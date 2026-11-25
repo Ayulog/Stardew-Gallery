@@ -45,8 +45,8 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
         int y = ContentBounds.Y;
         foreach (var row in Rows)
         {
-            string wrapped = Game1.parseText(row.Text, Game1.smallFont, ContentBounds.Width - 94);
-            int size = Math.Max(58, (int)Math.Ceiling(Game1.smallFont.MeasureString(wrapped).Y) + 24);
+            string wrapped = GalleryDrawing.ParseTextSafe(row.Text, Game1.smallFont, ContentBounds.Width - 94);
+            int size = Math.Max(58, (int)Math.Ceiling(GalleryDrawing.MeasureStringSafe(Game1.smallFont, wrapped).Y) + 24);
             rowBounds.Add(new(ContentBounds.X, y, ContentBounds.Width, size)); y += size;
         }
         contentHeight = y - ContentBounds.Y;
@@ -200,7 +200,7 @@ internal abstract class GalleryToolMenu : IClickableMenu, IGallerySearchMenu
             Rectangle r = RowBounds(i);
             if (!r.Intersects(ContentBounds)) continue;
             if (FocusId == RowId + i || r.Contains(mx, my)) b.Draw(Game1.staminaRect, r, new Color(204, 221, 187) * .6f);
-            b.DrawString(Game1.smallFont, Game1.parseText(Rows[i].Text, Game1.smallFont, r.Width - 94), new(r.X + 14, r.Y + 12), Game1.textColor);
+            GalleryDrawing.DrawStringSafe(b, Game1.smallFont, GalleryDrawing.ParseTextSafe(Rows[i].Text, Game1.smallFont, r.Width - 94), new(r.X + 14, r.Y + 12), Game1.textColor);
             if (Rows[i].Status is ConditionStatusIcon icon)
             {
                 var bounds = icon switch { ConditionStatusIcon.Check => GallerySpreadLayout.ConditionCheckSource,

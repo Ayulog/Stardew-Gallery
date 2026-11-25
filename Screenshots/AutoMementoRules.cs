@@ -43,7 +43,7 @@ internal static class AutoMementoRules
 
     private static bool TryMatchCatalog(GalleryCatalog catalog, string assetName, string eventId, out EventIdentity identity)
     {
-        if (catalog.Find(new EventIdentity(assetName, eventId)) is { Kind: StoryKind.Heart or StoryKind.Ordinary } entry)
+        if (catalog.Find(new EventIdentity(assetName, eventId)) is { Kind: StoryKind.Heart or StoryKind.Ordinary, IsControllerEvent: false } entry)
         {
             identity = entry.Resolved.Identity;
             return true;

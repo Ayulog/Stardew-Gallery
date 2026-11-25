@@ -7,11 +7,33 @@ namespace StardewGallery.Appearance;
 
 internal sealed class CharacterAppearance : ICharacterAppearance
 {
+    private enum ScenicPhase
+    {
+        IdleCenter,
+        HobbyCenter,
+        WalkRight,
+        IdleRight,
+        WalkLeft,
+        IdleLeft,
+        WalkReturn
+    }
+
+    private sealed class ScenicActorMotion
+    {
+        internal ScenicPhase Phase = ScenicPhase.IdleCenter;
+        internal double PhaseElapsedMs;
+        internal float OffsetNativeX;
+        internal double LastTotalMs = -1d;
+        internal bool HobbyStarted;
+    }
+
     private sealed record Visual(Texture2D Texture, Texture2D Original, string Context, PortraitFrame? Portrait,
-        AnimatedSprite? Sprite, DetailedSprite? Detailed, HdPortraitEntry? AnimatedHd = null)
+        AnimatedSprite? Sprite, DetailedSprite? Detailed, HdPortraitEntry? AnimatedHd = null,
+        ScenicParsedAnimation? HobbyAnimation = null, ScenicActorMotion? Motion = null)
     {
         internal long Used { get; set; }
     }
+
     private readonly IGameContentHelper content;
     private readonly IMonitor monitor;
     private readonly Texture2D placeholder;
@@ -22,6 +44,8 @@ internal sealed class CharacterAppearance : ICharacterAppearance
     private readonly Dictionary<(string Name, CharacterVisual Kind), Visual> visuals = [];
     private readonly Dictionary<(string Name, CharacterVisual Kind), double> failed = [];
     private readonly HashSet<string> warnings = [];
+    private Dictionary<string, string>? animationDescriptions;
+    private bool animationDescriptionsAttempted;
     private long clock;
     private Dictionary<string, NPC>? npcs;
     private long npcsReadAt;
@@ -38,7 +62,13 @@ internal sealed class CharacterAppearance : ICharacterAppearance
 
     internal void Invalidate()
     {
-        visuals.Clear(); failed.Clear(); dialogue.Invalidate(); hdPortraits.Invalidate(); npcs = null;
+        visuals.Clear();
+        failed.Clear();
+        dialogue.Invalidate();
+        hdPortraits.Invalidate();
+        npcs = null;
+        animationDescriptions = null;
+        animationDescriptionsAttempted = false;
     }
 
     /// <summary>
@@ -68,10 +98,28 @@ internal sealed class CharacterAppearance : ICharacterAppearance
         return npcs.GetValueOrDefault(name);
     }
 
+    private IReadOnlyDictionary<string, string>? ReadAnimationDescriptions()
+    {
+        if (animationDescriptionsAttempted)
+            return animationDescriptions;
+        animationDescriptionsAttempted = true;
+        try
+        {
+            animationDescriptions = content.Load<Dictionary<string, string>>("Data/AnimationDescriptions");
+        }
+        catch (Exception error)
+        {
+            animationDescriptions = null;
+            Warn("anim-descriptions", $"Could not read Data/AnimationDescriptions for scenic hobby idles: {error.Message}");
+        }
+        return animationDescriptions;
+    }
+
     internal bool UsesAsset(IAssetName name)
     {
         string normalized = name.Name.Replace('\\', '/');
         return name.IsEquivalentTo("Data/Characters")
+            || name.IsEquivalentTo("Data/AnimationDescriptions")
             || normalized.StartsWith("Portraits/", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("Characters/", StringComparison.OrdinalIgnoreCase)
             || name.IsEquivalentTo(DialoguePortraits.AssetName)
@@ -137,13 +185,15 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                     visuals[key] = cached;
                 }
                 cached.Used = ++clock;
-                SetStandingIdle(cached.Sprite);
+                // Keep ongoing vanilla AnimatedSprite walk / hobby animation state intact across ticks.
                 return;
             }
             Texture2D texture = selected?.Texture ?? original;
             PortraitFrame? portrait = selected?.Frame;
             HdPortraitEntry? animatedHd = null;
             AnimatedSprite? sprite = null;
+            ScenicParsedAnimation? hobbyAnimation = null;
+            ScenicActorMotion? motion = null;
             if (kind == CharacterVisual.Portrait && selected is null)
             {
                 string adapterSource = "DDFC";
@@ -209,10 +259,24 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 sprite.CurrentAnimation = null;
                 sprite.ignoreSourceRectUpdates = false;
                 SetStandingIdle(sprite);
+
+                if (detailed is null
+                    && ScenicWindowRules.SelectHobbyAnimationKey(
+                        name,
+                        ReadAnimationDescriptions(),
+                        original.Width,
+                        original.Height,
+                        sprite.SpriteWidth,
+                        sprite.SpriteHeight,
+                        out ScenicParsedAnimation parsed) is not null)
+                {
+                    hobbyAnimation = parsed;
+                }
+                motion = new ScenicActorMotion();
             }
             if (visuals.Count >= 40 && !visuals.ContainsKey(key))
                 visuals.Remove(visuals.MinBy(pair => pair.Value.Used).Key);
-            visuals[key] = new(texture, original, context, portrait, sprite, detailed, animatedHd) { Used = ++clock };
+            visuals[key] = new(texture, original, context, portrait, sprite, detailed, animatedHd, hobbyAnimation, motion) { Used = ++clock };
         }
         catch (Exception error)
         {
@@ -227,6 +291,277 @@ internal sealed class CharacterAppearance : ICharacterAppearance
         if (kind == CharacterVisual.Sprite && TryDraw(batch, name, CharacterVisual.Portrait, bounds, tint)) return;
         var fit = AppearanceGeometry.Fit(bounds.X, bounds.Y, bounds.Width, bounds.Height, placeholder.Width, placeholder.Height);
         batch.Draw(placeholder, new Rectangle((int)fit.X, (int)fit.Y, (int)fit.Width, (int)fit.Height), tint);
+    }
+
+    /// <summary>
+    /// Draws a villager's live sprite inside the unscaled screen-space scenic window at strict integer
+    /// <paramref name="layout"/>.<c>PixelZoom</c> (matching in-game <c>Game1.pixelZoom</c> = 4x with zero compression),
+    /// driven by Stardew Valley's native <see cref="AnimatedSprite"/> walk/idle methods and safe
+    /// <c>Data/AnimationDescriptions</c> hobby animations.
+    /// </summary>
+    internal void DrawScenicSprite(SpriteBatch batch, string name, Rectangle screenClip, ScenicStageLayout layout, Color tint)
+    {
+        if (TryDrawScenicNative(batch, name, screenClip, layout, tint))
+            return;
+        if (TryDraw(batch, name, CharacterVisual.Portrait, screenClip, tint))
+            return;
+        var fit = AppearanceGeometry.Fit(screenClip.X, screenClip.Y, screenClip.Width, screenClip.Height, placeholder.Width, placeholder.Height);
+        batch.Draw(placeholder, new Rectangle((int)fit.X, (int)fit.Y, (int)fit.Width, (int)fit.Height), tint);
+    }
+
+    private bool TryDrawScenicNative(SpriteBatch batch, string name, Rectangle screenClip, ScenicStageLayout layout, Color tint)
+    {
+        if (!visuals.TryGetValue((name, CharacterVisual.Sprite), out var visual)
+            || visual.Texture.IsDisposed
+            || visual.Sprite is not { } sprite)
+            return false;
+
+        try
+        {
+            ScenicActorMotion motion = visual.Motion ?? new ScenicActorMotion();
+            bool standardSheet = sprite.SpriteWidth > 0 && sprite.SpriteHeight > 0
+                && visual.Texture.Width == sprite.SpriteWidth * 4
+                && visual.Texture.Height >= sprite.SpriteHeight * 4;
+
+            if (visual.Detailed is not null)
+            {
+                // Scale Up Unofficial HD sprites: preserve its Draw-hook placement semantics inside screenClip.
+                (int frame, float strollOffsetX) = AppearanceGeometry.ScenicStroll(
+                    name,
+                    NowMs,
+                    visual.Texture.Width,
+                    visual.Texture.Height,
+                    sprite.SpriteWidth,
+                    sprite.SpriteHeight,
+                    maxOffset: Math.Min(24f, Math.Max(0f, screenClip.Width * 0.08f)));
+                ApplySpriteFrame(sprite, visual.Texture, frame, ref strollOffsetX);
+                var p = AppearanceGeometry.SpritePlacement(screenClip.X, screenClip.Y, screenClip.Width, screenClip.Height,
+                    sprite.SourceRect.Width, sprite.SourceRect.Height, visual.Detailed);
+                float minX = screenClip.X + 8f;
+                float maxX = Math.Max(minX, screenClip.Right - p.Width - 8f);
+                float drawX = p.Width + 16f <= screenClip.Width ? Math.Clamp(p.X + strollOffsetX, minX, maxX) : p.X;
+                float appliedOffset = drawX - p.X;
+                Vector2 position = new(MathF.Round(drawX), MathF.Round(p.Y));
+                if (Game1.shadowTexture is not null)
+                {
+                    batch.Draw(Game1.shadowTexture,
+                        new Vector2(MathF.Round(screenClip.Center.X + appliedOffset), MathF.Round(screenClip.Y + screenClip.Height * .76f)),
+                        null, tint * .35f, 0f, new Vector2(Game1.shadowTexture.Width / 2f, Game1.shadowTexture.Height / 2f),
+                        p.Scale, SpriteEffects.None, .45f);
+                }
+                sprite.draw(batch, position, .9f, 0, 0, tint, false, p.Scale);
+                return true;
+            }
+
+            int zoom = layout.PixelZoom;
+            int spritePixelW = sprite.SpriteWidth * zoom;
+            int spritePixelH = sprite.SpriteHeight * zoom;
+            int maxNativeOffset = standardSheet
+                ? Math.Clamp((screenClip.Width - spritePixelW) / (2 * Math.Max(1, zoom)) - 6, 0, 16)
+                : 0;
+
+            UpdateNativeMotion(sprite, visual.Texture, visual.HobbyAnimation, motion, standardSheet, maxNativeOffset);
+            EnsureSourceRectInBounds(sprite, visual.Texture);
+
+            int drawW = sprite.SourceRect.Width * zoom;
+            int drawH = sprite.SourceRect.Height * zoom;
+            int centerX = screenClip.X + screenClip.Width / 2;
+            int drawXInt = centerX - drawW / 2 + (int)Math.Round(motion.OffsetNativeX * zoom);
+            int drawYInt = layout.ActorFeetY - drawH;
+            Vector2 drawPos = new(drawXInt, drawYInt);
+
+            sprite.drawShadow(batch, drawPos, zoom, .45f);
+            sprite.draw(batch, drawPos, .9f, 0, 0, tint, false, zoom);
+            return true;
+        }
+        catch (Exception error)
+        {
+            visuals.Remove((name, CharacterVisual.Sprite));
+            failed[(name, CharacterVisual.Sprite)] = NowMs + 2000;
+            Warn("draw:" + name + CharacterVisual.Sprite, $"Appearance drawing failed for {name}: {error.Message}");
+            return false;
+        }
+    }
+
+    private static void UpdateNativeMotion(
+        AnimatedSprite sprite,
+        Texture2D texture,
+        ScenicParsedAnimation? hobbyAnimation,
+        ScenicActorMotion motion,
+        bool standardSheet,
+        int maxNativeOffset)
+    {
+        if (!standardSheet)
+        {
+            motion.OffsetNativeX = 0f;
+            SetStandingIdle(sprite);
+            return;
+        }
+
+        double nowMs = NowMs;
+        double dtMs = 16.6667;
+        if (motion.LastTotalMs >= 0d && nowMs >= motion.LastTotalMs)
+            dtMs = Math.Clamp(nowMs - motion.LastTotalMs, 0d, 50d);
+        motion.LastTotalMs = nowMs;
+
+        if (dtMs <= 0d)
+            return;
+
+        GameTime stepTime = new(TimeSpan.FromMilliseconds(nowMs), TimeSpan.FromMilliseconds(dtMs));
+        motion.PhaseElapsedMs += dtMs;
+
+        const float walkNativePxPerSec = 20f;
+        float stepNative = (float)(walkNativePxPerSec * dtMs / 1000.0);
+
+        switch (motion.Phase)
+        {
+            case ScenicPhase.IdleCenter:
+                motion.OffsetNativeX = 0f;
+                FaceFrontStanding(sprite);
+                if (motion.PhaseElapsedMs >= 1600.0)
+                {
+                    motion.PhaseElapsedMs = 0d;
+                    motion.HobbyStarted = false;
+                    motion.Phase = hobbyAnimation is not null
+                        ? ScenicPhase.HobbyCenter
+                        : maxNativeOffset >= 6 ? ScenicPhase.WalkRight : ScenicPhase.IdleCenter;
+                }
+                break;
+
+            case ScenicPhase.HobbyCenter:
+                motion.OffsetNativeX = 0f;
+                if (hobbyAnimation is not { } hobby)
+                {
+                    motion.Phase = maxNativeOffset >= 6 ? ScenicPhase.WalkRight : ScenicPhase.IdleCenter;
+                    motion.PhaseElapsedMs = 0d;
+                    break;
+                }
+                if (!motion.HobbyStarted)
+                {
+                    motion.HobbyStarted = true;
+                    sprite.setCurrentAnimation(BuildHobbyFrames(hobby));
+                    sprite.loop = false;
+                }
+                if (sprite.CurrentAnimation is not null)
+                {
+                    if (sprite.animateOnce(stepTime))
+                    {
+                        FaceFrontStanding(sprite);
+                        motion.PhaseElapsedMs = 0d;
+                        motion.Phase = maxNativeOffset >= 6 ? ScenicPhase.WalkRight : ScenicPhase.IdleCenter;
+                    }
+                }
+                else if (motion.PhaseElapsedMs >= 3200.0)
+                {
+                    FaceFrontStanding(sprite);
+                    motion.PhaseElapsedMs = 0d;
+                    motion.Phase = maxNativeOffset >= 6 ? ScenicPhase.WalkRight : ScenicPhase.IdleCenter;
+                }
+                break;
+
+            case ScenicPhase.WalkRight:
+                sprite.CurrentAnimation = null;
+                sprite.AnimateRight(stepTime, 18, "");
+                motion.OffsetNativeX += stepNative;
+                if (motion.OffsetNativeX >= maxNativeOffset)
+                {
+                    motion.OffsetNativeX = maxNativeOffset;
+                    FaceFrontStanding(sprite);
+                    motion.PhaseElapsedMs = 0d;
+                    motion.Phase = ScenicPhase.IdleRight;
+                }
+                break;
+
+            case ScenicPhase.IdleRight:
+                FaceFrontStanding(sprite);
+                if (motion.PhaseElapsedMs >= 2200.0)
+                {
+                    motion.PhaseElapsedMs = 0d;
+                    motion.Phase = ScenicPhase.WalkLeft;
+                }
+                break;
+
+            case ScenicPhase.WalkLeft:
+                sprite.CurrentAnimation = null;
+                sprite.AnimateLeft(stepTime, 18, "");
+                motion.OffsetNativeX -= stepNative;
+                if (motion.OffsetNativeX <= -maxNativeOffset)
+                {
+                    motion.OffsetNativeX = -maxNativeOffset;
+                    FaceFrontStanding(sprite);
+                    motion.PhaseElapsedMs = 0d;
+                    motion.Phase = ScenicPhase.IdleLeft;
+                }
+                break;
+
+            case ScenicPhase.IdleLeft:
+                FaceFrontStanding(sprite);
+                if (motion.PhaseElapsedMs >= 2200.0)
+                {
+                    motion.PhaseElapsedMs = 0d;
+                    motion.Phase = ScenicPhase.WalkReturn;
+                }
+                break;
+
+            case ScenicPhase.WalkReturn:
+                sprite.CurrentAnimation = null;
+                sprite.AnimateRight(stepTime, 18, "");
+                motion.OffsetNativeX += stepNative;
+                if (motion.OffsetNativeX >= 0f)
+                {
+                    motion.OffsetNativeX = 0f;
+                    FaceFrontStanding(sprite);
+                    motion.PhaseElapsedMs = 0d;
+                    motion.Phase = ScenicPhase.IdleCenter;
+                }
+                break;
+        }
+    }
+
+    private static List<FarmerSprite.AnimationFrame> BuildHobbyFrames(ScenicParsedAnimation hobby)
+    {
+        List<FarmerSprite.AnimationFrame> frames = [];
+        foreach (int f in hobby.StartFrames)
+            frames.Add(new FarmerSprite.AnimationFrame(f, 220));
+
+        // Repeat loop frames so the signature hobby plays naturally for ~2.8-3.4 seconds.
+        int loopStepMs = hobby.LoopFrames.Length <= 2 ? 320 : 220;
+        int singleLoopMs = Math.Max(loopStepMs, hobby.LoopFrames.Length * loopStepMs);
+        int repeats = Math.Clamp((int)Math.Round(2800.0 / singleLoopMs), 1, 8);
+        for (int r = 0; r < repeats; r++)
+            foreach (int f in hobby.LoopFrames)
+                frames.Add(new FarmerSprite.AnimationFrame(f, loopStepMs));
+
+        foreach (int f in hobby.EndFrames)
+            frames.Add(new FarmerSprite.AnimationFrame(f, 200));
+
+        return frames;
+    }
+
+    private static void FaceFrontStanding(AnimatedSprite sprite)
+    {
+        sprite.CurrentAnimation = null;
+        sprite.faceDirection(2);
+        sprite.StopAnimation();
+        if (sprite.currentFrame != 0)
+        {
+            sprite.currentFrame = 0;
+            sprite.UpdateSourceRect();
+        }
+        else if (sprite.SourceRect == Rectangle.Empty)
+        {
+            sprite.UpdateSourceRect();
+        }
+    }
+
+    private static void EnsureSourceRectInBounds(AnimatedSprite sprite, Texture2D texture)
+    {
+        Rectangle src = sprite.SourceRect;
+        if (src.Width <= 0 || src.Height <= 0 || src.X < 0 || src.Y < 0
+            || src.Right > texture.Width || src.Bottom > texture.Height)
+        {
+            SetStandingIdle(sprite);
+        }
     }
 
     private bool TryDraw(SpriteBatch batch, string name, CharacterVisual kind, Rectangle bounds, Color tint)
@@ -258,9 +593,9 @@ internal sealed class CharacterAppearance : ICharacterAppearance
                 float maxX = Math.Max(minX, bounds.Right - p.Width - 8f);
                 float drawX = p.Width + 16f <= bounds.Width ? Math.Clamp(p.X + strollOffsetX, minX, maxX) : p.X;
                 float appliedOffset = drawX - p.X;
-                Vector2 position = new(drawX, p.Y);
+                Vector2 position = new(MathF.Round(drawX), MathF.Round(p.Y));
                 if (visual.Detailed is null) sprite.drawShadow(batch, position, p.Scale, .45f);
-                else batch.Draw(Game1.shadowTexture, new Vector2(bounds.Center.X + appliedOffset, bounds.Y + MathF.Round(bounds.Height * .76f)),
+                else batch.Draw(Game1.shadowTexture, new Vector2(MathF.Round(bounds.Center.X + appliedOffset), MathF.Round(bounds.Y + bounds.Height * .76f)),
                     null, tint * .35f, 0, new Vector2(Game1.shadowTexture.Width / 2f, Game1.shadowTexture.Height / 2f),
                     p.Scale, SpriteEffects.None, .45f);
                 sprite.draw(batch, position, .9f, 0, 0, tint, false, p.Scale);
